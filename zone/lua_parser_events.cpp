@@ -369,6 +369,18 @@ void handle_npc_cast(
 		l_spell_o.push(L);
 		lua_setfield(L, -2, "spell");
 	}
+
+	if (init) {
+		Lua_Mob l_mob(init);
+		luabind::adl::object l_mob_o = luabind::adl::object(L, l_mob);
+		l_mob_o.push(L);
+		lua_setfield(L, -2, "other");
+	}
+	lua_pushinteger(L, std::stoi(sep.arg[1]));
+	lua_setfield(L, -2, "caster_id");
+
+	lua_pushinteger(L, std::stoi(sep.arg[2]));
+	lua_setfield(L, -2, "caster_level");	
 }
 
 void handle_npc_area(
@@ -663,9 +675,9 @@ void handle_player_cast(
 		luabind::adl::object l_spell_o = luabind::adl::object(L, l_spell);
 		l_spell_o.push(L);
 	}
-
+	
 	lua_setfield(L, -2, "spell");
-
+	
 	lua_pushinteger(L, std::stoi(sep.arg[1]));
 	lua_setfield(L, -2, "caster_id");
 

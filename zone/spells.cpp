@@ -182,8 +182,8 @@ bool Mob::CastSpell(uint16 spell_id, uint16 target_id, CastingSlot slot,
 	}
 
 	//Goal of Spells:UseSpellImpliedTargeting is to replicate the EQ2 feature where spells will 'pass through' invalid targets to target's target to try to find a valid target.
+    Mob* spell_target = entity_list.GetMobID(target_id);
 	if (RuleB(Spells,UseSpellImpliedTargeting) && IsClient()) {
-		Mob* spell_target = entity_list.GetMobID(target_id);
 		if (spell_target) {
 			Mob* targets_target = spell_target->GetTarget();
 			if (targets_target) {
@@ -245,8 +245,12 @@ bool Mob::CastSpell(uint16 spell_id, uint16 target_id, CastingSlot slot,
 		GetID(),
 		GetCasterLevel(spell_id)
 	);
-	if (IsClient()) {
-		if (parse->EventPlayer(EVENT_CAST_BEGIN, CastToClient(), export_string, 0) != 0) {
+	if(IsClient()) {
+		std::vector<std::any> extra;
+		if(spell_target) {
+			extra.push_back(spell_target);
+		}
+		if (parse->EventPlayer(EVENT_CAST_BEGIN, CastToClient(), export_string, 0, &extra) != 0) {
 			if (IsDiscipline(spell_id)) {
 				CastToClient()->SendDisciplineTimer(spells[spell_id].timer_id, 0);
 			} else {
@@ -254,11 +258,11 @@ bool Mob::CastSpell(uint16 spell_id, uint16 target_id, CastingSlot slot,
 			}
 			return false;
 		}
-	} else if (IsNPC()) {
-		parse->EventNPC(EVENT_CAST_BEGIN, CastToNPC(), nullptr, export_string, 0);
+	} else if(IsNPC()) {
+		parse->EventNPC(EVENT_CAST_BEGIN, CastToNPC(), spell_target, export_string, 0);
 #ifdef BOTS
 	} else if (IsBot()) {
-		parse->EventBot(EVENT_CAST_BEGIN, CastToBot(), nullptr, export_string, 0);
+		parse->EventBot(EVENT_CAST_BEGIN, CastToBot(), spell_target, export_string, 0);
 #endif
 	}
 
@@ -1670,13 +1674,17 @@ void Mob::CastedSpellFinished(uint16 spell_id, uint32 target_id, CastingSlot slo
 		GetID(),
 		GetCasterLevel(spell_id)
 	);
-	if (IsClient()) {
-		parse->EventPlayer(EVENT_CAST, CastToClient(), export_string, 0);
-	} else if (IsNPC()) {
-		parse->EventNPC(EVENT_CAST, CastToNPC(), nullptr, export_string, 0);
+	if(IsClient()) {
+		std::vector<std::any> extra;
+		if (spell_target){
+			extra.push_back(spell_target);
+		}
+		parse->EventPlayer(EVENT_CAST, CastToClient(), export_string, 0, &extra);
+	} else if(IsNPC()) {
+		parse->EventNPC(EVENT_CAST, CastToNPC(), spell_target, export_string, 0);
 #ifdef BOTS
 	} else if (IsBot()) {
-		parse->EventBot(EVENT_CAST, CastToBot(), nullptr, export_string, 0);
+		parse->EventBot(EVENT_CAST, CastToBot(), spell_target, export_string, 0);
 #endif
 	}
 
@@ -3662,7 +3670,9 @@ bool Mob::SpellOnTarget(
 	if (spelltar->IsNPC()) {
 		parse->EventNPC(EVENT_CAST_ON, spelltar->CastToNPC(), this, export_string, 0);
 	} else if (spelltar->IsClient()) {
-		parse->EventPlayer(EVENT_CAST_ON, spelltar->CastToClient(), export_string, 0);
+		std::vector<std::any> extra;
+		extra.push_back(this);
+		parse->EventPlayer(EVENT_CAST_ON, spelltar->CastToClient(), export_string, 0, &extra);
 #ifdef BOTS
 	} else if (spelltar->IsBot()) {
 		parse->EventBot(EVENT_CAST_ON, spelltar->CastToBot(), this, export_string, 0);
