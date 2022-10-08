@@ -788,7 +788,6 @@ bool Client::SendAllPackets() {
 		if(eqs)
 			eqs->FastQueuePacket((EQApplicationPacket **)&cp->app, cp->ack_req);
 		clientpackets.pop_front();
-		Log(Logs::Moderate, Logs::PacketClientServer, "Transmitting a packet");
 	}
 	return true;
 }
@@ -3206,6 +3205,8 @@ void Client::MessageString(uint32 type, uint32 string_id, const char* message1,
 	if (GetFilter(FilterSpellCrits) == FilterHide && type == Chat::SpellCrit)
 		return;
 	if (GetFilter(FilterDamageShields) == FilterHide && type == Chat::DamageShield)
+		return;
+	if (GetFilter(FilterFocusEffects) == FilterHide && type == Chat::FocusEffect)
 		return;
 
 	if (type == Chat::Emote)
@@ -8787,7 +8788,7 @@ void Client::QuestReward(Mob* target, const QuestReward_Struct &reward, bool fac
 
 	for (int i = 0; i < QUESTREWARD_COUNT; ++i)
 		if (reward.item_id[i] > 0)
-			SummonItem(reward.item_id[i], 0, 0, 0, 0, 0, 0, false, EQ::invslot::slotCursor);
+			SummonItem(reward.item_id[i], -1, 0, 0, 0, 0, 0, false, EQ::invslot::slotCursor);
 
 	// only process if both are valid
 	// if we don't have a target here, we want to just reward, but if there is a target, need to check charm
