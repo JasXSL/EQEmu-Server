@@ -8010,6 +8010,22 @@ bool Mob::PassCastRestriction(int value)
 				return true;
 			break;
 
+		case IS_CLIENT_AND_FEMALE:
+			if (IsClient() && GetGender() == FEMALE)
+				return true;
+			break;
+		case IS_CLIENT_AND_MALE:
+			if (IsClient() && GetGender() == MALE)
+				return true;
+			break;
+		case IS_FEMALE:
+			if (GetGender() == FEMALE)
+				return true;
+			break;
+		case IS_MALE:
+			if (GetGender() == MALE)
+				return true;
+			break;
 		case IS_CLIENT_AND_FEMALE_DRUID_ENCHANTER_MAGICIAN_NECROANCER_SHAMAN_OR_WIZARD:
 			if (IsClient() && GetGender() == FEMALE && (IsCasterClass(GetClass()) && GetClass() != CLERIC))
 				return true;
