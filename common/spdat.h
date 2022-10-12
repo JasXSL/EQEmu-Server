@@ -523,6 +523,12 @@ enum SpellRestriction
 	HAS_NO_HARMONIOUS_PRECISION_BUFF                                          = 50003, // This spell will not work if you have the Harmonious Precision line active.
 	HAS_NO_HARMONIOUS_EXPANSE_BUFF                                            = 50009, // This spell will not work if you have the Harmonious Expanse line active.
 	UNKNOWN_99999                                                             = 99999, // | caster restriction | works will spell 27672 Strike of Ire
+
+	IS_CLIENT_AND_FEMALE                                                      = 1000000, // Your target needs to be female client
+	IS_CLIENT_AND_MALE                                                        = 1000001, // Your target needs to be male client
+	IS_FEMALE                                                      			  = 1000002, // Your target needs to be female
+	IS_MALE                                                        			  = 1000003, // Your target needs to be male
+	
 };
 
 enum NegateSpellEffectType
