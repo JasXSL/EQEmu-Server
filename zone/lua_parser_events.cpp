@@ -357,7 +357,9 @@ void handle_npc_cast(
 	uint32 extra_data,
 	std::vector<std::any> *extra_pointers
 ) {
-	int spell_id = std::stoi(data);
+	Seperator sep(data.c_str());
+	int spell_id = std::stoi(sep.arg[0]);
+
 	if(IsValidSpell(spell_id)) {
 		Lua_Spell l_spell(&spells[spell_id]);
 		luabind::adl::object l_spell_o = luabind::adl::object(L, l_spell);
@@ -677,6 +679,13 @@ void handle_player_cast(
 	}
 	
 	lua_setfield(L, -2, "spell");
+
+	if (extra_pointers && extra_pointers->size()) {
+		Lua_Mob l_mob(std::any_cast<Mob*>(extra_pointers->at(0)));
+		luabind::adl::object l_mob_o = luabind::adl::object(L, l_mob);
+		l_mob_o.push(L);
+		lua_setfield(L, -2, "other");
+	}
 	
 	lua_pushinteger(L, std::stoi(sep.arg[1]));
 	lua_setfield(L, -2, "caster_id");
