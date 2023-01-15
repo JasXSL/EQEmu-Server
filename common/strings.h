@@ -44,9 +44,10 @@
 #include <tuple>
 #include <type_traits>
 
+#include <fmt/format.h>
+
 #ifndef _WIN32
 // this doesn't appear to affect linux-based systems..need feedback for _WIN64
-#include <fmt/format.h>
 
 #endif
 
@@ -86,6 +87,7 @@ public:
 	static bool Contains(std::vector<std::string> container, std::string element);
 	static bool Contains(const std::string& subject, const std::string& search);
 	static bool IsNumber(const std::string &s);
+	static bool IsFloat(const std::string &s);
 	static const std::string ToLower(std::string s);
 	static const std::string ToUpper(std::string s);
 	static const std::string UcFirst(std::string s);
@@ -112,6 +114,7 @@ public:
 	static uint32 TimeToSeconds(std::string time_string);
 	static bool ToBool(std::string bool_string);
 	static inline bool EqualFold(const std::string &string_one, const std::string &string_two) { return strcasecmp(string_one.c_str(), string_two.c_str()) == 0; }
+	static std::string Random(size_t length);
 
 	template<typename T>
 	static std::string

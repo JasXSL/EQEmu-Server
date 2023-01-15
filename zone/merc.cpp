@@ -2706,53 +2706,6 @@ int64 Merc::GetFocusEffect(focusType type, uint16 spell_id, bool from_buff_tic) 
 	return realTotal + realTotal2 + realTotal3;
 }
 
-int32 Merc::GetActSpellCost(uint16 spell_id, int32 cost)
-{
-	// Formula = Unknown exact, based off a random percent chance up to mana cost(after focuses) of the cast spell
-	if(itembonuses.Clairvoyance && spells[spell_id].classes[(GetClass()%17) - 1] >= GetLevel() - 5)
-	{
-		int mana_back = itembonuses.Clairvoyance * zone->random.Int(1, 100) / 100;
-		// Doesnt generate mana, so best case is a free spell
-		if(mana_back > cost)
-			mana_back = cost;
-
-		cost -= mana_back;
-	}
-
-	// This formula was derived from the following resource:
-	// http://www.eqsummoners.com/eq1/specialization-library.html
-	// WildcardX
-	float PercentManaReduction = 0;
-
-	int16 focus_redux = GetFocusEffect(focusManaCost, spell_id);
-
-	if(focus_redux > 0)
-	{
-		PercentManaReduction += zone->random.Real(1, (double)focus_redux);
-	}
-
-	cost -= (cost * (PercentManaReduction / 100));
-
-	// Gift of Mana - reduces spell cost to 1 mana
-	if(focus_redux >= 100) {
-		uint32 buff_max = GetMaxTotalSlots();
-		for (int buffSlot = 0; buffSlot < buff_max; buffSlot++) {
-			if (buffs[buffSlot].spellid == 0 || buffs[buffSlot].spellid >= SPDAT_RECORDS)
-				continue;
-
-			if(IsEffectInSpell(buffs[buffSlot].spellid, SE_ReduceManaCost)) {
-				if(CalcFocusEffect(focusManaCost, buffs[buffSlot].spellid, spell_id) == 100)
-					cost = 1;
-			}
-		}
-	}
-
-	if(cost < 0)
-		cost = 0;
-
-	return cost;
-}
-
 int8 Merc::GetChanceToCastBySpellType(uint32 spellType) {
 	int mercStance = (int)GetStance();
 	int8 mercClass = GetClass();
@@ -4363,19 +4316,23 @@ bool Merc::IsStanding() {
 float Merc::GetMaxMeleeRangeToTarget(Mob* target) {
 	float result = 0;
 
-	if(target) {
+	if (target) {
 		float size_mod = GetSize();
 		float other_size_mod = target->GetSize();
 
-		if(GetRace() == 49 || GetRace() == 158 || GetRace() == 196) //For races with a fixed size
+		if (GetRace() == RACE_LAVA_DRAGON_49 || GetRace() == RACE_WURM_158 || GetRace() == RACE_GHOST_DRAGON_196) //For races with a fixed size
+		{
 			size_mod = 60.0f;
-		else if (size_mod < 6.0)
+		} else if (size_mod < 6.0) {
 			size_mod = 8.0f;
+		}
 
-		if(target->GetRace() == 49 || target->GetRace() == 158 || target->GetRace() == 196) //For races with a fixed size
+		if (target->GetRace() == RACE_LAVA_DRAGON_49 || target->GetRace() == RACE_WURM_158 || target->GetRace() == RACE_GHOST_DRAGON_196) //For races with a fixed size
+		{
 			other_size_mod = 60.0f;
-		else if (other_size_mod < 6.0)
+		} else if (other_size_mod < 6.0) {
 			other_size_mod = 8.0f;
+		}
 
 		if (other_size_mod > size_mod) {
 			size_mod = other_size_mod;
@@ -4383,12 +4340,13 @@ float Merc::GetMaxMeleeRangeToTarget(Mob* target) {
 
 		// this could still use some work, but for now it's an improvement....
 
-		if (size_mod > 29)
+		if (size_mod > 29) {
 			size_mod *= size_mod;
-		else if (size_mod > 19)
+		} else if (size_mod > 19) {
 			size_mod *= size_mod * 2;
-		else
+		} else {
 			size_mod *= size_mod * 4;
+		}
 
 		// prevention of ridiculously sized hit boxes
 		if (size_mod > 10000)

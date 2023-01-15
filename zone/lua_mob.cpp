@@ -323,11 +323,6 @@ uint16 Lua_Mob::FindBuffBySlot(int slot) {
 	return self->FindBuffBySlot(slot);
 }
 
-uint32 Lua_Mob::BuffCount() {
-	Lua_Safe_Call_Int();
-	return self->BuffCount();
-}
-
 bool Lua_Mob::FindType(int type) {
 	Lua_Safe_Call_Bool();
 	return self->FindType(type);
@@ -1576,7 +1571,7 @@ void Lua_Mob::SendIllusionPacket(luabind::adl::object illusion) {
 		return;
 	}
 
-	int race = 0;
+	int race = RACE_DOUG_0;
 	int gender = 255;
 	int texture = 255;
 	int helmtexture = 255;
@@ -2218,9 +2213,9 @@ int Lua_Mob::GetWeaponDamageBonus(Lua_Item weapon, bool offhand) {
 	return self->GetWeaponDamageBonus(weapon, offhand);
 }
 
-int Lua_Mob::GetItemStat(uint32 itemid, const char* identifier) {
+const int Lua_Mob::GetItemStat(uint32 item_id, std::string identifier) {
 	Lua_Safe_Call_Int();
-	return self->GetItemStat(itemid, identifier);
+	return self->GetItemStat(item_id, identifier);
 }
 
 Lua_StatBonuses Lua_Mob::GetItemBonuses()
@@ -2251,11 +2246,6 @@ int16 Lua_Mob::GetMeleeMinDamageMod_SE(uint16 skill)
 {
 	Lua_Safe_Call_Int();
 	return self->GetMeleeMinDamageMod_SE(skill);
-}
-
-bool Lua_Mob::IsAttackAllowed(Lua_Mob target, bool isSpellAttack) {
-	Lua_Safe_Call_Bool();
-	return self->IsAttackAllowed(target, isSpellAttack);
 }
 
 bool Lua_Mob::IsCasting() {
@@ -2752,6 +2742,31 @@ void Lua_Mob::CopyHateList(Lua_Mob to) {
 	self->CopyHateList(to);
 }
 
+bool Lua_Mob::IsAttackAllowed(Lua_Mob target) {
+	Lua_Safe_Call_Bool();
+	return self->IsAttackAllowed(target);
+}
+
+bool Lua_Mob::IsAttackAllowed(Lua_Mob target, bool is_spell_attack) {
+	Lua_Safe_Call_Bool();
+	return self->IsAttackAllowed(target, is_spell_attack);
+}
+
+uint32 Lua_Mob::BuffCount() {
+	Lua_Safe_Call_Int();
+	return self->BuffCount();
+}
+
+uint32 Lua_Mob::BuffCount(bool is_beneficial) {
+	Lua_Safe_Call_Int();
+	return self->BuffCount(is_beneficial);
+}
+
+uint32 Lua_Mob::BuffCount(bool is_beneficial, bool is_detrimental) {
+	Lua_Safe_Call_Int();
+	return self->BuffCount(is_beneficial, is_detrimental);
+}
+
 #ifdef BOTS
 void Lua_Mob::DamageAreaBots(int64 damage) {
 	Lua_Safe_Call_Void();
@@ -2843,7 +2858,9 @@ luabind::scope lua_register_mob() {
 	.def("BehindMob", (bool(Lua_Mob::*)(Lua_Mob,float))&Lua_Mob::BehindMob)
 	.def("BehindMob", (bool(Lua_Mob::*)(Lua_Mob,float,float))&Lua_Mob::BehindMob)
 	.def("BehindMob", (bool(Lua_Mob::*)(void))&Lua_Mob::BehindMob)
-	.def("BuffCount", &Lua_Mob::BuffCount)
+	.def("BuffCount", (uint32(Lua_Mob::*)(void))&Lua_Mob::BuffCount)
+	.def("BuffCount", (uint32(Lua_Mob::*)(bool))&Lua_Mob::BuffCount)
+	.def("BuffCount", (uint32(Lua_Mob::*)(bool,bool))&Lua_Mob::BuffCount)
 	.def("BuffFadeAll", (void(Lua_Mob::*)(void))&Lua_Mob::BuffFadeAll)
 	.def("BuffFadeByEffect", (void(Lua_Mob::*)(int))&Lua_Mob::BuffFadeByEffect)
 	.def("BuffFadeByEffect", (void(Lua_Mob::*)(int,int))&Lua_Mob::BuffFadeByEffect)
@@ -3073,7 +3090,7 @@ luabind::scope lua_register_mob() {
 	.def("GetInvul", (bool(Lua_Mob::*)(void))&Lua_Mob::GetInvul)
 	.def("GetItemBonuses", &Lua_Mob::GetItemBonuses)
 	.def("GetItemHPBonuses", &Lua_Mob::GetItemHPBonuses)
-	.def("GetItemStat", (int(Lua_Mob::*)(uint32,const char*))&Lua_Mob::GetItemStat)
+	.def("GetItemStat", &Lua_Mob::GetItemStat)
 	.def("GetLastName", &Lua_Mob::GetLastName)
 	.def("GetLevel", &Lua_Mob::GetLevel)
 	.def("GetLevelCon", (uint32(Lua_Mob::*)(int))&Lua_Mob::GetLevelCon)
@@ -3157,7 +3174,8 @@ luabind::scope lua_register_mob() {
 	.def("InterruptSpell", (void(Lua_Mob::*)(void))&Lua_Mob::InterruptSpell)
 	.def("IsAIControlled", (bool(Lua_Mob::*)(void))&Lua_Mob::IsAIControlled)
 	.def("IsAmnesiad", (bool(Lua_Mob::*)(void))&Lua_Mob::IsAmnesiad)
-	.def("IsAttackAllowed", &Lua_Mob::IsAttackAllowed)
+	.def("IsAttackAllowed", (bool(Lua_Mob::*)(Lua_Mob))&Lua_Mob::IsAttackAllowed)
+	.def("IsAttackAllowed", (bool(Lua_Mob::*)(Lua_Mob,bool))&Lua_Mob::IsAttackAllowed)
 	.def("IsBeneficialAllowed", (bool(Lua_Mob::*)(Lua_Mob))&Lua_Mob::IsBeneficialAllowed)
 	.def("IsBerserk", &Lua_Mob::IsBerserk)
 	.def("IsBlind", (bool(Lua_Mob::*)(void))&Lua_Mob::IsBlind)
@@ -3308,7 +3326,7 @@ luabind::scope lua_register_special_abilities() {
 	return luabind::class_<SpecialAbilities>("SpecialAbility")
 
 		.enum_("constants")
-		[
+		[(
 				luabind::value("summon", static_cast<int>(SPECATK_SUMMON)),
 				luabind::value("enrage", static_cast<int>(SPECATK_ENRAGE)),
 				luabind::value("rampage", static_cast<int>(SPECATK_RAMPAGE)),
@@ -3360,7 +3378,7 @@ luabind::scope lua_register_special_abilities() {
 				luabind::value("immune_aggro_npc", static_cast<int>(IMMUNE_AGGRO_NPC)),
 				luabind::value("modify_avoid_damage", static_cast<int>(MODIFY_AVOID_DAMAGE)),
 				luabind::value("immune_open", static_cast<int>(IMMUNE_OPEN))
-		];
+		)];
 }
 
 #endif

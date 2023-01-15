@@ -200,6 +200,16 @@ bool Strings::IsNumber(const std::string &s)
 	}
 }
 
+bool Strings::IsFloat(const std::string &s)
+{
+	try {
+		auto r = stof(s);
+		return true;
+	}
+	catch (std::exception &) {
+		return false;
+	}
+}
 
 std::string Strings::Join(const std::vector<std::string> &ar, const std::string &delim)
 {
@@ -737,4 +747,19 @@ bool Strings::ToBool(std::string bool_string)
 	}
 
 	return false;
+}
+
+// returns a random string of specified length
+std::string Strings::Random(size_t length)
+{
+	auto        randchar = []() -> char {
+		const char   charset[] = "0123456789"
+								 "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+								 "abcdefghijklmnopqrstuvwxyz";
+		const size_t max_index = (sizeof(charset) - 1);
+		return charset[static_cast<size_t>(std::rand()) % max_index];
+	};
+	std::string str(length, 0);
+	std::generate_n(str.begin(), length, randchar);
+	return str;
 }

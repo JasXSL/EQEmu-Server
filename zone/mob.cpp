@@ -98,6 +98,7 @@ Mob::Mob(
 	uint16 in_usemodel,
 	bool in_always_aggro,
 	int32 in_heroic_strikethrough,
+	bool in_keeps_sold_items,
 	int64 in_hp_regen_per_second
 ) :
 	attack_timer(2000),
@@ -252,39 +253,40 @@ Mob::Mob(
 		aa_title = 0xFF;
 	}
 
-	AC                  = in_ac;
-	ATK                 = in_atk;
-	STR                 = in_str;
-	STA                 = in_sta;
-	DEX                 = in_dex;
-	AGI                 = in_agi;
-	INT                 = in_int;
-	WIS                 = in_wis;
-	CHA                 = in_cha;
-	MR                  = CR = FR = DR = PR = Corrup = PhR = 0;
-	ExtraHaste          = 0;
-	bEnraged            = false;
-	current_mana        = 0;
-	max_mana            = 0;
-	hp_regen            = in_hp_regen;
-	hp_regen_per_second = in_hp_regen_per_second;
-	mana_regen          = in_mana_regen;
-	ooc_regen           = RuleI(NPC, OOCRegen); //default Out of Combat Regen
-	maxlevel            = in_maxlevel;
-	scalerate           = in_scalerate;
-	invisible           = 0;
-	invisible_undead    = 0;
-	invisible_animals   = 0;
-	sneaking            = false;
-	hidden              = false;
-	improved_hidden     = false;
-	invulnerable        = false;
-	IsFullHP            = (current_hp == max_hp);
-	qglobal             = 0;
-	spawned             = false;
-	rare_spawn          = false;
-	always_aggro        = in_always_aggro;
+	AC                   = in_ac;
+	ATK                  = in_atk;
+	STR                  = in_str;
+	STA                  = in_sta;
+	DEX                  = in_dex;
+	AGI                  = in_agi;
+	INT                  = in_int;
+	WIS                  = in_wis;
+	CHA                  = in_cha;
+	MR                   = CR = FR = DR = PR = Corrup = PhR = 0;
+	ExtraHaste           = 0;
+	bEnraged             = false;
+	current_mana         = 0;
+	max_mana             = 0;
+	hp_regen             = in_hp_regen;
+	hp_regen_per_second  = in_hp_regen_per_second;
+	mana_regen           = in_mana_regen;
+	ooc_regen            = RuleI(NPC, OOCRegen); //default Out of Combat Regen
+	maxlevel             = in_maxlevel;
+	scalerate            = in_scalerate;
+	invisible            = 0;
+	invisible_undead     = 0;
+	invisible_animals    = 0;
+	sneaking             = false;
+	hidden               = false;
+	improved_hidden      = false;
+	invulnerable         = false;
+	IsFullHP             = (current_hp == max_hp);
+	qglobal              = 0;
+	spawned              = false;
+	rare_spawn           = false;
+	always_aggro         = in_always_aggro;
 	heroic_strikethrough = in_heroic_strikethrough;
+	keeps_sold_items     = in_keeps_sold_items;
 
 	InitializeBuffSlots();
 
@@ -1691,7 +1693,7 @@ void Mob::ShowStats(Client* client)
 
 		// Faction
 		if (target->GetNPCFactionID()) {
-			auto faction_id = target->GetNPCFactionID();
+			auto faction_id = target->GetPrimaryFaction();
 			auto faction_name = content_db.GetFactionName(faction_id);
 			client->Message(
 				Chat::White,
@@ -4057,37 +4059,6 @@ void Mob::SetNextIncHPEvent( int inchpevent )
 	nextinchpevent = inchpevent;
 }
 
-int16 Mob::GetResist(uint8 type) const
-{
-	if (IsNPC())
-	{
-		if (type == 1)
-			return MR + spellbonuses.MR + itembonuses.MR;
-		else if (type == 2)
-			return FR + spellbonuses.FR + itembonuses.FR;
-		else if (type == 3)
-			return CR + spellbonuses.CR + itembonuses.CR;
-		else if (type == 4)
-			return PR + spellbonuses.PR + itembonuses.PR;
-		else if (type == 5)
-			return DR + spellbonuses.DR + itembonuses.DR;
-	}
-	else if (IsClient())
-	{
-		if (type == 1)
-			return CastToClient()->GetMR();
-		else if (type == 2)
-			return CastToClient()->GetFR();
-		else if (type == 3)
-			return CastToClient()->GetCR();
-		else if (type == 4)
-			return CastToClient()->GetPR();
-		else if (type == 5)
-			return CastToClient()->GetDR();
-	}
-	return 25;
-}
-
 uint32 Mob::GetLevelHP(uint8 tlevel)
 {
 	int multiplier = 0;
@@ -5000,9 +4971,9 @@ void Mob::TrySympatheticProc(Mob *target, uint32 spell_id)
 	CheckNumHitsRemaining(NumHit::MatchingSpells, -1, focus_spell);
 }
 
-int32 Mob::GetItemStat(uint32 itemid, const char *identifier)
+const int Mob::GetItemStat(uint32 item_id, std::string identifier)
 {
-	return EQ::InventoryProfile::GetItemStatValue(itemid, identifier);
+	return EQ::InventoryProfile::GetItemStatValue(item_id, identifier);
 }
 
 std::string Mob::GetGlobal(const char *varname) {
@@ -7069,4 +7040,29 @@ void Mob::CopyHateList(Mob* to) {
 			to->AddToHateList(h->entity_on_hatelist, h->stored_hate_amount, h->hatelist_damage);
 		}
 	}
+}
+
+int Mob::DispatchZoneControllerEvent(
+	QuestEventID evt,
+	Mob* init,
+	const std::string& data,
+	uint32 extra,
+	std::vector<std::any>* pointers
+) {
+	auto ret = 0;
+
+	if (
+		RuleB(Zone, UseZoneController) &&
+		(
+			!IsNPC() ||
+			(IsNPC() && GetNPCTypeID() != ZONE_CONTROLLER_NPC_ID)
+		)
+	) {
+		auto controller = entity_list.GetNPCByNPCTypeID(ZONE_CONTROLLER_NPC_ID);
+		if (controller) {
+			ret = parse->EventNPC(evt, controller, init, data, extra, pointers);
+		}
+	}
+
+	return ret;
 }

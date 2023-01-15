@@ -92,8 +92,8 @@ public:
 	void AddEXP(uint32 add_exp);
 	void AddEXP(uint32 add_exp, int conlevel);
 	void AddEXP(uint32 add_exp, int conlevel, bool resexp);
-	void SetEXP(uint32 set_exp, uint32 set_aaxp);
-	void SetEXP(uint32 set_exp, uint32 set_aaxp, bool resexp);
+	void SetEXP(uint64 set_exp, uint64 set_aaxp);
+	void SetEXP(uint64 set_exp, uint64 set_aaxp, bool resexp);
 	void SetBindPoint();
 	void SetBindPoint(int to_zone);
 	void SetBindPoint(int to_zone, int to_instance);
@@ -454,6 +454,13 @@ public:
 	void SendPayload(int payload_id, std::string payload_value);
 	std::string GetGuildPublicNote();
 	void MaxSkills();
+	luabind::object GetAugmentIDsBySlotID(lua_State* L, int16 slot_id);
+	bool IsEXPEnabled();
+	void SetEXPEnabled(bool is_exp_enabled);
+	uint64 CalcEXP(uint8 consider_level);
+	uint64 CalcEXP(uint8 consider_level, bool ignore_modifiers);
+	bool CanEnterZone(std::string zone_short_name);
+	bool CanEnterZone(std::string zone_short_name, int16 instance_version);
 
 	void ApplySpell(int spell_id);
 	void ApplySpell(int spell_id, int duration);
@@ -530,6 +537,8 @@ public:
 	void SetBotCreationLimit(uint32 new_creation_limit, uint8 class_id);
 	void SetBotSpawnLimit(int new_spawn_limit);
 	void SetBotSpawnLimit(int new_spawn_limit, uint8 class_id);
+	void CampAllBots();
+	void CampAllBots(uint8 class_id);
 
 #endif
 
