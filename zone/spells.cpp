@@ -3670,14 +3670,14 @@ bool Mob::SpellOnTarget(
 		(spellOwner->IsClient() ? FilterPCSpells : FilterNPCSpells) /* EQ Filter Type: (8 or 9) */
 	);
 
+	const auto& export_string = fmt::format(
+		"{} {} {}",
+		spell_id,
+		GetID(),
+		caster_level
+	);
 	if (spelltar->IsNPC()) {
 		if (parse->HasQuestSub(spelltar->GetNPCTypeID(), EVENT_CAST_ON)) {
-			const auto& export_string = fmt::format(
-				"{} {} {}",
-				spell_id,
-				GetID(),
-				caster_level
-			);
 			parse->EventNPC(EVENT_CAST_ON, spelltar->CastToNPC(), this, export_string, 0);
 		}
 	} else if (spelltar->IsClient()) {
@@ -3686,12 +3686,6 @@ bool Mob::SpellOnTarget(
 		}
 	} else if (spelltar->IsBot()) {
 		if (parse->BotHasQuestSub(EVENT_CAST_ON)) {
-			const auto& export_string = fmt::format(
-				"{} {} {}",
-				spell_id,
-				GetID(),
-				caster_level
-			);
 			parse->EventBot(EVENT_CAST_ON, spelltar->CastToBot(), this, export_string, 0);
 		}
 	}
