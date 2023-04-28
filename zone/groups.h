@@ -62,16 +62,14 @@ public:
 	void	DisbandGroup(bool joinraid = false);
 	void	GetMemberList(std::list<Mob*>& member_list, bool clear_list = true);
 	void	GetClientList(std::list<Client*>& client_list, bool clear_list = true);
-#ifdef BOTS
 	void	GetBotList(std::list<Bot*>& bot_list, bool clear_list = true);
-#endif
 	bool	IsGroupMember(Mob* c);
 	bool	IsGroupMember(const char* name);
 	bool	Process();
 	bool	IsGroup()			{ return true; }
 	void	SendGroupJoinOOZ(Mob* NewMember);
 	void	CastGroupSpell(Mob* caster,uint16 spellid);
-	void	SplitExp(uint64 exp, Mob* other);
+	void	SplitExp(const uint64 exp, Mob* other);
 	void	GroupMessage(Mob* sender,uint8 language,uint8 lang_skill,const char* message);
 	void	GroupMessageString(Mob* sender, uint32 type, uint32 string_id, const char* message,const char* message2=0,const char* message3=0,const char* message4=0,const char* message5=0,const char* message6=0,const char* message7=0,const char* message8=0,const char* message9=0, uint32 distance = 0);
 	uint32	GetTotalGroupDamage(Mob* other);
@@ -155,11 +153,11 @@ public:
 
 	bool DoesAnyMemberHaveExpeditionLockout(const std::string& expedition_name, const std::string& event_name, int max_check_count = 0);
 
-	Mob* members[MAX_GROUP_MEMBERS];
-	char	membername[MAX_GROUP_MEMBERS][64];
-	uint8	MemberRoles[MAX_GROUP_MEMBERS];
-	bool	disbandcheck;
-	bool	castspell;
+	Mob*	members[MAX_GROUP_MEMBERS] {nullptr};
+	char	membername[MAX_GROUP_MEMBERS][64] {""};
+	uint8	MemberRoles[MAX_GROUP_MEMBERS] {0};
+	bool	disbandcheck {false};
+	bool	castspell {false};
 
 private:
 	Mob*	leader;

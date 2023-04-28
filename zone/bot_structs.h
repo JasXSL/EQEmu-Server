@@ -19,8 +19,6 @@
 #ifndef BOT_STRUCTS
 #define BOT_STRUCTS
 
-#ifdef BOTS
-
 #include "../common/types.h"
 
 #include <sstream>
@@ -34,22 +32,6 @@ struct BotsAvailableList {
 	uint8 Gender;
 	char Owner[64];
 	uint32 Owner_ID;
-};
-
-struct BotGroup {
-	uint32 BotGroupID;
-	uint32 BotID;
-};
-
-struct BotGroupList {
-	std::string BotGroupName;
-	std::string BotGroupLeaderName;
-};
-
-struct SpawnedBotsList {
-	char BotName[64];
-	char ZoneName[64];
-	uint32 BotLeaderCharID;
 };
 
 struct BotSpell {
@@ -71,12 +53,6 @@ struct BotCastingRoles {
 	//bool RaidSlower;
 	//bool RaidNuker;
 	//bool RaidDoter;
-};
-
-struct BotAA {
-	uint32 aa_id;
-	uint8 req_level;
-	uint8 total_levels;
 };
 
 struct BotSpellSetting {
@@ -104,7 +80,5 @@ struct BotSpells_Struct {
 	std::string	bucket_value;
 	uint8		bucket_comparison;
 };
-
-#endif // BOTS
 
 #endif // BOT_STRUCTS

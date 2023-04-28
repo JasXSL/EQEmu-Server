@@ -9,9 +9,7 @@ struct Lua_HateList;
 class Lua_Item;
 class Lua_ItemInst;
 class Lua_StatBonuses;
-#ifdef BOTS
 class Lua_Bot;
-#endif
 class Lua_NPC;
 class Lua_Client;
 
@@ -213,10 +211,8 @@ public:
 	uint16 GetOwnerID();
 	Lua_Mob GetUltimateOwner();
 	Lua_HateList GetHateList();
-#ifdef BOTS
 	Lua_HateList GetHateListBots();
 	Lua_HateList GetHateListBots(uint32 distance);
-#endif
 	Lua_HateList GetHateListClients();
 	Lua_HateList GetHateListClients(uint32 distance);
 	Lua_HateList GetHateListNPCs();
@@ -227,9 +223,7 @@ public:
 	Lua_Mob GetHateTop();
 	Lua_Mob GetHateDamageTop(Lua_Mob other);
 	Lua_Mob GetHateRandom();
-#ifdef BOTS
 	Lua_Bot GetHateRandomBot();
-#endif
 	Lua_Client GetHateRandomClient();
 	Lua_NPC GetHateRandomNPC();
 	Lua_Mob GetHateClosest();
@@ -398,7 +392,7 @@ public:
 	int GetModSkillDmgTaken(int skill);
 	int GetSkillDmgTaken(int skill);
 	int GetFcDamageAmtIncoming(Lua_Mob caster, int32 spell_id);
-	int GetSkillDmgAmt(uint16 skill);
+	int GetSkillDmgAmt(int skill_id);
 	void SetAllowBeneficial(bool value);
 	bool GetAllowBeneficial();
 	bool IsBeneficialAllowed(Lua_Mob target);
@@ -437,8 +431,8 @@ public:
 	uint8 GetNimbusEffect2();
 	uint8 GetNimbusEffect3();
 	bool IsTargetable();
-	bool HasShieldEquiped();
-	bool HasTwoHandBluntEquiped();
+	bool HasShieldEquipped();
+	bool HasTwoHandBluntEquipped();
 	bool HasTwoHanderEquipped();
 	uint32 GetHerosForgeModel(uint8 material_slot);
 	uint32 IsEliteMaterialItem(uint8 material_slot);
@@ -488,12 +482,10 @@ public:
 	void DamageArea(int64 damage, uint32 distance);
 	void DamageAreaPercentage(int64 damage);
 	void DamageAreaPercentage(int64 damage, uint32 distance);
-#ifdef BOTS
 	void DamageAreaBots(int64 damage);
 	void DamageAreaBots(int64 damage, uint32 distance);
 	void DamageAreaBotsPercentage(int64 damage);
 	void DamageAreaBotsPercentage(int64 damage, uint32 distance);
-#endif
 	void DamageAreaClients(int64 damage);
 	void DamageAreaClients(int64 damage, uint32 distance);
 	void DamageAreaClientsPercentage(int64 damage);
@@ -506,12 +498,10 @@ public:
 	void DamageHateList(int64 damage, uint32 distance);
 	void DamageHateListPercentage(int64 damage);
 	void DamageHateListPercentage(int64 damage, uint32 distance);
-#ifdef BOTS
 	void DamageHateListBots(int64 damage);
 	void DamageHateListBots(int64 damage, uint32 distance);
 	void DamageHateListBotsPercentage(int64 damage);
 	void DamageHateListBotsPercentage(int64 damage, uint32 distance);
-#endif
 	void DamageHateListClients(int64 damage);
 	void DamageHateListClients(int64 damage, uint32 distance);
 	void DamageHateListClientsPercentage(int64 damage);
@@ -523,6 +513,32 @@ public:
 	void CopyHateList(Lua_Mob to);
 	bool IsAttackAllowed(Lua_Mob target);
 	bool IsAttackAllowed(Lua_Mob target, bool is_spell_attack);
+	bool IsFindable();
+	bool IsTrackable();
+	float GetDefaultRaceSize();
+	int64 GetActDoTDamage(uint16 spell_id, int64 value, Lua_Mob target);
+	int64 GetActDoTDamage(uint16 spell_id, int64 value, Lua_Mob target, bool from_buff_tic);
+	int64 GetActReflectedSpellDamage(uint16 spell_id, int64 value, int effectiveness);
+	int GetActSpellCasttime(uint16 spell_id, uint32 cast_time);
+	int GetActSpellCost(uint16 spell_id, int cost);
+	int64 GetActSpellDamage(uint16 spell_id, int64 value);
+	int64 GetActSpellDamage(uint16 spell_id, int64 value, Lua_Mob target);
+	int GetActSpellDuration(uint16 spell_id, int duration);
+	int64 GetActSpellHealing(uint16 spell_id, int64 value);
+	int64 GetActSpellHealing(uint16 spell_id, int64 value, Lua_Mob target);
+	int64 GetActSpellHealing(uint16 spell_id, int64 value, Lua_Mob target, bool from_buff_tic);
+	float GetActSpellRange(uint16 spell_id, float range);
+	uint32 GetRemainingTimeMS(const char* timer_name);
+	uint32 GetTimerDurationMS(const char* timer_name);
+	bool HasTimer(const char* timer_name);
+	bool IsPausedTimer(const char* timer_name);
+	void PauseTimer(const char* timer_name);
+	void ResumeTimer(const char* timer_name);
+	void SetTimer(const char* timer_name, int seconds);
+	void SetTimerMS(const char* timer_name, int milliseconds);
+	void StopAllTimers();
+	void StopTimer(const char* timer_name);
+	luabind::object GetBuffSpellIDs(lua_State* L);
 };
 
 #endif

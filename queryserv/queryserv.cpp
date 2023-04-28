@@ -32,19 +32,23 @@
 #include "lfguild.h"
 #include "worldserver.h"
 #include "../common/path_manager.h"
+#include "../common/zone_store.h"
+#include "../common/events/player_event_logs.h"
 #include <list>
 #include <signal.h>
 #include <thread>
 
 volatile bool RunLoops = true;
 
-Database              database;
+QSDatabase              database;
 LFGuildManager        lfguildmanager;
 std::string           WorldShortName;
 const queryservconfig *Config;
 WorldServer           *worldserver = 0;
 EQEmuLogSys           LogSys;
 PathManager           path;
+ZoneStore             zone_store;
+PlayerEventLogs       player_event_logs;
 
 void CatchSignal(int sig_num)
 {
@@ -104,6 +108,9 @@ int main()
 	/* Load Looking For Guild Manager */
 	lfguildmanager.LoadDatabase();
 
+	Timer player_event_process_timer(1000);
+	player_event_logs.SetDatabase(&database)->Init();
+
 	auto loop_fn = [&](EQ::Timer* t) {
 		Timer::SetCurrentTime();
 
@@ -114,6 +121,10 @@ int main()
 
 		if (LFGuildExpireTimer.Check()) {
 			lfguildmanager.ExpireEntries();
+		}
+
+		if (player_event_process_timer.Check()) {
+			player_event_logs.Process();
 		}
 	};
 

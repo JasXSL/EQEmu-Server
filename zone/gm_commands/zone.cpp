@@ -15,7 +15,7 @@ void command_zone(Client *c, const Seperator *sep)
 
 	// if input is id
 	if (Strings::IsNumber(zone_input)) {
-		zone_id = std::stoi(zone_input);
+		zone_id = Strings::ToInt(zone_input);
 
 		// validate
 		if (zone_id != 0 && !GetZone(zone_id)) {
@@ -53,12 +53,10 @@ void command_zone(Client *c, const Seperator *sep)
 		return;
 	}
 
-#ifdef BOTS
 	// This block is necessary to clean up any bot objects owned by a Client
-	if (zone_id != c->GetZoneID()) {
+	if (RuleB(Bots, Enabled) && zone_id != c->GetZoneID()) {
 		Bot::ProcessClientZoneChange(c);
 	}
-#endif
 
 	// fetch zone data
 	auto zd = GetZoneVersionWithFallback(zone_id, 0);
@@ -68,9 +66,9 @@ void command_zone(Client *c, const Seperator *sep)
 	}
 
 	// coordinates
-	auto x         = sep->IsNumber(2) ? std::stof(sep->arg[2]) : 0.0f;
-	auto y         = sep->IsNumber(3) ? std::stof(sep->arg[3]) : 0.0f;
-	auto z         = sep->IsNumber(4) ? std::stof(sep->arg[4]) : 0.0f;
+	auto x         = sep->IsNumber(2) ? Strings::ToFloat(sep->arg[2]) : 0.0f;
+	auto y         = sep->IsNumber(3) ? Strings::ToFloat(sep->arg[3]) : 0.0f;
+	auto z         = sep->IsNumber(4) ? Strings::ToFloat(sep->arg[4]) : 0.0f;
 	auto zone_mode = sep->IsNumber(2) ? ZoneSolicited : ZoneToSafeCoords;
 
 	c->MovePC(

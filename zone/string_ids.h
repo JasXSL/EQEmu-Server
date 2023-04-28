@@ -358,10 +358,12 @@
 #define WHOALL_NO_RESULTS			5029	//There are no players in EverQuest that match those who filters.
 #define TELL_QUEUED_MESSAGE			5045	//You told %1 '%T2. %3'
 #define TOLD_NOT_ONLINE				5046	//%1 is not online at this time.
+#define RAID_IS_FULL				5048	//The raid is full.
 #define ZONING_NO_EXPANSION         5052	//The zone that you are attempting to enter is part of an expansion that you do not yet own.  You may need to return to the Login screen and enter an account key for that expansion.  If you have received this message in error, please /petition or send an email to EQAccounts@soe.sony.com
 #define PETITION_NO_DELETE			5053	//You do not have a petition in the queue.
 #define PETITION_DELETED			5054	//Your petition was successfully deleted.
 #define ALREADY_IN_RAID				5060	//%1 is already in a raid.
+#define ALREADY_IN_YOUR_RAID		5077	//%1 is already in your raid.
 #define GAIN_RAIDEXP				5085	//You gained raid experience!
 #define DUNGEON_SEALED				5141	//The gateway to the dungeon is sealed off to you.  Perhaps you would be able to enter if you needed to adventure there.
 #define ADVENTURE_COMPLETE			5147	//You received %1 points for successfully completing the adventure.
@@ -383,8 +385,9 @@
 #define FORAGE_MASTERY				6012	//Your forage mastery has enabled you to find something else!
 #define GUILD_BANK_CANNOT_DEPOSIT	6097	// Cannot deposit this item. Containers must be empty, and only one of each LORE and no NO TRADE or TEMPORARY items may be deposited.
 #define GUILD_BANK_FULL				6098	// There is no more room in the Guild Bank.
-#define GUILD_BANK_TRANSFERRED		6100	// '%1' transferred to Guild Bank from Deposits.
-#define GUILD_BANK_EMPTY_HANDS		6108	// You must empty your hands to withdraw from the Guild Bank.
+#define GUILD_BANK_TRANSFERRED  	6100	// '%1' transferred to Guild Bank from Deposits.
+#define GUILD_BANK_EMPTY_HANDS  	6108	// You must empty your hands to withdraw from the Guild Bank.
+#define TRADESKILL_COMBINE_LORE 	6199	// Combine would result in a LORE item (%1) you already possess.
 #define TRANSFORM_FAILED			6326	//This mold cannot be applied to your %1.
 #define TRANSFORM_COMPLETE			6327	//You have successfully transformed your %1.
 #define DETRANSFORM_FAILED			6341 	//%1 has no transformation that can be removed.
@@ -458,6 +461,7 @@
 #define NO_ABILITY_OUT_OF_COMBAT	9194	//You can not use this ability while out of combat.
 #define LESSER_SPELL_VERSION        11004   //%1 is a lesser version of %2 and cannot be scribed
 #define AE_RAMPAGE					11015	//%1 goes on a WILD RAMPAGE!
+#define GROUP_IS_FULL				12000	//You cannot join that group, it is full.
 #define FACE_ACCEPTED				12028	//Facial features accepted.
 #define TRACKING_BEGIN				12040   //You begin tracking %1.
 #define SPELL_LEVEL_TO_LOW			12048	//You will have to achieve level %1 before you can scribe the %2.

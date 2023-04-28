@@ -57,10 +57,7 @@ struct QGlobal;
 struct UseAA_Struct;
 struct Who_All_Struct;
 
-#ifdef BOTS
 class Bot;
-class BotRaids;
-#endif
 
 extern EntityList entity_list;
 
@@ -70,20 +67,22 @@ public:
 	Entity();
 	virtual ~Entity();
 
-	virtual bool IsClient()			const { return false; }
-	virtual bool IsNPC()			const { return false; }
-	virtual bool IsMob()			const { return false; }
-	virtual bool IsMerc()			const { return false; }
-	virtual bool IsCorpse()			const { return false; }
-	virtual bool IsPlayerCorpse()	const { return false; }
-	virtual bool IsNPCCorpse()		const { return false; }
-	virtual bool IsObject()			const { return false; }
-	virtual bool IsDoor()			const { return false; }
-	virtual bool IsTrap()			const { return false; }
-	virtual bool IsBeacon()			const { return false; }
-	virtual bool IsEncounter()		const { return false; }
-	virtual bool IsBot()            const { return false; }
-	virtual bool IsAura()			const { return false; }
+	virtual bool IsClient()			    const { return false; }
+	virtual bool IsNPC()			    const { return false; }
+	virtual bool IsMob()			    const { return false; }
+	virtual bool IsMerc()			    const { return false; }
+	virtual bool IsCorpse()			    const { return false; }
+	virtual bool IsPlayerCorpse()	    const { return false; }
+	virtual bool IsNPCCorpse()		    const { return false; }
+	virtual bool IsObject()			    const { return false; }
+	virtual bool IsDoor()			    const { return false; }
+	virtual bool IsTrap()			    const { return false; }
+	virtual bool IsBeacon()			    const { return false; }
+	virtual bool IsEncounter()		    const { return false; }
+	virtual bool IsBot()                const { return false; }
+	virtual bool IsAura()			    const { return false; }
+	virtual bool IsOfClientBot()        const { return false; }
+	virtual bool IsOfClientBotMerc()    const { return false; }
 
 	virtual bool Process() { return false; }
 	virtual bool Save() { return true; }
@@ -118,10 +117,8 @@ public:
 	virtual const char* GetName() { return ""; }
 	bool CheckCoordLosNoZLeaps(float cur_x, float cur_y, float cur_z, float trg_x, float trg_y, float trg_z, float perwalk=1);
 
-#ifdef BOTS
 	Bot* CastToBot();
 	const Bot* CastToBot() const;
-#endif
 
 protected:
 	friend class EntityList;
@@ -191,14 +188,13 @@ public:
 	Client *GetClientByLSID(uint32 iLSID);
 	Client *GetClient(uint32 ip, uint16 port);
 
-#ifdef BOTS
 	Bot* GetRandomBot(const glm::vec3& location = glm::vec3(0.f), float distance = 0, Bot* exclude_bot = nullptr);
-#endif
-
 	Client* GetRandomClient(const glm::vec3& location = glm::vec3(0.f), float distance = 0, Client* exclude_client = nullptr);
 	NPC* GetRandomNPC(const glm::vec3& location = glm::vec3(0.f), float distance = 0, NPC* exclude_npc = nullptr);
 	Mob* GetRandomMob(const glm::vec3& location = glm::vec3(0.f), float distance = 0, Mob* exclude_mob = nullptr);
-	Group *GetGroupByMob(Mob* mob);
+	Group* GetGroupByMob(Mob* mob);
+	Group* GetGroupByMobName(const char* name);
+	Group* GetGroupByBot(Bot* bot);
 	bool IsInSameGroupOrRaidGroup(Client *client1, Client *client2);
 	Group *GetGroupByClient(Client* client);
 	Group *GetGroupByID(uint32 id);
@@ -207,6 +203,8 @@ public:
 	Raid *GetRaidByClient(Client* client);
 	Raid *GetRaidByID(uint32 id);
 	Raid *GetRaidByLeaderName(const char *leader);
+	Raid* GetRaidByBotName(const char* name);
+	Raid* GetRaidByBot(const Bot* bot);
 
 	Corpse *GetCorpseByOwner(Client* client);
 	Corpse *GetCorpseByOwnerWithinRange(Client* client, Mob* center, int range);
@@ -269,7 +267,7 @@ public:
 	void	RemoveArea(int id);
 	void	ClearAreas();
 	void	ReloadMerchants();
-	void	ProcessProximitySay(const char *Message, Client *c, uint8 language = 0);
+	void	ProcessProximitySay(const char *message, Client *c, uint8 language = 0);
 	void	SendAATimer(uint32 charid,UseAA_Struct* uaa);
 	Doors *FindDoor(uint8 door_id);
 	Object *FindObject(uint32 object_id);
@@ -310,6 +308,7 @@ public:
 	void	RemoveAllMobs();
 	void	RemoveAllClients();
 	void	RemoveAllNPCs();
+	void	RemoveAllBots();
 	void	RemoveAllMercs();
 	void	RemoveAllGroups();
 	void	RemoveAllCorpses();
@@ -548,7 +547,6 @@ public:
 	inline const std::unordered_map<uint16, NPC *> &GetNPCList() { return npc_list; }
 	inline const std::unordered_map<uint16, Merc *> &GetMercList() { return merc_list; }
 	inline const std::unordered_map<uint16, Client *> &GetClientList() { return client_list; }
-#ifdef BOTS
 	inline const std::list<Bot *> &GetBotList() { return bot_list; }
 	std::vector<Bot *> GetBotListByCharacterID(uint32 character_id, uint8 class_id = NO_CLASS);
 	std::vector<Bot *> GetBotListByClientName(std::string client_name, uint8 class_id = NO_CLASS);
@@ -556,7 +554,6 @@ public:
 	void SignalAllBotsByOwnerName(std::string owner_name, int signal_id);
 	void SignalBotByBotID(uint32 bot_id, int signal_id);
 	void SignalBotByBotName(std::string bot_name, int signal_id);
-#endif
 	inline const std::unordered_map<uint16, Corpse *> &GetCorpseList() { return corpse_list; }
 	inline const std::unordered_map<uint16, Object *> &GetObjectList() { return object_list; }
 	inline const std::unordered_map<uint16, Doors *> &GetDoorsList() { return door_list; }
@@ -621,14 +618,13 @@ private:
 	Timer raid_timer;
 	Timer trap_timer;
 
-	// Please Do Not Declare Any EntityList Class Members After This Comment
-#ifdef BOTS
+
 	public:
 		void AddBot(Bot* new_bot, bool send_spawn_packet = true, bool dont_queue = false);
 		bool RemoveBot(uint16 entityID);
 		Mob* GetMobByBotID(uint32 botID);
 		Bot* GetBotByBotID(uint32 botID);
-		Bot* GetBotByBotName(std::string botName);
+		Bot* GetBotByBotName(std::string_view botName);
 		Client* GetBotOwnerByBotEntityID(uint32 entity_id);
 		Client* GetBotOwnerByBotID(const uint32 bot_id);
 		std::list<Bot*> GetBotsByBotOwnerCharacterID(uint32 botOwnerCharacterID);
@@ -641,7 +637,6 @@ private:
 		void GetBotList(std::list<Bot*> &b_list);
 	private:
 		std::list<Bot*> bot_list;
-#endif
 };
 
 class BulkZoneSpawnPacket {

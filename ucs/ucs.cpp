@@ -37,16 +37,20 @@
 
 #include "../common/net/tcp_server.h"
 #include "../common/net/servertalk_client_connection.h"
-#include "../common/discord_manager.h"
+#include "../common/discord/discord_manager.h"
 #include "../common/path_manager.h"
+#include "../common/zone_store.h"
+#include "../common/events/player_event_logs.h"
 
 ChatChannelList *ChannelList;
 Clientlist *g_Clientlist;
 EQEmuLogSys LogSys;
-Database database;
+UCSDatabase database;
 WorldServer *worldserver = nullptr;
 DiscordManager discord_manager;
 PathManager path;
+ZoneStore zone_store;
+PlayerEventLogs player_event_logs;
 
 const ucsconfig *Config;
 
@@ -91,7 +95,7 @@ void CatchSignal(int sig_num) {
 	}
 }
 
-void DiscordQueueListener() {
+void PlayerEventQueueListener() {
 	while (caught_loop == 0) {
 		discord_manager.ProcessMessageQueue();
 		Sleep(100);
@@ -110,7 +114,7 @@ int main() {
 	Timer ChannelListProcessTimer(60000);
 	Timer ClientConnectionPruneTimer(60000);
 
-	Timer InterserverTimer(INTERSERVER_TIMER); // does auto-reconnect
+	Timer keepalive(INTERSERVER_TIMER); // does auto-reconnect
 
 	LogInfo("Starting EQEmu Universal Chat Server");
 
@@ -151,13 +155,10 @@ int main() {
 	} else {
 		if(!RuleManager::Instance()->LoadRules(&database, "default", false)) {
 			LogInfo("No rule set configured, using default rules");
-		} else {
-			LogInfo("Loaded default rule set 'default'", tmp);
 		}
 	}
 
 	EQ::InitializeDynamicLookups();
-	LogInfo("Initialized dynamic dictionary entries");
 
 	database.ExpireMail();
 
@@ -178,7 +179,7 @@ int main() {
 	std::signal(SIGKILL, CatchSignal);
 	std::signal(SIGSEGV, CatchSignal);
 
-	std::thread(DiscordQueueListener).detach();
+	std::thread(PlayerEventQueueListener).detach();
 
 	worldserver = new WorldServer;
 
@@ -187,6 +188,10 @@ int main() {
 //	crash_test.detach();
 
 	auto loop_fn = [&](EQ::Timer* t) {
+		if (keepalive.Check()) {
+			keepalive.Start();
+			database.ping();
+		}
 
 		Timer::SetCurrentTime();
 

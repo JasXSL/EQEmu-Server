@@ -9,10 +9,8 @@
 
 #include "../common/content/world_content_service.h"
 #include "../common/timer.h"
-#include "../common/eqemu_logsys.h"
 #include "../common/classes.h"
 #include "../common/rulesys.h"
-#include "lua_parser.h"
 #include "lua_item.h"
 #include "lua_iteminst.h"
 #include "lua_client.h"
@@ -907,12 +905,12 @@ std::string lua_say_link(const char *phrase) {
 }
 
 void lua_set_rule(std::string rule_name, std::string rule_value) {
-	RuleManager::Instance()->SetRule(rule_name.c_str(), rule_value.c_str());
+	RuleManager::Instance()->SetRule(rule_name, rule_value);
 }
 
 std::string lua_get_rule(std::string rule_name) {
 	std::string rule_value;
-	RuleManager::Instance()->GetRule(rule_name.c_str(), rule_value);
+	RuleManager::Instance()->GetRule(rule_name, rule_value);
 	return rule_value;
 }
 
@@ -1017,7 +1015,7 @@ luabind::adl::object lua_get_instance_ids(lua_State* L, std::string zone_name) {
 
 	auto instance_ids = quest_manager.GetInstanceIDs(zone_name);
 	for (int i = 0; i < instance_ids.size(); i++) {
-		ret[i] = instance_ids[i];
+		ret[i + 1] = instance_ids[i];
 	}
 
 	return ret;
@@ -1028,7 +1026,7 @@ luabind::adl::object lua_get_instance_ids_by_char_id(lua_State* L, std::string z
 
 	auto instance_ids = quest_manager.GetInstanceIDs(zone_name, character_id);
 	for (int i = 0; i < instance_ids.size(); i++) {
-		ret[i] = instance_ids[i];
+		ret[i + 1] = instance_ids[i];
 	}
 
 	return ret;
@@ -1989,7 +1987,7 @@ void lua_remove_ldon_loss(uint32 theme_id) {
 }
 
 void lua_remove_ldon_win(uint32 theme_id) {
-	quest_manager.addldonwin(theme_id);
+	quest_manager.removeldonwin(theme_id);
 }
 
 std::string lua_get_clean_npc_name_by_id(uint32 npc_id) {
@@ -3700,6 +3698,114 @@ int8 lua_does_augment_fit(Lua_ItemInst inst, uint32 augment_id)
 	return quest_manager.DoesAugmentFit(inst, augment_id);
 }
 
+int8 lua_does_augment_fit_slot(Lua_ItemInst inst, uint32 augment_id, uint8 augment_slot)
+{
+	return quest_manager.DoesAugmentFit(inst, augment_id, augment_slot);
+}
+
+luabind::object lua_get_recipe_component_item_ids(lua_State* L, uint32 recipe_id)
+{
+	auto lua_table = luabind::newtable(L);
+
+	const auto& l = content_db.GetRecipeComponentItemIDs(RecipeCountType::Component, recipe_id);
+	if (!l.empty()) {
+		int index = 1;
+		for (const auto& i : l) {
+			lua_table[index] = i;
+			index++;
+		}
+	}
+
+	return lua_table;
+}
+
+luabind::object lua_get_recipe_container_item_ids(lua_State* L, uint32 recipe_id)
+{
+	auto lua_table = luabind::newtable(L);
+
+	const auto& l = content_db.GetRecipeComponentItemIDs(RecipeCountType::Container, recipe_id);
+	if (!l.empty()) {
+		int index = 1;
+		for (const auto& i : l) {
+			lua_table[index] = i;
+			index++;
+		}
+	}
+
+	return lua_table;
+}
+
+luabind::object lua_get_recipe_fail_item_ids(lua_State* L, uint32 recipe_id)
+{
+	auto lua_table = luabind::newtable(L);
+
+	const auto& l = content_db.GetRecipeComponentItemIDs(RecipeCountType::Fail, recipe_id);
+	if (!l.empty()) {
+		int index = 1;
+		for (const auto& i : l) {
+			lua_table[index] = i;
+			index++;
+		}
+	}
+
+	return lua_table;
+}
+
+luabind::object lua_get_recipe_salvage_item_ids(lua_State* L, uint32 recipe_id) {
+	auto lua_table = luabind::newtable(L);
+
+	const auto& l = content_db.GetRecipeComponentItemIDs(RecipeCountType::Salvage, recipe_id);
+	if (!l.empty()) {
+		int index = 1;
+		for (const auto& i : l) {
+			lua_table[index] = i;
+			index++;
+		}
+	}
+
+	return lua_table;
+}
+
+luabind::object lua_get_recipe_success_item_ids(lua_State* L, uint32 recipe_id) {
+	auto lua_table = luabind::newtable(L);
+
+	const auto& l = content_db.GetRecipeComponentItemIDs(RecipeCountType::Success, recipe_id);
+	if (!l.empty()) {
+		int index = 1;
+		for (const auto& i : l) {
+			lua_table[index] = i;
+			index++;
+		}
+	}
+
+	return lua_table;
+}
+
+int8 lua_get_recipe_component_count(uint32 recipe_id, uint32 item_id)
+{
+	return content_db.GetRecipeComponentCount(RecipeCountType::Component, recipe_id, item_id);
+}
+
+int8 lua_get_recipe_fail_count(uint32 recipe_id, uint32 item_id)
+{
+	return content_db.GetRecipeComponentCount(RecipeCountType::Fail, recipe_id, item_id);
+}
+
+int8 lua_get_recipe_salvage_count(uint32 recipe_id, uint32 item_id)
+{
+	return content_db.GetRecipeComponentCount(RecipeCountType::Salvage, recipe_id, item_id);
+}
+
+int8 lua_get_recipe_success_count(uint32 recipe_id, uint32 item_id)
+{
+	return content_db.GetRecipeComponentCount(RecipeCountType::Success, recipe_id, item_id);
+}
+
+void lua_send_player_handin_event()
+{
+	quest_manager.SendPlayerHandinEvent();
+}
+
 #define LuaCreateNPCParse(name, c_type, default_value) do { \
 	cur = table[#name]; \
 	if(luabind::type(cur) != LUA_TNIL) { \
@@ -4074,7 +4180,7 @@ luabind::scope lua_register_general() {
 		luabind::def("get_instance_id", &lua_get_instance_id),
 		luabind::def("get_instance_id_by_char_id", &lua_get_instance_id_by_char_id),
 		luabind::def("get_instance_ids", &lua_get_instance_ids),
-		luabind::def("get_instance_ids_by_char_id", &lua_get_instance_id_by_char_id),
+		luabind::def("get_instance_ids_by_char_id", &lua_get_instance_ids_by_char_id),
 		luabind::def("get_instance_timer", &lua_get_instance_timer),
 		luabind::def("get_instance_timer_by_id", &lua_get_instance_timer_by_id),
 		luabind::def("get_instance_version_by_id", &lua_get_instance_version_by_id),
@@ -4161,6 +4267,8 @@ luabind::scope lua_register_general() {
 		luabind::def("add_ldon_loss", &lua_add_ldon_loss),
 		luabind::def("add_ldon_points", &lua_add_ldon_points),
 		luabind::def("add_ldon_win", &lua_add_ldon_win),
+		luabind::def("remove_ldon_loss", &lua_remove_ldon_loss),
+		luabind::def("remove_ldon_win", &lua_remove_ldon_win),
 		luabind::def("get_gender_name", &lua_get_gender_name),
 		luabind::def("get_deity_name", &lua_get_deity_name),
 		luabind::def("get_inventory_slot_name", &lua_get_inventory_slot_name),
@@ -4217,7 +4325,18 @@ luabind::scope lua_register_general() {
 		luabind::def("do_anim", (void(*)(int,int,bool))&lua_do_anim),
 		luabind::def("do_anim", (void(*)(int,int,bool,int))&lua_do_anim),
 		luabind::def("do_augment_slots_match", &lua_do_augment_slots_match),
-		luabind::def("does_augment_fit", &lua_does_augment_fit),
+		luabind::def("does_augment_fit", (int8(*)(Lua_ItemInst, uint32))&lua_does_augment_fit),
+		luabind::def("does_augment_fit_slot", (int8(*)(Lua_ItemInst, uint32, uint8))&lua_does_augment_fit_slot),
+		luabind::def("get_recipe_component_item_ids", (luabind::object(*)(lua_State*,uint32))&lua_get_recipe_component_item_ids),
+		luabind::def("get_recipe_container_item_ids", (luabind::object(*)(lua_State*,uint32))&lua_get_recipe_container_item_ids),
+		luabind::def("get_recipe_fail_item_ids", (luabind::object(*)(lua_State*,uint32))&lua_get_recipe_fail_item_ids),
+		luabind::def("get_recipe_salvage_item_ids", (luabind::object(*)(lua_State*,uint32))&lua_get_recipe_salvage_item_ids),
+		luabind::def("get_recipe_success_item_ids", (luabind::object(*)(lua_State*,uint32))&lua_get_recipe_success_item_ids),
+		luabind::def("get_recipe_component_count", (int8(*)(uint32,uint32))&lua_get_recipe_component_count),
+		luabind::def("get_recipe_fail_count", (int8(*)(uint32,uint32))&lua_get_recipe_fail_count),
+		luabind::def("get_recipe_salvage_count", (int8(*)(uint32,uint32))&lua_get_recipe_salvage_count),
+		luabind::def("get_recipe_success_count", (int8(*)(uint32,uint32))&lua_get_recipe_success_count),
+		luabind::def("send_player_handin_event", (void(*)(void))&lua_send_player_handin_event),
 		/*
 			Cross Zone
 		*/
@@ -4404,6 +4523,12 @@ luabind::scope lua_register_general() {
 		luabind::def("world_wide_move_instance", (void(*)(uint16))&lua_world_wide_move_instance),
 		luabind::def("world_wide_move_instance", (void(*)(uint16,uint8))&lua_world_wide_move_instance),
 		luabind::def("world_wide_move_instance", (void(*)(uint16,uint8,uint8))&lua_world_wide_move_instance),
+		luabind::def("world_wide_remove_ldon_loss", (void(*)(uint32))&lua_world_wide_remove_ldon_loss),
+		luabind::def("world_wide_remove_ldon_loss", (void(*)(uint32,uint8))&lua_world_wide_remove_ldon_loss),
+		luabind::def("world_wide_remove_ldon_loss", (void(*)(uint32,uint8,uint8))&lua_world_wide_remove_ldon_loss),
+		luabind::def("world_wide_remove_ldon_win", (void(*)(uint32))&lua_world_wide_remove_ldon_win),
+		luabind::def("world_wide_remove_ldon_win", (void(*)(uint32,uint8))&lua_world_wide_remove_ldon_win),
+		luabind::def("world_wide_remove_ldon_win", (void(*)(uint32,uint8,uint8))&lua_world_wide_remove_ldon_win),
 		luabind::def("world_wide_remove_spell", (void(*)(uint32))&lua_world_wide_remove_spell),
 		luabind::def("world_wide_remove_spell", (void(*)(uint32,uint8))&lua_world_wide_remove_spell),
 		luabind::def("world_wide_remove_spell", (void(*)(uint32,uint8,uint8))&lua_world_wide_remove_spell),
@@ -4617,7 +4742,9 @@ luabind::scope lua_register_events() {
 			luabind::value("inspect", static_cast<int>(EVENT_INSPECT)),
 			luabind::value("task_before_update", static_cast<int>(EVENT_TASK_BEFORE_UPDATE)),
 			luabind::value("aa_buy", static_cast<int>(EVENT_AA_BUY)),
-			luabind::value("aa_gain", static_cast<int>(EVENT_AA_GAIN)),
+			luabind::value("aa_gained", static_cast<int>(EVENT_AA_GAIN)),
+			luabind::value("aa_exp_gained", static_cast<int>(EVENT_AA_EXP_GAIN)),
+			luabind::value("exp_gain", static_cast<int>(EVENT_EXP_GAIN)),
 			luabind::value("payload", static_cast<int>(EVENT_PAYLOAD)),
 			luabind::value("level_down", static_cast<int>(EVENT_LEVEL_DOWN)),
 			luabind::value("gm_command", static_cast<int>(EVENT_GM_COMMAND)),
@@ -4625,7 +4752,15 @@ luabind::scope lua_register_events() {
 			luabind::value("despawn_zone", static_cast<int>(EVENT_DESPAWN_ZONE)),
 			luabind::value("bot_create", static_cast<int>(EVENT_BOT_CREATE)),
 			luabind::value("augment_insert_client", static_cast<int>(EVENT_AUGMENT_INSERT_CLIENT)),
-			luabind::value("augment_remove_client", static_cast<int>(EVENT_AUGMENT_REMOVE_CLIENT))
+			luabind::value("augment_remove_client", static_cast<int>(EVENT_AUGMENT_REMOVE_CLIENT)),
+			luabind::value("equip_item_bot", static_cast<int>(EVENT_EQUIP_ITEM_BOT)),
+			luabind::value("unequip_item_bot", static_cast<int>(EVENT_UNEQUIP_ITEM_BOT)),
+			luabind::value("damage_given", static_cast<int>(EVENT_DAMAGE_GIVEN)),
+			luabind::value("damage_taken", static_cast<int>(EVENT_DAMAGE_TAKEN)),
+			luabind::value("item_click_client", static_cast<int>(EVENT_ITEM_CLICK_CLIENT)),
+			luabind::value("item_click_cast_client", static_cast<int>(EVENT_ITEM_CLICK_CAST_CLIENT)),
+			luabind::value("destroy_item_client", static_cast<int>(EVENT_DESTROY_ITEM_CLIENT)),
+			luabind::value("drop_item_client", static_cast<int>(EVENT_DROP_ITEM_CLIENT))
 		)];
 }
 

@@ -52,9 +52,7 @@ void perl_register_object();
 void perl_register_doors();
 void perl_register_expedition();
 void perl_register_expedition_lock_messages();
-#ifdef BOTS
 void perl_register_bot();
-#endif // BOTS
 #endif // EMBPERL_XS_CLASSES
 #endif // EMBPERL_XS
 
@@ -163,6 +161,8 @@ const char *QuestEventSubroutines[_LargestEventID] = {
 	"EVENT_TASK_BEFORE_UPDATE",
 	"EVENT_AA_BUY",
 	"EVENT_AA_GAIN",
+	"EVENT_AA_EXP_GAIN",
+	"EVENT_EXP_GAIN",
 	"EVENT_PAYLOAD",
 	"EVENT_LEVEL_DOWN",
 	"EVENT_GM_COMMAND",
@@ -171,6 +171,14 @@ const char *QuestEventSubroutines[_LargestEventID] = {
 	"EVENT_BOT_CREATE",
 	"EVENT_AUGMENT_INSERT_CLIENT",
 	"EVENT_AUGMENT_REMOVE_CLIENT",
+	"EVENT_EQUIP_ITEM_BOT",
+	"EVENT_UNEQUIP_ITEM_BOT",
+	"EVENT_DAMAGE_GIVEN",
+	"EVENT_DAMAGE_TAKEN",
+	"EVENT_ITEM_CLICK_CLIENT",
+	"EVENT_ITEM_CLICK_CAST_CLIENT",
+	"EVENT_DESTROY_ITEM_CLIENT",
+	"EVENT_DROP_ITEM_CLIENT",
 	// Add new events before these or Lua crashes
 	"EVENT_SPELL_EFFECT_BOT",
 	"EVENT_SPELL_EFFECT_BUFF_TIC_BOT"
@@ -181,11 +189,8 @@ PerlembParser::PerlembParser() : perl(nullptr)
 	global_npc_quest_status_    = questUnloaded;
 	player_quest_status_        = questUnloaded;
 	global_player_quest_status_ = questUnloaded;
-
-#ifdef BOTS
 	bot_quest_status_ = questUnloaded;
 	global_bot_quest_status_ = questUnloaded;
-#endif
 }
 
 PerlembParser::~PerlembParser()
@@ -219,11 +224,8 @@ void PerlembParser::ReloadQuests()
 	global_npc_quest_status_    = questUnloaded;
 	player_quest_status_        = questUnloaded;
 	global_player_quest_status_ = questUnloaded;
-
-#ifdef BOTS
 	bot_quest_status_ = questUnloaded;
 	global_bot_quest_status_ = questUnloaded;
-#endif
 
 	item_quest_status_.clear();
 	spell_quest_status_.clear();
@@ -518,8 +520,6 @@ bool PerlembParser::SpellHasQuestSub(uint32 spell_id, QuestEventID evt)
 
 bool PerlembParser::ItemHasQuestSub(EQ::ItemInstance *itm, QuestEventID evt)
 {
-	std::stringstream package_name;
-	package_name << "qst_item_" << itm->GetID();
 
 	if (!perl) {
 		return false;
@@ -532,6 +532,9 @@ bool PerlembParser::ItemHasQuestSub(EQ::ItemInstance *itm, QuestEventID evt)
 	if (evt >= _LargestEventID) {
 		return false;
 	}
+
+	std::stringstream package_name;
+	package_name << "qst_item_" << itm->GetID();
 
 	const char *subname = QuestEventSubroutines[evt];
 
@@ -832,25 +835,6 @@ void PerlembParser::ExportVar(const char *pkgprefix, const char *varname, float 
 	}
 }
 
-void PerlembParser::ExportVarComplex(const char *pkgprefix, const char *varname, const char *value)
-{
-
-	if (!perl) {
-		return;
-	}
-	try {
-		perl->eval(std::string("$").append(pkgprefix).append("::").append(varname).append("=").append(value).append(";").c_str());
-	}
-	catch (std::string e) {
-		AddError(
-			fmt::format(
-				"Error exporting Perl variable [{}]",
-				e
-			)
-		);
-	}
-}
-
 void PerlembParser::ExportVar(const char *pkgprefix, const char *varname, const char *value)
 {
 	if (!perl) {
@@ -921,10 +905,7 @@ int PerlembParser::SendCommands(
 			std::string qi  = (std::string) "$" + (std::string) pkgprefix + (std::string) "::questitem";
 			std::string sp  = (std::string) "$" + (std::string) pkgprefix + (std::string) "::spell";
 			std::string enl = (std::string) "$" + (std::string) pkgprefix + (std::string) "::entity_list";
-
-#ifdef BOTS
 			std::string bot = (std::string) "$" + (std::string) pkgprefix + (std::string) "::bot";
-#endif
 
 			if (clear_vars_.find(cl) != clear_vars_.end()) {
 				auto e = fmt::format("{} = undef;", cl);
@@ -951,12 +932,10 @@ int PerlembParser::SendCommands(
 				perl->eval(e.c_str());
 			}
 
-#ifdef BOTS
 			if (clear_vars_.find(bot) != clear_vars_.end()) {
 				auto e = fmt::format("{} = undef;", bot);
 				perl->eval(e.c_str());
 			}
-#endif
 		}
 
 		std::string buf;
@@ -980,14 +959,12 @@ int PerlembParser::SendCommands(
 			sv_setref_pv(npc, "NPC", curn);
 		}
 
-#ifdef BOTS
 		if (!other->IsClient() && other->IsBot()) {
 			Bot *curb = quest_manager.GetBot();
 			buf = fmt::format("{}::bot", pkgprefix);
 			SV *bot = get_sv(buf.c_str(), true);
 			sv_setref_pv(bot, "Bot", curb);
 		}
-#endif
 
 		//only export QuestItem if it's an item quest
 		if (item_inst) {
@@ -1021,20 +998,14 @@ int PerlembParser::SendCommands(
 			std::string qi  = (std::string) "$" + (std::string) pkgprefix + (std::string) "::questitem";
 			std::string sp  = (std::string) "$" + (std::string) pkgprefix + (std::string) "::spell";
 			std::string enl = (std::string) "$" + (std::string) pkgprefix + (std::string) "::entity_list";
-
-#ifdef BOTS
 			std::string bot = (std::string) "$" + (std::string) pkgprefix + (std::string) "::bot";
-#endif
 
 			clear_vars_[cl]  = 1;
 			clear_vars_[np]  = 1;
 			clear_vars_[qi]  = 1;
 			clear_vars_[sp]  = 1;
 			clear_vars_[enl] = 1;
-
-#ifdef BOTS
 			clear_vars_[bot] = 1;
-#endif
 		}
 #endif
 
@@ -1099,9 +1070,7 @@ void PerlembParser::MapFunctions()
 	perl_register_doors();
 	perl_register_expedition();
 	perl_register_expedition_lock_messages();
-#ifdef BOTS
 	perl_register_bot();
-#endif // BOTS
 #endif // EMBPERL_XS_CLASSES
 }
 
@@ -1394,12 +1363,10 @@ void PerlembParser::ExportMobVariables(
 		ExportVar(package_name.c_str(), "status", mob->CastToClient()->Admin());
 	}
 
-#ifdef BOTS
 	if (mob && mob->IsBot()) {
 		ExportVar(package_name.c_str(), "bot_id", mob->CastToBot()->GetBotID());
 		ExportVar(package_name.c_str(), "bot_owner_char_id", mob->CastToBot()->GetBotOwnerCharacterID());
 	}
-#endif
 
 	if (
 		!isPlayerQuest &&
@@ -1553,11 +1520,9 @@ void PerlembParser::ExportEventVariables(
 			}
 
 			auto unique_id = npcmob->GetNPCTypeID();
-#ifdef BOTS
 			if (npcmob->IsBot()) {
 				unique_id = npcmob->CastToBot()->GetBotID();
 			}
-#endif
 
 			ExportVar(package_name.c_str(), "copper", GetVar(fmt::format("copper.{}", unique_id)).c_str());
 			ExportVar(package_name.c_str(), "silver", GetVar(fmt::format("silver.{}", unique_id)).c_str());
@@ -1578,6 +1543,13 @@ void PerlembParser::ExportEventVariables(
 				perl->eval(fmt::format("++${}{{${}::item8}};", hash_name, package_name).c_str());
 			}
 
+			break;
+		}
+
+		case EVENT_TARGET_CHANGE: {
+			if (extra_pointers && extra_pointers->size() == 1) {
+				ExportVar(package_name.c_str(), "target", "Mob", std::any_cast<Mob*>(extra_pointers->at(0)));
+			}
 			break;
 		}
 
@@ -1612,6 +1584,7 @@ void PerlembParser::ExportEventVariables(
 
 		case EVENT_NPC_SLAY: {
 			ExportVar(package_name.c_str(), "killed", mob->GetNPCTypeID());
+			ExportVar(package_name.c_str(), "killed_npc", "NPC", mob->CastToNPC());
 			break;
 		}
 
@@ -1623,6 +1596,9 @@ void PerlembParser::ExportEventVariables(
 		case EVENT_CLICK_DOOR: {
 			ExportVar(package_name.c_str(), "doorid", data);
 			ExportVar(package_name.c_str(), "version", zone->GetInstanceVersion());
+			if (extra_pointers && extra_pointers->size() == 1) {
+				ExportVar(package_name.c_str(), "door", "Doors", std::any_cast<Doors*>(extra_pointers->at(0)));
+			}
 			break;
 		}
 
@@ -1631,8 +1607,17 @@ void PerlembParser::ExportEventVariables(
 			Seperator sep(data);
 			ExportVar(package_name.c_str(), "looted_id", sep.arg[0]);
 			ExportVar(package_name.c_str(), "looted_charges", sep.arg[1]);
-			ExportVar(package_name.c_str(), "corpse", sep.arg[2]);
+			ExportVar(package_name.c_str(), "corpse_name", sep.arg[2]);
 			ExportVar(package_name.c_str(), "corpse_id", sep.arg[3]);
+
+			if (extra_pointers && extra_pointers->size() >= 1) {
+				ExportVar(package_name.c_str(), "item", "QuestItem", std::any_cast<EQ::ItemInstance*>(extra_pointers->at(0)));
+			}
+
+			if (extra_pointers && extra_pointers->size() == 2) {
+				ExportVar(package_name.c_str(), "corpse", "Corpse", std::any_cast<Corpse*>(extra_pointers->at(1)));
+			}
+
 			break;
 		}
 
@@ -1688,6 +1673,9 @@ void PerlembParser::ExportEventVariables(
 		case EVENT_PLAYER_PICKUP: {
 			ExportVar(package_name.c_str(), "picked_up_id", data);
 			ExportVar(package_name.c_str(), "picked_up_entity_id", extradata);
+			if (extra_pointers && extra_pointers->size() == 1) {
+				ExportVar(package_name.c_str(), "item", "QuestItem", std::any_cast<EQ::ItemInstance*>(extra_pointers->at(0)));
+			}
 			break;
 		}
 
@@ -1736,6 +1724,21 @@ void PerlembParser::ExportEventVariables(
 			break;
 		}
 
+		case EVENT_ITEM_CLICK_CAST_CLIENT:
+		case EVENT_ITEM_CLICK_CLIENT: {
+			ExportVar(package_name.c_str(), "slot_id", data);
+			if (extra_pointers && extra_pointers->size() == 1) {
+				auto* item = std::any_cast<EQ::ItemInstance*>(extra_pointers->at(0));
+				if (item) {
+					ExportVar(package_name.c_str(), "item_id", item->GetID());
+					ExportVar(package_name.c_str(), "item_name", item->GetItem()->Name);
+					ExportVar(package_name.c_str(), "spell_id", item->GetItem()->Click.Effect);
+					ExportVar(package_name.c_str(), "item", "QuestItem", item);
+				}
+			}
+			break;
+		}
+
 		case EVENT_GROUP_CHANGE: {
 			if (mob && mob->IsClient()) {
 				ExportVar(package_name.c_str(), "grouped", mob->IsGrouped());
@@ -1746,9 +1749,9 @@ void PerlembParser::ExportEventVariables(
 
 		case EVENT_HATE_LIST: {
 			ExportVar(package_name.c_str(), "hate_state", data);
+			ExportVar(package_name.c_str(), "hate_entity", "Mob", mob);
 			break;
 		}
-
 
 		case EVENT_SPELL_EFFECT_BUFF_TIC_BOT:
 		case EVENT_SPELL_EFFECT_BUFF_TIC_CLIENT:
@@ -1776,22 +1779,34 @@ void PerlembParser::ExportEventVariables(
 
 		case EVENT_FORAGE_SUCCESS: {
 			ExportVar(package_name.c_str(), "foraged_item", extradata);
+			if (extra_pointers && extra_pointers->size() == 1) {
+				ExportVar(package_name.c_str(), "item", "QuestItem", std::any_cast<EQ::ItemInstance*>(extra_pointers->at(0)));
+			}
 			break;
 		}
 
 		case EVENT_FISH_SUCCESS: {
 			ExportVar(package_name.c_str(), "fished_item", extradata);
+			if (extra_pointers && extra_pointers->size() == 1) {
+				ExportVar(package_name.c_str(), "item", "QuestItem", std::any_cast<EQ::ItemInstance*>(extra_pointers->at(0)));
+			}
 			break;
 		}
 
 		case EVENT_CLICK_OBJECT: {
 			ExportVar(package_name.c_str(), "objectid", data);
 			ExportVar(package_name.c_str(), "clicker_id", extradata);
+			if (extra_pointers && extra_pointers->size() == 1) {
+				ExportVar(package_name.c_str(), "object", "Object", std::any_cast<Object*>(extra_pointers->at(0)));
+			}
 			break;
 		}
 
 		case EVENT_DISCOVER_ITEM: {
 			ExportVar(package_name.c_str(), "itemid", extradata);
+			if (extra_pointers && extra_pointers->size() == 1) {
+				ExportVar(package_name.c_str(), "item", "QuestItem", std::any_cast<EQ::ItemInstance*>(extra_pointers->at(0)));
+			}
 			break;
 		}
 
@@ -1833,17 +1848,8 @@ void PerlembParser::ExportEventVariables(
 				if (killed)
 				{
 					ExportVar(package_name.c_str(), "killed_entity_id", killed->GetID());
-
-					if (killed->IsNPC()) {
-						ExportVar(package_name.c_str(), "killed_bot_id", 0);
-						ExportVar(package_name.c_str(), "killed_npc_id", killed->GetNPCTypeID());
-#ifdef BOTS
-					} else if (killed->IsBot()) {
-						ExportVar(package_name.c_str(), "killed_bot_id", killed->CastToBot()->GetBotID());
-						ExportVar(package_name.c_str(), "killed_npc_id", 0);
-#endif
-					}
-
+					ExportVar(package_name.c_str(), "killed_bot_id", killed->IsBot() ? killed->CastToBot()->GetBotID() : 0);
+					ExportVar(package_name.c_str(), "killed_npc_id", killed->IsNPC() ? killed->GetNPCTypeID() : 0);
 					ExportVar(package_name.c_str(), "killed_x", killed->GetX());
 					ExportVar(package_name.c_str(), "killed_y", killed->GetY());
 					ExportVar(package_name.c_str(), "killed_z", killed->GetZ());
@@ -1862,19 +1868,24 @@ void PerlembParser::ExportEventVariables(
 			break;
 		}
 
+		case EVENT_DROP_ITEM_CLIENT: {
+			if (extra_pointers && extra_pointers->size() == 1) {
+				EQ::ItemInstance* item_instance = std::any_cast<EQ::ItemInstance*>(extra_pointers->at(0));
+				ExportVar(package_name.c_str(), "quantity", item_instance->IsStackable() ? item_instance->GetCharges() : 1);
+				ExportVar(package_name.c_str(), "item_name", item_instance->GetItem()->Name);
+				ExportVar(package_name.c_str(), "item_id", item_instance->GetItem()->ID);
+				ExportVar(package_name.c_str(), "spell_id", item_instance->GetItem()->Click.Effect);
+				ExportVar(package_name.c_str(), "slot_id", extradata);
+				ExportVar(package_name.c_str(), "item", "QuestItem", item_instance);
+			}
+			break;
+		}
+
 		case EVENT_SPAWN_ZONE: {
 			ExportVar(package_name.c_str(), "spawned_entity_id", mob->GetID());
-
-			if (mob->IsNPC()) {
-				ExportVar(package_name.c_str(), "spawned_bot_id", 0);
-				ExportVar(package_name.c_str(), "spawned_npc_id", mob->GetNPCTypeID());
-#ifdef BOTS
-			} else if (mob->IsBot()) {
-				ExportVar(package_name.c_str(), "spawned_bot_id", mob->CastToBot()->GetBotID());
-				ExportVar(package_name.c_str(), "spawned_npc_id", 0);
-#endif
-			}
-
+			ExportVar(package_name.c_str(), "spawned_bot_id", mob->IsBot() ? mob->CastToBot()->GetBotID() : 0);
+			ExportVar(package_name.c_str(), "spawned_npc_id", mob->IsNPC() ? mob->GetNPCTypeID() : 0);
+			ExportVar(package_name.c_str(), "spawned", "Mob", mob);
 			break;
 		}
 
@@ -1923,17 +1934,23 @@ void PerlembParser::ExportEventVariables(
 		}
 
 		case EVENT_CONSIDER: {
-			ExportVar(package_name.c_str(), "entity_id", std::stoi(data));
+			ExportVar(package_name.c_str(), "entity_id", Strings::ToInt(data));
+			if (extra_pointers && extra_pointers->size() == 1) {
+				ExportVar(package_name.c_str(), "target", "Mob", std::any_cast<Mob*>(extra_pointers->at(0)));
+			}
 			break;
 		}
 
 		case EVENT_CONSIDER_CORPSE: {
-			ExportVar(package_name.c_str(), "corpse_entity_id", std::stoi(data));
+			ExportVar(package_name.c_str(), "corpse_entity_id", Strings::ToInt(data));
+			if (extra_pointers && extra_pointers->size() == 1) {
+				ExportVar(package_name.c_str(), "corpse", "Corpse", std::any_cast<Corpse*>(extra_pointers->at(0)));
+			}
 			break;
 		}
 
 		case EVENT_COMBINE: {
-			ExportVar(package_name.c_str(), "container_slot", std::stoi(data));
+			ExportVar(package_name.c_str(), "container_slot", Strings::ToInt(data));
 			break;
 		}
 
@@ -1943,19 +1960,58 @@ void PerlembParser::ExportEventVariables(
 			ExportVar(package_name.c_str(), "item_id", extradata);
 			ExportVar(package_name.c_str(), "item_quantity", sep.arg[0]);
 			ExportVar(package_name.c_str(), "slot_id", sep.arg[1]);
+			if (extra_pointers && extra_pointers->size() == 1) {
+				ExportVar(package_name.c_str(), "item", "QuestItem", std::any_cast<EQ::ItemInstance*>(extra_pointers->at(0)));
+			}
 			break;
 		}
 
-		case EVENT_AUGMENT_INSERT_CLIENT:
+		case EVENT_EQUIP_ITEM_BOT:
+		case EVENT_UNEQUIP_ITEM_BOT: {
+			Seperator sep(data);
+			ExportVar(package_name.c_str(), "item_id", extradata);
+			ExportVar(package_name.c_str(), "item_quantity", sep.arg[0]);
+			ExportVar(package_name.c_str(), "slot_id", sep.arg[1]);
+			if (extra_pointers && extra_pointers->size() == 1) {
+				ExportVar(package_name.c_str(), "item", "QuestItem", std::any_cast<EQ::ItemInstance*>(extra_pointers->at(0)));
+			}
+			break;
+		}
+
+		case EVENT_AUGMENT_INSERT_CLIENT: {
+			Seperator sep(data);
+			ExportVar(package_name.c_str(), "item_id", sep.arg[0]);
+			ExportVar(package_name.c_str(), "item_slot", sep.arg[1]);
+			ExportVar(package_name.c_str(), "augment_id", sep.arg[2]);
+			ExportVar(package_name.c_str(), "augment_slot", sep.arg[3]);
+
+			if (extra_pointers && extra_pointers->size() >= 1) {
+				ExportVar(package_name.c_str(), "item", "QuestItem", std::any_cast<EQ::ItemInstance*>(extra_pointers->at(0)));
+			}
+
+			if (extra_pointers && extra_pointers->size() >= 2) {
+				ExportVar(package_name.c_str(), "augment", "QuestItem", std::any_cast<EQ::ItemInstance*>(extra_pointers->at(1)));
+			}
+
+			break;
+		}
+
 		case EVENT_AUGMENT_REMOVE_CLIENT: {
 			Seperator sep(data);
 			ExportVar(package_name.c_str(), "item_id", sep.arg[0]);
 			ExportVar(package_name.c_str(), "item_slot", sep.arg[1]);
 			ExportVar(package_name.c_str(), "augment_id", sep.arg[2]);
 			ExportVar(package_name.c_str(), "augment_slot", sep.arg[3]);
-			if (sep.argnum >= 4) {
-				ExportVar(package_name.c_str(), "destroyed", sep.arg[4]);
+			ExportVar(package_name.c_str(), "destroyed", sep.arg[4]);
+
+			if (extra_pointers && extra_pointers->size() >= 1) {
+				ExportVar(package_name.c_str(), "item", "QuestItem", std::any_cast<EQ::ItemInstance*>(extra_pointers->at(0)));
 			}
+
+			if (extra_pointers && extra_pointers->size() >= 3) {
+				ExportVar(package_name.c_str(), "augment", "QuestItem", std::any_cast<EQ::ItemInstance*>(extra_pointers->at(2)));
+			}
+
 			break;
 		}
 
@@ -2012,8 +2068,21 @@ void PerlembParser::ExportEventVariables(
 			break;
 		}
 
+		case EVENT_AA_EXP_GAIN: {
+			ExportVar(package_name.c_str(), "aa_exp_gained", data);
+			break;
+		}
+
+		case EVENT_EXP_GAIN: {
+			ExportVar(package_name.c_str(), "exp_gained", data);
+			break;
+		}
+
 		case EVENT_INSPECT: {
 			ExportVar(package_name.c_str(), "target_id", extradata);
+			if (extra_pointers && extra_pointers->size() == 1) {
+				ExportVar(package_name.c_str(), "target", "Mob", std::any_cast<Mob*>(extra_pointers->at(0)));
+			}
 			break;
 		}
 
@@ -2043,32 +2112,15 @@ void PerlembParser::ExportEventVariables(
 
 		case EVENT_DESPAWN: {
 			ExportVar(package_name.c_str(), "despawned_entity_id", npcmob->GetID());
-
-			if (npcmob->IsNPC()) {
-				ExportVar(package_name.c_str(), "despawned_bot_id", 0);
-				ExportVar(package_name.c_str(), "despawned_npc_id", npcmob->GetNPCTypeID());
-#ifdef BOTS
-			} else if (npcmob->IsBot()) {
-				ExportVar(package_name.c_str(), "despawned_bot_id", npcmob->CastToBot()->GetBotID());
-				ExportVar(package_name.c_str(), "despawned_npc_id", 0);
-#endif
-			}
-
+			ExportVar(package_name.c_str(), "despawned_bot_id", npcmob->IsBot() ? npcmob->CastToBot()->GetBotID() : 0);
+			ExportVar(package_name.c_str(), "despawned_npc_id", npcmob->IsNPC() ? npcmob->GetNPCTypeID() : 0);
 			break;
 		}
+
 		case EVENT_DESPAWN_ZONE: {
 			ExportVar(package_name.c_str(), "despawned_entity_id", mob->GetID());
-
-			if (mob->IsNPC()) {
-				ExportVar(package_name.c_str(), "despawned_bot_id", 0);
-				ExportVar(package_name.c_str(), "despawned_npc_id", mob->GetNPCTypeID());
-#ifdef BOTS
-			} else if (mob->IsBot()) {
-				ExportVar(package_name.c_str(), "despawned_bot_id", mob->CastToBot()->GetBotID());
-				ExportVar(package_name.c_str(), "despawned_npc_id", 0);
-#endif
-			}
-
+			ExportVar(package_name.c_str(), "despawned_bot_id", mob->IsBot() ? mob->CastToBot()->GetBotID() : 0);
+			ExportVar(package_name.c_str(), "despawned_npc_id", mob->IsNPC() ? mob->GetNPCTypeID() : 0);
 			break;
 		}
 
@@ -2082,13 +2134,38 @@ void PerlembParser::ExportEventVariables(
 			break;
 		}
 
+		case EVENT_DAMAGE_GIVEN:
+		case EVENT_DAMAGE_TAKEN:{
+			Seperator sep(data);
+			ExportVar(package_name.c_str(), "entity_id", sep.arg[0]);
+			ExportVar(package_name.c_str(), "damage", sep.arg[1]);
+			ExportVar(package_name.c_str(), "spell_id", sep.arg[2]);
+			ExportVar(package_name.c_str(), "skill_id", sep.arg[3]);
+			ExportVar(package_name.c_str(), "is_damage_shield", sep.arg[4]);
+			ExportVar(package_name.c_str(), "is_avoidable", sep.arg[5]);
+			ExportVar(package_name.c_str(), "buff_slot", sep.arg[6]);
+			ExportVar(package_name.c_str(), "is_buff_tic", sep.arg[7]);
+			ExportVar(package_name.c_str(), "special_attack", sep.arg[8]);
+			break;
+		}
+
+		case EVENT_DESTROY_ITEM_CLIENT: {
+			if (extra_pointers && extra_pointers->size() == 1) {
+				EQ::ItemInstance* inst = std::any_cast<EQ::ItemInstance*>(extra_pointers->at(0));
+				ExportVar(package_name.c_str(), "item_id", inst->GetID());
+				ExportVar(package_name.c_str(), "item_name", inst->GetItem()->Name);
+				ExportVar(package_name.c_str(), "quantity", inst->IsStackable() ? inst->GetCharges() : 1);
+				ExportVar(package_name.c_str(), "item", "QuestItem", inst);
+			}
+			break;
+		}
+
 		default: {
 			break;
 		}
 	}
 }
 
-#ifdef BOTS
 void PerlembParser::LoadBotScript(std::string filename)
 {
 	if (!perl) {
@@ -2204,6 +2281,5 @@ int PerlembParser::EventGlobalBot(
 ) {
 	return EventCommon(evt, 0, data.c_str(), bot, nullptr, nullptr, mob, extra_data, true, extra_pointers);
 }
-#endif
 
 #endif

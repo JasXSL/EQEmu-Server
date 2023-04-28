@@ -22,7 +22,6 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include "mob.h"
 #include "raids.h"
 
-#include "../common/rulesys.h"
 #include "../common/data_verification.h"
 
 #include "hate_list.h"
@@ -30,7 +29,6 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include "zone.h"
 #include "water_map.h"
 
-#include <stdlib.h>
 #include <list>
 
 extern Zone *zone;
@@ -66,7 +64,9 @@ void HateList::WipeHateList()
 		Mob* m = (*iterator)->entity_on_hatelist;
 		if (m)
 		{
-			parse->EventNPC(EVENT_HATE_LIST, hate_owner->CastToNPC(), m, "0", 0);
+			if (parse->HasQuestSub(hate_owner->GetNPCTypeID(), EVENT_HATE_LIST)) {
+				parse->EventNPC(EVENT_HATE_LIST, hate_owner->CastToNPC(), m, "0", 0);
+			}
 
 			if (m->IsClient()) {
 				m->CastToClient()->DecrementAggroCount();
@@ -183,18 +183,20 @@ Mob* HateList::GetClosestEntOnHateList(Mob *hater, bool skip_mezzed) {
 
 void HateList::AddEntToHateList(Mob *in_entity, int64 in_hate, int64 in_damage, bool in_is_entity_frenzied, bool iAddIfNotExist)
 {
-	if (!in_entity)
+	if (!in_entity) {
 		return;
+	}
 
-	if (in_entity->IsCorpse())
+	if (in_entity->IsCorpse()) {
 		return;
+	}
 
-	if (in_entity->IsClient() && in_entity->CastToClient()->IsDead())
+	if (in_entity->IsClient() && in_entity->CastToClient()->IsDead()) {
 		return;
+	}
 
 	struct_HateList *entity = Find(in_entity);
-	if (entity)
-	{
+	if (entity) {
 		entity->hatelist_damage += (in_damage >= 0) ? in_damage : 0;
 		entity->stored_hate_amount += in_hate;
 		entity->is_entity_frenzy = in_is_entity_frenzied;
@@ -209,8 +211,7 @@ void HateList::AddEntToHateList(Mob *in_entity, int64 in_hate, int64 in_damage, 
 			entity->stored_hate_amount,
 			entity->hatelist_damage
 		);
-	}
-	else if (iAddIfNotExist) {
+	} else if (iAddIfNotExist) {
 		entity = new struct_HateList;
 		entity->entity_on_hatelist = in_entity;
 		entity->hatelist_damage = (in_damage >= 0) ? in_damage : 0;
@@ -219,7 +220,10 @@ void HateList::AddEntToHateList(Mob *in_entity, int64 in_hate, int64 in_damage, 
 		entity->oor_count = 0;
 		entity->last_modified = Timer::GetCurrentTime();
 		list.push_back(entity);
-		parse->EventNPC(EVENT_HATE_LIST, hate_owner->CastToNPC(), in_entity, "1", 0);
+
+		if (parse->HasQuestSub(hate_owner->GetNPCTypeID(), EVENT_HATE_LIST)) {
+			parse->EventNPC(EVENT_HATE_LIST, hate_owner->CastToNPC(), in_entity, "1", 0);
+		}
 
 		if (in_entity->IsClient()) {
 			in_entity->CastToClient()->IncrementAggroCount(hate_owner->CastToNPC()->IsRaidTarget());
@@ -229,30 +233,32 @@ void HateList::AddEntToHateList(Mob *in_entity, int64 in_hate, int64 in_damage, 
 
 bool HateList::RemoveEntFromHateList(Mob *in_entity)
 {
-	if (!in_entity)
+	if (!in_entity) {
 		return false;
+	}
 
 	bool is_found = false;
 	auto iterator = list.begin();
 
-	while (iterator != list.end())
-	{
-		if ((*iterator)->entity_on_hatelist == in_entity)
-		{
+	while (iterator != list.end()) {
+		if ((*iterator)->entity_on_hatelist == in_entity) {
 			is_found = true;
 
-			if (in_entity && in_entity->IsClient())
+			if (in_entity && in_entity->IsClient()) {
 				in_entity->CastToClient()->DecrementAggroCount();
+			}
 
 			delete (*iterator);
 			iterator = list.erase(iterator);
 
-			if (in_entity)
-				parse->EventNPC(EVENT_HATE_LIST, hate_owner->CastToNPC(), in_entity, "0", 0);
-
-		}
-		else
+			if (in_entity) {
+				if (parse->HasQuestSub(hate_owner->GetNPCTypeID(), EVENT_HATE_LIST)) {
+					parse->EventNPC(EVENT_HATE_LIST, hate_owner->CastToNPC(), in_entity, "0", 0);
+				}
+			}
+		} else {
 			++iterator;
+		}
 	}
 	return is_found;
 }
@@ -383,19 +389,10 @@ Mob *HateList::GetEntWithMostHateOnList(Mob *center, Mob *skip, bool skip_mezzed
 
 			int64 current_hate = cur->stored_hate_amount;
 
-#ifdef BOTS
 			if (cur->entity_on_hatelist->IsClient() || cur->entity_on_hatelist->IsBot()){
-
 				if (cur->entity_on_hatelist->IsClient() && cur->entity_on_hatelist->CastToClient()->IsSitting()){
 					aggro_mod += RuleI(Aggro, SittingAggroMod);
 				}
-#else
-			if (cur->entity_on_hatelist->IsClient()){
-
-				if (cur->entity_on_hatelist->CastToClient()->IsSitting()){
-					aggro_mod += RuleI(Aggro, SittingAggroMod);
-				}
-#endif
 
 				if (center){
 					if (center->GetTarget() == cur->entity_on_hatelist)
@@ -445,14 +442,12 @@ Mob *HateList::GetEntWithMostHateOnList(Mob *center, Mob *skip, bool skip_mezzed
 
 		if (top_client_type_in_range != nullptr && top_hate != nullptr) {
 			bool isTopClientType = top_hate->IsClient();
-#ifdef BOTS
 			if (!isTopClientType) {
 				if (top_hate->IsBot()) {
 					isTopClientType = true;
 					top_client_type_in_range = top_hate;
 				}
 			}
-#endif //BOTS
 
 			if (!isTopClientType) {
 				if (top_hate->IsMerc()) {
@@ -486,20 +481,22 @@ Mob *HateList::GetEntWithMostHateOnList(Mob *center, Mob *skip, bool skip_mezzed
 		while (iterator != list.end())
 		{
 			struct_HateList *cur = (*iterator);
-			if (cur->entity_on_hatelist == skip) {
-				++iterator;
-				continue;
-			}
+			if (cur) {
+				if (cur->entity_on_hatelist == skip) {
+					++iterator;
+					continue;
+				}
 
-			if (skip_mezzed && cur->entity_on_hatelist->IsMezzed()) {
-				++iterator;
-				continue;
-			}
+				if (skip_mezzed && cur->entity_on_hatelist->IsMezzed()) {
+					++iterator;
+					continue;
+				}
 
-			if (cur->entity_on_hatelist != nullptr && ((cur->stored_hate_amount > hate) || cur->is_entity_frenzy))
-			{
-				top_hate = cur->entity_on_hatelist;
-				hate = cur->stored_hate_amount;
+				if (cur->entity_on_hatelist != nullptr && ((cur->stored_hate_amount > hate) || cur->is_entity_frenzy))
+				{
+					top_hate = cur->entity_on_hatelist;
+					hate = cur->stored_hate_amount;
+				}
 			}
 			++iterator;
 		}
@@ -519,24 +516,27 @@ Mob *HateList::GetEntWithMostHateOnList(bool skip_mezzed){
 	while (iterator != list.end())
 	{
 		struct_HateList *cur = (*iterator);
-		LogHateDetail(
-			"Looping GetEntWithMostHateOnList1 [{}] cur [{}] hate [{}] calc [{}]",
-			cur->entity_on_hatelist->GetMobDescription(),
-			cur->stored_hate_amount,
-			hate,
-			(cur->stored_hate_amount > hate)
-		);
 
-		if (cur && cur->entity_on_hatelist != nullptr && (cur->stored_hate_amount > hate))
-		{
+		if (cur) {
 			LogHateDetail(
-				"Looping GetEntWithMostHateOnList2 [{}]",
-				cur->entity_on_hatelist->GetMobDescription()
+				"Looping GetEntWithMostHateOnList1 [{}] cur [{}] hate [{}] calc [{}]",
+				cur->entity_on_hatelist->GetMobDescription(),
+				cur->stored_hate_amount,
+				hate,
+				(cur->stored_hate_amount > hate)
 			);
 
-			if (!skip_mezzed || !cur->entity_on_hatelist->IsMezzed()) {
-				top = cur->entity_on_hatelist;
-				hate = cur->stored_hate_amount;
+			if (cur->entity_on_hatelist != nullptr && (cur->stored_hate_amount > hate))
+			{
+				LogHateDetail(
+					"Looping GetEntWithMostHateOnList2 [{}]",
+					cur->entity_on_hatelist->GetMobDescription()
+				);
+
+				if (!skip_mezzed || !cur->entity_on_hatelist->IsMezzed()) {
+					top = cur->entity_on_hatelist;
+					hate = cur->stored_hate_amount;
+				}
 			}
 		}
 		++iterator;
@@ -822,19 +822,23 @@ void HateList::RemoveStaleEntries(int time_ms, float dist)
 		if (m) {
 			bool remove = false;
 
-			if (cur_time - (*it)->last_modified > time_ms)
+			if (cur_time - (*it)->last_modified > time_ms) {
 				remove = true;
+			}
 
 			if (!remove && DistanceSquaredNoZ(hate_owner->GetPosition(), m->GetPosition()) > dist2) {
 				(*it)->oor_count++;
-				if ((*it)->oor_count == 2)
+				if ((*it)->oor_count == 2) {
 					remove = true;
+				}
 			} else if ((*it)->oor_count != 0) {
 				(*it)->oor_count = 0;
 			}
 
 			if (remove) {
-				parse->EventNPC(EVENT_HATE_LIST, hate_owner->CastToNPC(), m, "0", 0);
+				if (parse->HasQuestSub(hate_owner->GetNPCTypeID(), EVENT_HATE_LIST)) {
+					parse->EventNPC(EVENT_HATE_LIST, hate_owner->CastToNPC(), m, "0", 0);
+				}
 
 				if (m->IsClient()) {
 					m->CastToClient()->DecrementAggroCount();
@@ -850,7 +854,6 @@ void HateList::RemoveStaleEntries(int time_ms, float dist)
 	}
 }
 
-#ifdef BOTS
 Bot* HateList::GetRandomBotOnHateList(bool skip_mezzed)
 {
 	int count = list.size();
@@ -899,7 +902,6 @@ Bot* HateList::GetRandomBotOnHateList(bool skip_mezzed)
 
 	return nullptr;
 }
-#endif
 
 Client* HateList::GetRandomClientOnHateList(bool skip_mezzed)
 {

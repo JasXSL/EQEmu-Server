@@ -1,5 +1,3 @@
-#ifdef BOTS
-
 #include "bot.h"
 #include "client.h"
 
@@ -35,7 +33,7 @@ uint32 Client::GetBotCreationLimit(uint8 class_id)
 
 	auto bucket_value = GetBucket(bucket_name);
 	if (!bucket_value.empty() && Strings::IsNumber(bucket_value)) {
-		bot_creation_limit = std::stoul(bucket_value);
+		bot_creation_limit = Strings::ToUnsignedInt(bucket_value);
 	}
 
 	return bot_creation_limit;
@@ -59,7 +57,7 @@ int Client::GetBotRequiredLevel(uint8 class_id)
 
 	auto bucket_value = GetBucket(bucket_name);
 	if (!bucket_value.empty() && Strings::IsNumber(bucket_value)) {
-		bot_character_level = std::stoi(bucket_value);
+		bot_character_level = Strings::ToInt(bucket_value);
 	}
 
 	return bot_character_level;
@@ -83,7 +81,7 @@ int Client::GetBotSpawnLimit(uint8 class_id)
 
 	auto bucket_value = GetBucket(bucket_name);
 	if (!bucket_value.empty() && Strings::IsNumber(bucket_value)) {
-		bot_spawn_limit = std::stoi(bucket_value);
+		bot_spawn_limit = Strings::ToInt(bucket_value);
 		return bot_spawn_limit;
 	}
 
@@ -100,7 +98,7 @@ int Client::GetBotSpawnLimit(uint8 class_id)
 		}
 
 		auto row = results.begin();
-		bot_spawn_limit = std::stoi(row[0]);
+		bot_spawn_limit = Strings::ToInt(row[0]);
 	}
 
 	return bot_spawn_limit;
@@ -161,5 +159,3 @@ void Client::CampAllBots(uint8 class_id)
 {
 	Bot::BotOrderCampAll(this, class_id);
 }
-
-#endif

@@ -122,7 +122,8 @@ public:
 	bool HasOrMayGetAggro();
 	bool UseDiscipline(int32 spell_id, int32 target);
 
-	virtual bool IsMerc() const { return true; }
+	bool IsMerc() const override { return true; }
+	bool IsOfClientBotMerc() const override { return true; }
 
 	virtual void FillSpawnStruct(NewSpawn_Struct* ns, Mob* ForWho);
 	static Merc* LoadMerc(Client *c, MercTemplate* merc_template, uint32 merchant_id, bool updateFromDB = false);
@@ -225,8 +226,8 @@ public:
 	inline virtual int32 GetCombatEffects() const { return itembonuses.ProcChance; }
 	inline virtual int32 GetDS() const { return itembonuses.DamageShield; }
 	// Mod3
-	inline virtual int32 GetHealAmt() const { return itembonuses.HealAmt; }
-	inline virtual int32 GetSpellDmg() const { return itembonuses.SpellDmg; }
+	inline int32 GetHealAmt() const override { return itembonuses.HealAmt; }
+	inline int32 GetSpellDmg() const override { return itembonuses.SpellDmg; }
 	inline virtual int32 GetClair() const { return itembonuses.Clairvoyance; }
 	inline virtual int32 GetDSMit() const { return itembonuses.DSMitigation; }
 
@@ -256,7 +257,7 @@ public:
 
 	void Sit();
 	void Stand();
-	bool IsSitting();
+	bool IsSitting() const override;
 	bool IsStanding();
 
 	// Merc-specific functions
@@ -267,10 +268,6 @@ public:
 	bool FindTarget();
 
 protected:
-	void CalcItemBonuses(StatBonuses* newbon);
-	void AddItemBonuses(const EQ::ItemData *item, StatBonuses* newbon);
-	int CalcRecommendedLevelBonus(uint8 level, uint8 reclevel, int basestat);
-
 	int64 GetFocusEffect(focusType type, uint16 spell_id, bool from_buff_tic = false);
 
 	std::vector<MercSpell> merc_spells;

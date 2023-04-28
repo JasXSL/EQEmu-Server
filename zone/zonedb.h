@@ -12,9 +12,7 @@
 #include "event_codes.h"
 #include "../common/repositories/doors_repository.h"
 
-#ifdef BOTS
 #include "bot_database.h"
-#endif
 
 #define WOLF 42
 
@@ -287,6 +285,55 @@ struct ClientMercEntry {
 	uint32 npcid;
 };
 
+struct CharacterCorpseItemEntry
+{
+	uint32 item_id;
+	int16 equip_slot;
+	uint16 charges;
+	uint16 lootslot;
+	uint32 aug_1;
+	uint32 aug_2;
+	uint32 aug_3;
+	uint32 aug_4;
+	uint32 aug_5;
+	uint32 aug_6;
+	bool attuned;
+	std::string custom_data;
+	uint32 ornamenticon;
+	uint32 ornamentidfile;
+	uint32 ornament_hero_model;
+};
+
+struct CharacterCorpseEntry 
+{
+	bool locked;
+	uint32 exp;
+	float size;
+	uint8 level;
+	uint32 race;
+	uint8 gender;
+	uint8 class_;
+	uint8 deity;
+	uint8 texture;
+	uint8 helmtexture;
+	uint32 copper;
+	uint32 silver;
+	uint32 gold;
+	uint32 plat;
+	EQ::TintProfile item_tint;
+	uint8 haircolor;
+	uint8 beardcolor;
+	uint8 eyecolor1;
+	uint8 eyecolor2;
+	uint8 hairstyle;
+	uint8 face;
+	uint8 beard;
+	uint32 drakkin_heritage;
+	uint32 drakkin_tattoo;
+	uint32 drakkin_details;
+	std::vector<CharacterCorpseItemEntry> items;
+};
+
 namespace BeastlordPetData {
 	struct PetStruct {
 		uint16 race_id = WOLF;
@@ -371,7 +418,8 @@ public:
 	void LoadPetInfo(Client *c);
 	void SavePetInfo(Client *c);
 	void RemoveTempFactions(Client *c);
-	void UpdateItemRecastTimestamps(uint32 char_id, uint32 recast_type, uint32 timestamp);
+	void UpdateItemRecast(uint32 char_id, uint32 recast_type, uint32 timestamp);
+	void DeleteItemRecast(uint32 char_id, uint32 recast_type);
 
 	bool DeleteCharacterAAs(uint32 character_id);
 	bool DeleteCharacterBandolier(uint32 character_id, uint32 band_id);
@@ -430,8 +478,7 @@ public:
 
 	/* Corpses  */
 	bool		DeleteItemOffCharacterCorpse(uint32 db_id, uint32 equip_slot, uint32 item_id);
-	uint32		GetCharacterCorpseItemCount(uint32 corpse_id);
-	bool		LoadCharacterCorpseData(uint32 corpse_id, PlayerCorpse_Struct* pcs);
+	bool		LoadCharacterCorpseData(uint32 corpse_id, CharacterCorpseEntry &corpse);
 	Corpse*		LoadCharacterCorpse(uint32 player_corpse_id);
 	Corpse*		SummonBuriedCharacterCorpses(uint32 char_id, uint32 dest_zoneid, uint16 dest_instanceid, const glm::vec4& position);
 	void		MarkCorpseAsRezzed(uint32 dbid);
@@ -447,8 +494,8 @@ public:
 	uint32		GetCharacterCorpseDecayTimer(uint32 corpse_db_id);
 	uint32		GetCharacterBuriedCorpseCount(uint32 char_id);
 	uint32		SendCharacterCorpseToGraveyard(uint32 dbid, uint32 zoneid, uint16 instanceid, const glm::vec4& position);
-	uint32		SaveCharacterCorpse(uint32 charid, const char* charname, uint32 zoneid, uint16 instanceid, PlayerCorpse_Struct* dbpc, const glm::vec4& position, uint32 guildid);
-	uint32		UpdateCharacterCorpse(uint32 dbid, uint32 charid, const char* charname, uint32 zoneid, uint16 instanceid, PlayerCorpse_Struct* dbpc, const glm::vec4& position, uint32 guildid, bool rezzed = false);
+	uint32		SaveCharacterCorpse(uint32 charid, const char* charname, uint32 zoneid, uint16 instanceid, const CharacterCorpseEntry& corpse, const glm::vec4& position, uint32 guildid);
+	uint32		UpdateCharacterCorpse(uint32 dbid, uint32 charid, const char* charname, uint32 zoneid, uint16 instanceid, const CharacterCorpseEntry& corpse, const glm::vec4& position, uint32 guildid, bool rezzed = false);
 	uint32		UpdateCharacterCorpseConsent(uint32 charid, uint32 guildid);
 	uint32		GetFirstCorpseID(uint32 char_id);
 	uint32		GetCharacterCorpseCount(uint32 char_id);
@@ -564,6 +611,8 @@ public:
 	void	UpdateRecipeMadecount(uint32 recipe_id, uint32 char_id, uint32 madecount);
 	bool	EnableRecipe(uint32 recipe_id);
 	bool	DisableRecipe(uint32 recipe_id);
+	std::vector<uint32> GetRecipeComponentItemIDs(RecipeCountType count_type, uint32 recipe_id);
+	int8 GetRecipeComponentCount(RecipeCountType count_type, uint32 recipe_id, uint32 item_id);
 
 	/* Tribute  */
 	bool	LoadTributes();
@@ -572,21 +621,6 @@ public:
 	std::vector<DoorsRepository::Doors> LoadDoors(const std::string& zone_name, int16 version);
 	uint32 GetDoorsCountPlusOne();
 	int GetDoorsDBCountPlusOne(std::string zone_short_name, int16 version);
-	void InsertDoor(
-		uint32 database_id,
-		uint8 id,
-		std::string name,
-		const glm::vec4 &position,
-		uint8 open_type,
-		uint16 guild_id,
-		uint32 ockpick,
-		uint32 key_item_id,
-		uint8 door_param,
-		uint8 invert,
-		int incline,
-		uint16 size,
-		bool disable_timer = false
-	);
 
 	/* Blocked Spells   */
 	int32	GetBlockedSpellsCount(uint32 zoneid);
@@ -626,17 +660,11 @@ public:
 		* PLEASE DO NOT ADD TO THIS COLLECTION OF CRAP UNLESS YOUR METHOD
 		* REALLY HAS NO BETTER SECTION
 	*/
-	bool	logevents(const char* accountname,uint32 accountid,uint8 status,const char* charname,const char* target, const char* descriptiontype, const char* description,int event_nid);
 	uint32	GetKarma(uint32 acct_id);
 	void	UpdateKarma(uint32 acct_id, uint32 amount);
 
-	/* Things which really dont belong here... */
-	int16	CommandRequirement(const char* commandname);
-
-#ifdef BOTS
 	// bot database add-on to eliminate the need for a second database connection
 	BotDatabase botdb;
-#endif
 
 protected:
 	void ZDBInitVars();

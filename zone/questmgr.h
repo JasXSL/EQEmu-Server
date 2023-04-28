@@ -81,22 +81,22 @@ public:
 	void Zone(const char *zone_name);
 	void ZoneGroup(const char *zone_name);
 	void ZoneRaid(const char *zone_name);
-	void settimer(const char *timer_name, int seconds);
-	void settimerMS(const char *timer_name, int milliseconds);
-	void settimerMS(const char *timer_name, int milliseconds, EQ::ItemInstance *inst);
-	void settimerMS(const char *timer_name, int milliseconds, Mob *mob);
-	void stoptimer(const char *timer_name);
-	void stoptimer(const char *timer_name, EQ::ItemInstance *inst);
-	void stoptimer(const char *timer_name, Mob *mob);
+	void settimer(const char* timer_name, int seconds, Mob* mob = nullptr);
+	void settimerMS(const char* timer_name, int milliseconds);
+	void settimerMS(const char* timer_name, int milliseconds, EQ::ItemInstance *inst);
+	void settimerMS(const char* timer_name, int milliseconds, Mob *mob);
+	void stoptimer(const char* timer_name);
+	void stoptimer(const char* timer_name, EQ::ItemInstance *inst);
+	void stoptimer(const char* timer_name, Mob *mob);
 	void stopalltimers();
 	void stopalltimers(EQ::ItemInstance *inst);
 	void stopalltimers(Mob *mob);
-	void pausetimer(const char *timer_name);
-	void resumetimer(const char *timer_name);
-	bool ispausedtimer(const char *timer_name);
-	bool hastimer(const char *timer_name);
-	uint32 getremainingtimeMS(const char *timer_name);
-	uint32 gettimerdurationMS(const char *timer_name);
+	void pausetimer(const char* timer_name, Mob* mob = nullptr);
+	void resumetimer(const char* timer_name, Mob* mob = nullptr);
+	bool ispausedtimer(const char* timer_name, Mob* mob = nullptr);
+	bool hastimer(const char* timer_name, Mob* mob = nullptr);
+	uint32 getremainingtimeMS(const char* timer_name, Mob* mob = nullptr);
+	uint32 gettimerdurationMS(const char* timer_name, Mob* mob = nullptr);
 	void emote(const char *str);
 	void shout(const char *str);
 	void shout2(const char *str);
@@ -140,7 +140,7 @@ public:
 	void movepc(int zone_id, float x, float y, float z, float heading);
 	void gmmove(float x, float y, float z);
 	void movegrp(int zoneid, float x, float y, float z);
-	void doanim(int animation_id, int animation_speed = 1, bool ackreq = true, eqFilterType filter = FilterNone);
+	void doanim(int animation_id, int animation_speed = 0, bool ackreq = true, eqFilterType filter = FilterNone);
 	void addskill(int skill_id, int value);
 	void setlanguage(int skill_id, int value);
 	void setskill(int skill_id, int value);
@@ -208,8 +208,8 @@ public:
 	void playergender(int gender_id);
 	void playersize(int newsize);
 	void playertexture(int newtexture);
-	void playerfeature(char *feature, int setting);
-	void npcfeature(char *feature, int setting);
+	void playerfeature(const char* feature, int setting);
+	void npcfeature(const char* feature, int setting);
 	void popup(const char *title, const char *text, uint32 popupid, uint32 buttons, uint32 Duration);
 	void taskselector(const std::vector<int>& tasks, bool ignore_cooldown = false);
 	void tasksetselector(int tasksettid, bool ignore_cooldown = false);
@@ -346,12 +346,10 @@ public:
 	std::string GetRecipeName(uint32 recipe_id);
 	bool HasRecipeLearned(uint32 recipe_id);
 	bool DoAugmentSlotsMatch(uint32 item_one, uint32 item_two);
-	int8 DoesAugmentFit(EQ::ItemInstance* inst, uint32 augment_id);
+	int8 DoesAugmentFit(EQ::ItemInstance* inst, uint32 augment_id, uint8 augment_slot = 255);
+	void SendPlayerHandinEvent();
 
-#ifdef BOTS
 	Bot *GetBot() const;
-#endif
-
 	Client *GetInitiator() const;
 	NPC *GetNPC() const;
 	Mob *GetOwner() const;
@@ -361,12 +359,10 @@ public:
 	std::string GetEncounter() const;
 	inline bool ProximitySayInUse() { return HaveProximitySays; }
 
-#ifdef BOTS
 	int createbotcount(uint8 class_id = NO_CLASS);
 	int spawnbotcount(uint8 class_id = NO_CLASS);
 	bool botquest();
 	bool createBot(const char *name, const char *lastname, uint8 level, uint16 race, uint8 botclass, uint8 gender);
-#endif
 
 
 private:
@@ -395,8 +391,6 @@ private:
 	std::list<QuestTimer>	QTimerList;
 	std::list<SignalTimer>	STimerList;
 	std::list<PausedTimer>	PTimerList;
-	size_t item_timers;
-
 };
 
 extern QuestManager quest_manager;

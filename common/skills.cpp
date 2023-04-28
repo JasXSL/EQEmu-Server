@@ -1,5 +1,5 @@
 /*	EQEMu: Everquest Server Emulator
-	
+
 	Copyright (C) 2001-2016 EQEMu Development Team (http://eqemulator.net)
 
 	This program is free software; you can redistribute it and/or modify
@@ -148,33 +148,6 @@ int32 EQ::skills::GetBaseDamage(SkillType skill)
 	}
 }
 
-bool EQ::skills::IsMeleeDmg(SkillType skill)
-{
-	switch (skill) {
-	case Skill1HBlunt:
-	case Skill1HSlashing:
-	case Skill2HBlunt:
-	case Skill2HSlashing:
-	case SkillBackstab:
-	case SkillBash:
-	case SkillDragonPunch:
-	case SkillEagleStrike:
-	case SkillFlyingKick:
-	case SkillHandtoHand:
-	case SkillKick:
-	case Skill1HPiercing:
-	case SkillRiposte:
-	case SkillRoundKick:
-	case SkillThrowing:
-	case SkillTigerClaw:
-	case SkillFrenzy:
-	case Skill2HPiercing:
-		return true;
-	default:
-		return false;
-	}
-}
-
 const std::map<EQ::skills::SkillType, std::string>& EQ::skills::GetSkillTypeMap()
 {
 	static const std::map<SkillType, std::string> skill_type_map = {
@@ -260,13 +233,31 @@ const std::map<EQ::skills::SkillType, std::string>& EQ::skills::GetSkillTypeMap(
 	return skill_type_map;
 }
 
+const std::vector<EQ::skills::SkillType>& EQ::skills::GetExtraDamageSkills()
+{
+	static const std::vector<EQ::skills::SkillType> v = {
+		EQ::skills::SkillBackstab,
+		EQ::skills::SkillBash,
+		EQ::skills::SkillDragonPunch, // Same ID as Tail Rake
+		EQ::skills::SkillEagleStrike,
+		EQ::skills::SkillFlyingKick,
+		EQ::skills::SkillKick,
+		EQ::skills::SkillRoundKick,
+		EQ::skills::SkillRoundKick,
+		EQ::skills::SkillTigerClaw,
+		EQ::skills::SkillFrenzy
+	};
+
+	return v;
+}
+
 std::string EQ::skills::GetSkillName(SkillType skill)
 {
 	if (skill >= Skill1HBlunt && skill <= Skill2HPiercing) {
 		auto skills = GetSkillTypeMap();
 		return skills[skill];
 	}
-	return std::string();
+	return {};
 }
 
 EQ::SkillProfile::SkillProfile()

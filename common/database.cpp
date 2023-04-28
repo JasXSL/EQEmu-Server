@@ -71,11 +71,11 @@ bool Database::Connect(const char* host, const char* user, const char* passwd, c
 	uint32 errnum= 0;
 	char errbuf[MYSQL_ERRMSG_SIZE];
 	if (!Open(host, user, passwd, database, port, &errnum, errbuf)) {
-		LogError("[MySQL] Connection [{}] Failed to connect to database: Error [{}]", connection_label, errbuf);
+		LogError("Connection [{}] Failed to connect to database Error [{}]", connection_label, errbuf);
 		return false;
 	}
 	else {
-		LogInfo("[MySQL] Connection [{}] database [{}] at [{}]:[{}]", connection_label, database, host,port);
+		LogInfo("Connected to database [{}] [{}] @ [{}:{}]", connection_label, database, host,port);
 		return true;
 	}
 }
@@ -121,10 +121,10 @@ uint32 Database::CheckLogin(const char* name, const char* password, const char *
 
 	auto row = results.begin();
 
-	auto id = std::stoul(row[0]);
+	auto id = Strings::ToUnsignedInt(row[0]);
 
 	if (oStatus) {
-		*oStatus = std::stoi(row[1]);
+		*oStatus = Strings::ToInt(row[1]);
 	}
 
 	return id;
@@ -202,11 +202,11 @@ int16 Database::CheckStatus(uint32 account_id)
 	}
 
 	auto row = results.begin();
-	int16 status = std::stoi(row[0]);
+	int16 status = Strings::ToInt(row[0]);
 	int32 date_diff = 0;
 
 	if (row[1]) {
-		date_diff = std::stoi(row[1]);
+		date_diff = Strings::ToInt(row[1]);
 	}
 
 	if (date_diff > 0) {
@@ -345,7 +345,7 @@ bool Database::ReserveName(uint32 account_id, char* name) {
 	std::string query = StringFormat("SELECT `account_id`, `name` FROM `character_data` WHERE `name` = '%s'", name);
 	auto results = QueryDatabase(query);
 	for (auto row = results.begin(); row != results.end(); ++row) {
-		if (row[0] && atoi(row[0]) > 0){
+		if (row[0] && Strings::ToInt(row[0]) > 0){
 			LogInfo("Account: [{}] tried to request name: [{}], but it is already taken", account_id, name);
 			return false;
 		}
@@ -353,7 +353,7 @@ bool Database::ReserveName(uint32 account_id, char* name) {
 
 	query = StringFormat("INSERT INTO `character_data` SET `account_id` = %i, `name` = '%s'", account_id, name);
 	results = QueryDatabase(query);
-	if (!results.Success() || results.ErrorMessage() != ""){ return false; }
+	if (!results.Success() || !results.ErrorMessage().empty()){ return false; }
 
 	// Put character into the default guild if rule is being used.
 	int guild_id = RuleI(Character, DefaultGuild);
@@ -363,7 +363,7 @@ bool Database::ReserveName(uint32 account_id, char* name) {
 		if (character_id > -1) {
 			query = StringFormat("INSERT INTO `guild_members` SET `char_id` = %i, `guild_id` = '%i'", character_id, guild_id);
 			results = QueryDatabase(query);
-			if (!results.Success() || results.ErrorMessage() != ""){
+			if (!results.Success() || !results.ErrorMessage().empty()){
 				LogInfo("Could not put character [{}] into default Guild", name);
 			}
 		}
@@ -387,18 +387,13 @@ bool Database::DeleteCharacter(char *character_name)
 	std::string query   = StringFormat("SELECT `id` from `character_data` WHERE `name` = '%s'", character_name);
 	auto        results = QueryDatabase(query);
 	for (auto   row     = results.begin(); row != results.end(); ++row) {
-		character_id = atoi(row[0]);
+		character_id = Strings::ToUnsignedInt(row[0]);
 	}
 
 	if (character_id <= 0) {
-		LogError("[DeleteCharacter] Invalid Character ID [{}]", character_name);
+		LogError("Invalid Character ID [{}]", character_name);
 		return false;
 	}
-
-#ifdef BOTS
-	query = StringFormat("DELETE FROM `guild_members` WHERE `char_id` = '%d' AND GetMobTypeById(%i) = 'C'", character_id); // note: only use of GetMobTypeById()
-	QueryDatabase(query);
-#endif
 
 	std::string delete_type = "hard-deleted";
 	if (RuleB(Character, SoftDeletes)) {
@@ -418,21 +413,26 @@ bool Database::DeleteCharacter(char *character_name)
 
 		QueryDatabase(query);
 
-#ifdef BOTS
-		query = fmt::format(
-			SQL(
-				UPDATE
-				bot_data
-				SET
-				name = SUBSTRING(CONCAT(name, '-deleted-', UNIX_TIMESTAMP()), 1, 64)
-				WHERE
-				owner_id = '{}'
-			),
-			character_id
-		);
-		QueryDatabase(query);
-		LogInfo("[DeleteCharacter] character_name [{}] ({}) bots are being [{}]", character_name, character_id, delete_type);
-#endif
+		if (RuleB(Bots, Enabled)) {
+			query = fmt::format(
+				SQL(
+					UPDATE
+					bot_data
+						SET
+					name = SUBSTRING(CONCAT(name, '-deleted-', UNIX_TIMESTAMP()), 1, 64)
+					WHERE
+					owner_id = '{}'
+				),
+				character_id
+			);
+			QueryDatabase(query);
+			LogInfo(
+				"[DeleteCharacter] character_name [{}] ({}) bots are being [{}]",
+				character_name,
+				character_id,
+				delete_type
+			);
+		}
 
 		return true;
 	}
@@ -444,12 +444,13 @@ bool Database::DeleteCharacter(char *character_name)
 		QueryDatabase(fmt::format("DELETE FROM {} WHERE {} = {}", table_name, character_id_column_name, character_id));
 	}
 
-	LogInfo("[DeleteCharacter] character_name [{}] ({}) is being [{}]", character_name, character_id, delete_type);
+	LogInfo("character_name [{}] ({}) is being [{}]", character_name, character_id, delete_type);
 
 	return true;
 }
 
-bool Database::SaveCharacterCreate(uint32 character_id, uint32 account_id, PlayerProfile_Struct* pp){
+bool Database::SaveCharacterCreate(uint32 character_id, uint32 account_id, PlayerProfile_Struct *pp)
+{
 	std::string query = StringFormat(
 		"REPLACE INTO `character_data` ("
 		"id,"
@@ -634,101 +635,102 @@ bool Database::SaveCharacterCreate(uint32 character_id, uint32 account_id, Playe
 		"%u,"  // guild_auto_consent
 		"%u"  // RestTimer
 		")",
-		character_id,					  // " id,                        "
-		account_id,						  // " account_id,                "
-		Strings::Escape(pp->name).c_str(),	  // " `name`,                    "
+		character_id,                      // " id,                        "
+		account_id,                          // " account_id,                "
+		Strings::Escape(pp->name).c_str(),      // " `name`,                    "
 		Strings::Escape(pp->last_name).c_str(), // " last_name,              "
-		pp->gender,						  // " gender,                    "
-		pp->race,						  // " race,                      "
-		pp->class_,						  // " class,                     "
-		pp->level,						  // " `level`,                   "
-		pp->deity,						  // " deity,                     "
-		pp->birthday,					  // " birthday,                  "
-		pp->lastlogin,					  // " last_login,                "
-		pp->timePlayedMin,				  // " time_played,               "
-		pp->pvp,						  // " pvp_status,                "
-		pp->level2,						  // " level2,                    "
-		pp->anon,						  // " anon,                      "
-		pp->gm,							  // " gm,                        "
-		pp->intoxication,				  // " intoxication,              "
-		pp->haircolor,					  // " hair_color,                "
-		pp->beardcolor,					  // " beard_color,               "
-		pp->eyecolor1,					  // " eye_color_1,               "
-		pp->eyecolor2,					  // " eye_color_2,               "
-		pp->hairstyle,					  // " hair_style,                "
-		pp->beard,						  // " beard,                     "
-		pp->ability_time_seconds,		  // " ability_time_seconds,      "
-		pp->ability_number,				  // " ability_number,            "
-		pp->ability_time_minutes,		  // " ability_time_minutes,      "
-		pp->ability_time_hours,			  // " ability_time_hours,        "
+		pp->gender,                          // " gender,                    "
+		pp->race,                          // " race,                      "
+		pp->class_,                          // " class,                     "
+		pp->level,                          // " `level`,                   "
+		pp->deity,                          // " deity,                     "
+		pp->birthday,                      // " birthday,                  "
+		pp->lastlogin,                      // " last_login,                "
+		pp->timePlayedMin,                  // " time_played,               "
+		pp->pvp,                          // " pvp_status,                "
+		pp->level2,                          // " level2,                    "
+		pp->anon,                          // " anon,                      "
+		pp->gm,                              // " gm,                        "
+		pp->intoxication,                  // " intoxication,              "
+		pp->haircolor,                      // " hair_color,                "
+		pp->beardcolor,                      // " beard_color,               "
+		pp->eyecolor1,                      // " eye_color_1,               "
+		pp->eyecolor2,                      // " eye_color_2,               "
+		pp->hairstyle,                      // " hair_style,                "
+		pp->beard,                          // " beard,                     "
+		pp->ability_time_seconds,          // " ability_time_seconds,      "
+		pp->ability_number,                  // " ability_number,            "
+		pp->ability_time_minutes,          // " ability_time_minutes,      "
+		pp->ability_time_hours,              // " ability_time_hours,        "
 		Strings::Escape(pp->title).c_str(),  // " title,                     "
 		Strings::Escape(pp->suffix).c_str(), // " suffix,                    "
-		pp->exp,						  // " exp,                       "
-		pp->points,						  // " points,                    "
-		pp->mana,						  // " mana,                      "
-		pp->cur_hp,						  // " cur_hp,                    "
-		pp->STR,						  // " str,                       "
-		pp->STA,						  // " sta,                       "
-		pp->CHA,						  // " cha,                       "
-		pp->DEX,						  // " dex,                       "
-		pp->INT,						  // " `int`,                     "
-		pp->AGI,						  // " agi,                       "
-		pp->WIS,						  // " wis,                       "
-		pp->face,						  // " face,                      "
-		pp->y,							  // " y,                         "
-		pp->x,							  // " x,                         "
-		pp->z,							  // " z,                         "
-		pp->heading,					  // " heading,                   "
-		pp->pvp2,						  // " pvp2,                      "
-		pp->pvptype,					  // " pvp_type,                  "
-		pp->autosplit,					  // " autosplit_enabled,         "
-		pp->zone_change_count,			  // " zone_change_count,         "
-		pp->drakkin_heritage,			  // " drakkin_heritage,          "
-		pp->drakkin_tattoo,				  // " drakkin_tattoo,            "
-		pp->drakkin_details,			  // " drakkin_details,           "
-		pp->toxicity,					  // " toxicity,                  "
-		pp->hunger_level,				  // " hunger_level,              "
-		pp->thirst_level,				  // " thirst_level,              "
-		pp->ability_up,					  // " ability_up,                "
-		pp->zone_id,					  // " zone_id,                   "
-		pp->zoneInstance,				  // " zone_instance,             "
-		pp->leadAAActive,				  // " leadership_exp_on,         "
-		pp->ldon_points_guk,			  // " ldon_points_guk,           "
-		pp->ldon_points_mir,			  // " ldon_points_mir,           "
-		pp->ldon_points_mmc,			  // " ldon_points_mmc,           "
-		pp->ldon_points_ruj,			  // " ldon_points_ruj,           "
-		pp->ldon_points_tak,			  // " ldon_points_tak,           "
-		pp->ldon_points_available,		  // " ldon_points_available,     "
-		pp->tribute_time_remaining,		  // " tribute_time_remaining,    "
-		pp->showhelm,					  // " show_helm,                 "
-		pp->career_tribute_points,		  // " career_tribute_points,     "
-		pp->tribute_points,				  // " tribute_points,            "
-		pp->tribute_active,				  // " tribute_active,            "
-		pp->endurance,					  // " endurance,                 "
-		pp->group_leadership_exp,		  // " group_leadership_exp,      "
-		pp->raid_leadership_exp,		  // " raid_leadership_exp,       "
-		pp->group_leadership_points,	  // " group_leadership_points,   "
-		pp->raid_leadership_points,		  // " raid_leadership_points,    "
-		pp->air_remaining,				  // " air_remaining,             "
-		pp->PVPKills,					  // " pvp_kills,                 "
-		pp->PVPDeaths,					  // " pvp_deaths,                "
-		pp->PVPCurrentPoints,			  // " pvp_current_points,        "
-		pp->PVPCareerPoints,			  // " pvp_career_points,         "
-		pp->PVPBestKillStreak,			  // " pvp_best_kill_streak,      "
-		pp->PVPWorstDeathStreak,		  // " pvp_worst_death_streak,    "
-		pp->PVPCurrentKillStreak,		  // " pvp_current_kill_streak,   "
-		pp->aapoints_spent,				  // " aa_points_spent,           "
-		pp->expAA,						  // " aa_exp,                    "
-		pp->aapoints,					  // " aa_points,                 "
-		pp->groupAutoconsent,			  // " group_auto_consent,        "
-		pp->raidAutoconsent,			  // " raid_auto_consent,         "
-		pp->guildAutoconsent,			  // " guild_auto_consent,        "
-		pp->RestTimer					  // " RestTimer)                 "
+		pp->exp,                          // " exp,                       "
+		pp->points,                          // " points,                    "
+		pp->mana,                          // " mana,                      "
+		pp->cur_hp,                          // " cur_hp,                    "
+		pp->STR,                          // " str,                       "
+		pp->STA,                          // " sta,                       "
+		pp->CHA,                          // " cha,                       "
+		pp->DEX,                          // " dex,                       "
+		pp->INT,                          // " `int`,                     "
+		pp->AGI,                          // " agi,                       "
+		pp->WIS,                          // " wis,                       "
+		pp->face,                          // " face,                      "
+		pp->y,                              // " y,                         "
+		pp->x,                              // " x,                         "
+		pp->z,                              // " z,                         "
+		pp->heading,                      // " heading,                   "
+		pp->pvp2,                          // " pvp2,                      "
+		pp->pvptype,                      // " pvp_type,                  "
+		pp->autosplit,                      // " autosplit_enabled,         "
+		pp->zone_change_count,              // " zone_change_count,         "
+		pp->drakkin_heritage,              // " drakkin_heritage,          "
+		pp->drakkin_tattoo,                  // " drakkin_tattoo,            "
+		pp->drakkin_details,              // " drakkin_details,           "
+		pp->toxicity,                      // " toxicity,                  "
+		pp->hunger_level,                  // " hunger_level,              "
+		pp->thirst_level,                  // " thirst_level,              "
+		pp->ability_up,                      // " ability_up,                "
+		pp->zone_id,                      // " zone_id,                   "
+		pp->zoneInstance,                  // " zone_instance,             "
+		pp->leadAAActive,                  // " leadership_exp_on,         "
+		pp->ldon_points_guk,              // " ldon_points_guk,           "
+		pp->ldon_points_mir,              // " ldon_points_mir,           "
+		pp->ldon_points_mmc,              // " ldon_points_mmc,           "
+		pp->ldon_points_ruj,              // " ldon_points_ruj,           "
+		pp->ldon_points_tak,              // " ldon_points_tak,           "
+		pp->ldon_points_available,          // " ldon_points_available,     "
+		pp->tribute_time_remaining,          // " tribute_time_remaining,    "
+		pp->showhelm,                      // " show_helm,                 "
+		pp->career_tribute_points,          // " career_tribute_points,     "
+		pp->tribute_points,                  // " tribute_points,            "
+		pp->tribute_active,                  // " tribute_active,            "
+		pp->endurance,                      // " endurance,                 "
+		pp->group_leadership_exp,          // " group_leadership_exp,      "
+		pp->raid_leadership_exp,          // " raid_leadership_exp,       "
+		pp->group_leadership_points,      // " group_leadership_points,   "
+		pp->raid_leadership_points,          // " raid_leadership_points,    "
+		pp->air_remaining,                  // " air_remaining,             "
+		pp->PVPKills,                      // " pvp_kills,                 "
+		pp->PVPDeaths,                      // " pvp_deaths,                "
+		pp->PVPCurrentPoints,              // " pvp_current_points,        "
+		pp->PVPCareerPoints,              // " pvp_career_points,         "
+		pp->PVPBestKillStreak,              // " pvp_best_kill_streak,      "
+		pp->PVPWorstDeathStreak,          // " pvp_worst_death_streak,    "
+		pp->PVPCurrentKillStreak,          // " pvp_current_kill_streak,   "
+		pp->aapoints_spent,                  // " aa_points_spent,           "
+		pp->expAA,                          // " aa_exp,                    "
+		pp->aapoints,                      // " aa_points,                 "
+		pp->groupAutoconsent,              // " group_auto_consent,        "
+		pp->raidAutoconsent,              // " raid_auto_consent,         "
+		pp->guildAutoconsent,              // " guild_auto_consent,        "
+		pp->RestTimer                      // " RestTimer)                 "
 	);
-	auto results = QueryDatabase(query);
+	QueryDatabase(query);
 
 	/* Save Bind Points */
-	query = StringFormat("REPLACE INTO `character_bind` (id, zone_id, instance_id, x, y, z, heading, slot)"
+	query = StringFormat(
+		"REPLACE INTO `character_bind` (id, zone_id, instance_id, x, y, z, heading, slot)"
 		" VALUES (%u, %u, %u, %f, %f, %f, %f, %i), "
 		"(%u, %u, %u, %f, %f, %f, %f, %i), "
 		"(%u, %u, %u, %f, %f, %f, %f, %i), "
@@ -739,57 +741,73 @@ bool Database::SaveCharacterCreate(uint32 character_id, uint32 account_id, Playe
 		character_id, pp->binds[2].zone_id, 0, pp->binds[2].x, pp->binds[2].y, pp->binds[2].z, pp->binds[2].heading, 2,
 		character_id, pp->binds[3].zone_id, 0, pp->binds[3].x, pp->binds[3].y, pp->binds[3].z, pp->binds[3].heading, 3,
 		character_id, pp->binds[4].zone_id, 0, pp->binds[4].x, pp->binds[4].y, pp->binds[4].z, pp->binds[4].heading, 4
-	); results = QueryDatabase(query);
+	);
+	QueryDatabase(query);
 
-        /* HoTT Ability */
-        if(RuleB(Character, GrantHoTTOnCreate))
-        {
-                query = StringFormat("INSERT INTO `character_leadership_abilities` (id, slot, `rank`) VALUES (%u, %i, %i)", character_id, 14, 1);
-                results = QueryDatabase(query);
-        }
+	/* HoTT Ability */
+	if (RuleB(Character, GrantHoTTOnCreate)) {
+		query = StringFormat(
+			"INSERT INTO `character_leadership_abilities` (id, slot, `rank`) VALUES (%u, %i, %i)",
+			character_id,
+			14,
+			1
+		);
+		QueryDatabase(query);
+	}
 
 	/* Save Skills */
-	int firstquery = 0;
-	for (int i = 0; i < MAX_PP_SKILL; i++){
-		if (pp->skills[i] > 0){
-			if (firstquery != 1){
+	int      firstquery = 0;
+	for (int i          = 0; i < MAX_PP_SKILL; i++) {
+		if (pp->skills[i] > 0) {
+			if (firstquery != 1) {
 				firstquery = 1;
-				query = StringFormat("REPLACE INTO `character_skills` (id, skill_id, value) VALUES (%u, %u, %u)", character_id, i, pp->skills[i]);
-			}
-			else{
+				query      = StringFormat(
+					"REPLACE INTO `character_skills` (id, skill_id, value) VALUES (%u, %u, %u)",
+					character_id,
+					i,
+					pp->skills[i]
+				);
+			} else {
 				query = query + StringFormat(", (%u, %u, %u)", character_id, i, pp->skills[i]);
 			}
 		}
 	}
-	results = QueryDatabase(query);
+	QueryDatabase(query);
 
 	/* Save Language */
 	firstquery = 0;
-	for (int i = 0; i < MAX_PP_LANGUAGE; i++){
-		if (pp->languages[i] > 0){
-			if (firstquery != 1){
+	for (int i = 0; i < MAX_PP_LANGUAGE; i++) {
+		if (pp->languages[i] > 0) {
+			if (firstquery != 1) {
 				firstquery = 1;
-				query = StringFormat("REPLACE INTO `character_languages` (id, lang_id, value) VALUES (%u, %u, %u)", character_id, i, pp->languages[i]);
-			}
-			else{
+				query      = StringFormat(
+					"REPLACE INTO `character_languages` (id, lang_id, value) VALUES (%u, %u, %u)",
+					character_id,
+					i,
+					pp->languages[i]
+				);
+			} else {
 				query = query + StringFormat(", (%u, %u, %u)", character_id, i, pp->languages[i]);
 			}
 		}
 	}
-	results = QueryDatabase(query);
+	QueryDatabase(query);
 
 	return true;
 }
 
 uint32 Database::GetCharacterID(const char *name) {
-	std::string query = StringFormat("SELECT `id` FROM `character_data` WHERE `name` = '%s'", name);
+	const auto query = fmt::format(
+		"SELECT `id` FROM `character_data` WHERE `name` = '{}'",
+		Strings::Escape(name)
+	);
 	auto results = QueryDatabase(query);
-	auto row = results.begin();
-	if (results.RowCount() == 1)
-	{
-		return atoi(row[0]);
+	if (!results.Success() || !results.RowCount()) {
+		return 0;
 	}
-	return 0;
+
+	auto row = results.begin();
+	return Strings::ToUnsignedInt(row[0]);
 }
 
 /*
@@ -812,10 +830,10 @@ uint32 Database::GetAccountIDByChar(const char* charname, uint32* oCharID) {
 
 	auto row = results.begin();
 
-	uint32 accountId = atoi(row[0]);
+	uint32 accountId = Strings::ToUnsignedInt(row[0]);
 
 	if (oCharID)
-		*oCharID = atoi(row[1]);
+		*oCharID = Strings::ToUnsignedInt(row[1]);
 
 	return accountId;
 }
@@ -832,7 +850,7 @@ uint32 Database::GetAccountIDByChar(uint32 char_id) {
 		return 0;
 
 	auto row = results.begin();
-	return atoi(row[0]);
+	return Strings::ToUnsignedInt(row[0]);
 }
 
 uint32 Database::GetAccountIDByName(std::string account_name, std::string loginserver, int16* status, uint32* lsid) {
@@ -852,14 +870,14 @@ uint32 Database::GetAccountIDByName(std::string account_name, std::string logins
 	}
 
 	auto row = results.begin();
-	auto account_id = std::stoul(row[0]);
+	auto account_id = Strings::ToUnsignedInt(row[0]);
 
 	if (status) {
-		*status = static_cast<int16>(std::stoi(row[1]));
+		*status = static_cast<int16>(Strings::ToInt(row[1]));
 	}
 
 	if (lsid) {
-		*lsid = row[2] ? std::stoul(row[2]) : 0;
+		*lsid = row[2] ? Strings::ToUnsignedInt(row[2]) : 0;
 	}
 
 	return account_id;
@@ -880,7 +898,7 @@ void Database::GetAccountName(uint32 accountid, char* name, uint32* oLSAccountID
 
 	strcpy(name, row[0]);
 	if (row[1] && oLSAccountID) {
-		*oLSAccountID = atoi(row[1]);
+		*oLSAccountID = Strings::ToUnsignedInt(row[1]);
 	}
 
 }
@@ -968,12 +986,14 @@ bool Database::LoadVariables() {
 
 	std::string key, value;
 	for (auto row = results.begin(); row != results.end(); ++row) {
-		varcache.last_update = atoi(row[2]); // ahh should we be comparing if this is newer?
+		varcache.last_update = Strings::ToUnsignedInt(row[2]); // ahh should we be comparing if this is newer?
 		key = row[0];
 		value = row[1];
 		std::transform(std::begin(key), std::end(key), std::begin(key), ::tolower); // keys are lower case, DB doesn't have to be
 		varcache.Add(key, value);
 	}
+
+	LogInfo("Loaded [{}] variable(s)", Strings::Commify(std::to_string(results.RowCount())));
 
 	return true;
 }
@@ -997,7 +1017,7 @@ bool Database::GetVariable(std::string varname, std::string &varvalue)
 	return false;
 }
 
-bool Database::SetVariable(const std::string varname, const std::string &varvalue)
+bool Database::SetVariable(const std::string& varname, const std::string &varvalue)
 {
 	std::string escaped_name = Strings::Escape(varname);
 	std::string escaped_value = Strings::Escape(varvalue);
@@ -1050,15 +1070,15 @@ bool Database::GetZoneGraveyard(const uint32 graveyard_id, uint32* graveyard_zon
 	auto row = results.begin();
 
 	if(graveyard_zoneid != nullptr)
-		*graveyard_zoneid = atoi(row[0]);
+		*graveyard_zoneid = Strings::ToUnsignedInt(row[0]);
 	if(graveyard_x != nullptr)
-		*graveyard_x = atof(row[1]);
+		*graveyard_x = Strings::ToFloat(row[1]);
 	if(graveyard_y != nullptr)
-		*graveyard_y = atof(row[2]);
+		*graveyard_y = Strings::ToFloat(row[2]);
 	if(graveyard_z != nullptr)
-		*graveyard_z = atof(row[3]);
+		*graveyard_z = Strings::ToFloat(row[3]);
 	if(graveyard_heading != nullptr)
-		*graveyard_heading = atof(row[4]);
+		*graveyard_heading = Strings::ToFloat(row[4]);
 
 	return true;
 }
@@ -1166,13 +1186,13 @@ uint32 Database::GetAccountIDFromLSID(
 	}
 
 	for (auto row = results.begin(); row != results.end(); ++row) {
-		account_id = std::stoi(row[0]);
+		account_id = Strings::ToUnsignedInt(row[0]);
 
 		if (in_account_name) {
 			strcpy(in_account_name, row[1]);
 		}
 		if (in_status) {
-			*in_status = std::stoi(row[2]);
+			*in_status = Strings::ToInt(row[2]);
 		}
 	}
 
@@ -1196,7 +1216,7 @@ void Database::GetAccountFromID(uint32 id, char* oAccountName, int16* oStatus) {
 	if (oAccountName)
 		strcpy(oAccountName, row[0]);
 	if (oStatus)
-		*oStatus = atoi(row[1]);
+		*oStatus = Strings::ToInt(row[1]);
 }
 
 void Database::ClearMerchantTemp(){
@@ -1242,7 +1262,7 @@ uint8 Database::GetServerType() {
 		return 0;
 
 	auto row = results.begin();
-	return atoi(row[0]);
+	return Strings::ToUnsignedInt(row[0]);
 }
 
 bool Database::MoveCharacterToZone(uint32 character_id, uint32 zone_id)
@@ -1279,44 +1299,6 @@ bool Database::MoveCharacterToZone(const char *charname, uint32 zone_id)
 	return results.RowsAffected() != 0;
 }
 
-bool Database::SetHackerFlag(const char* accountname, const char* charactername, const char* hacked) {
-	std::string query = StringFormat("INSERT INTO `hackers` (account, name, hacked) values('%s','%s','%s')", accountname, charactername, hacked);
-	auto results = QueryDatabase(query);
-
-	if (!results.Success()) {
-		return false;
-	}
-
-	return results.RowsAffected() != 0;
-}
-
-bool Database::SetMQDetectionFlag(const char* accountname, const char* charactername, const char* hacked, const char* zone) {
-	//Utilize the "hacker" table, but also give zone information.
-	std::string query = StringFormat("INSERT INTO hackers(account,name,hacked,zone) values('%s','%s','%s','%s')", accountname, charactername, hacked, zone);
-	auto results = QueryDatabase(query);
-
-	if (!results.Success())
-	{
-		return false;
-	}
-
-	return results.RowsAffected() != 0;
-}
-
-bool Database::SetMQDetectionFlag(const char* accountname, const char* charactername, const std::string &hacked, const char* zone) {
-	//Utilize the "hacker" table, but also give zone information.
-	auto query = fmt::format("INSERT INTO hackers(account, name, hacked, zone) values('{}', '{}', '{}', '{}')",
-				 accountname, charactername, hacked, zone);
-	auto results = QueryDatabase(query);
-
-	if (!results.Success())
-	{
-		return false;
-	}
-
-	return results.RowsAffected() != 0;
-}
-
 uint8 Database::GetRaceSkill(uint8 skillid, uint8 in_race)
 {
 	uint16 race_cap = 0;
@@ -1332,7 +1314,7 @@ uint8 Database::GetRaceSkill(uint8 skillid, uint8 in_race)
 		return 0;
 
 	auto row = results.begin();
-	return atoi(row[0]);
+	return Strings::ToUnsignedInt(row[0]);
 }
 
 uint8 Database::GetSkillCap(uint8 skillid, uint8 in_race, uint8 in_class, uint16 in_level)
@@ -1348,12 +1330,12 @@ uint8 Database::GetSkillCap(uint8 skillid, uint8 in_race, uint8 in_class, uint16
 	if (results.Success() && results.RowsAffected() != 0)
 	{
 		auto row = results.begin();
-		skill_level = atoi(row[0]);
-		skill_formula = atoi(row[1]);
-		skill_cap = atoi(row[2]);
-		if (atoi(row[3]) > skill_cap)
-			skill_cap2 = (atoi(row[3])-skill_cap)/10; //Split the post-50 skill cap into difference between pre-50 cap and post-50 cap / 10 to determine amount of points per level.
-		skill_cap3 = atoi(row[4]);
+		skill_level = Strings::ToUnsignedInt(row[0]);
+		skill_formula = Strings::ToUnsignedInt(row[1]);
+		skill_cap = Strings::ToUnsignedInt(row[2]);
+		if (Strings::ToUnsignedInt(row[3]) > skill_cap)
+			skill_cap2 = (Strings::ToUnsignedInt(row[3])-skill_cap)/10; //Split the post-50 skill cap into difference between pre-50 cap and post-50 cap / 10 to determine amount of points per level.
+		skill_cap3 = Strings::ToUnsignedInt(row[4]);
 	}
 
 	int race_skill = GetRaceSkill(skillid,in_race);
@@ -1398,10 +1380,10 @@ uint32 Database::GetCharacterInfo(std::string character_name, uint32 *account_id
 	}
 
 	auto row = results.begin();
-	auto character_id = std::stoul(row[0]);
-	*account_id = std::stoul(row[1]);
-	*zone_id = std::stoul(row[2]);
-	*instance_id = std::stoul(row[3]);
+	auto character_id = Strings::ToUnsignedInt(row[0]);
+	*account_id = Strings::ToUnsignedInt(row[1]);
+	*zone_id = Strings::ToUnsignedInt(row[2]);
+	*instance_id = Strings::ToUnsignedInt(row[3]);
 
 	return character_id;
 }
@@ -1524,7 +1506,7 @@ uint32 Database::GetGroupID(const char* name){
 
 	auto row = results.begin();
 
-	return atoi(row[0]);
+	return Strings::ToUnsignedInt(row[0]);
 }
 
 std::string Database::GetGroupLeaderForLogin(std::string character_name) {
@@ -1538,7 +1520,7 @@ std::string Database::GetGroupLeaderForLogin(std::string character_name) {
 
 	if (results.Success() && results.RowCount()) {
 		auto row = results.begin();
-		group_id = std::stoul(row[0]);
+		group_id = Strings::ToUnsignedInt(row[0]);
 	}
 
 	if (!group_id) {
@@ -1627,7 +1609,7 @@ char *Database::GetGroupLeadershipInfo(uint32 gid, char* leaderbuf, char* mainta
 		strcpy(mentoree, row[5]);
 
 	if (mentor_percent)
-		*mentor_percent = atoi(row[6]);
+		*mentor_percent = Strings::ToInt(row[6]);
 
 	if(GLAA && results.LengthOfColumn(7) == sizeof(GroupLeadershipAA_Struct))
 		memcpy(GLAA, row[7], sizeof(GroupLeadershipAA_Struct));
@@ -1674,7 +1656,7 @@ uint8 Database::GetAgreementFlag(uint32 acctid) {
 
 	auto row = results.begin();
 
-	return atoi(row[0]);
+	return Strings::ToUnsignedInt(row[0]);
 }
 
 void Database::SetAgreementFlag(uint32 acctid) {
@@ -1760,7 +1742,7 @@ uint32 Database::GetRaidID(const char* name)
 	}
 
 	if (row[0]) // would it ever be possible to have a null here?
-		return atoi(row[0]);
+		return Strings::ToUnsignedInt(row[0]);
 
 	return 0;
 }
@@ -1843,7 +1825,7 @@ void Database::GetGroupLeadershipInfo(uint32 gid, uint32 rid, char *maintank,
 		strcpy(mentoree, row[4]);
 
 	if (mentor_percent)
-		*mentor_percent = atoi(row[5]);
+		*mentor_percent = Strings::ToInt(row[5]);
 
 	if (GLAA && results.LengthOfColumn(6) == sizeof(GroupLeadershipAA_Struct))
 		memcpy(GLAA, row[6], sizeof(GroupLeadershipAA_Struct));
@@ -2016,16 +1998,16 @@ bool Database::GetAdventureStats(uint32 char_id, AdventureStats_Struct *as)
 
 	auto row = results.begin();
 
-	as->success.guk = atoi(row[0]);
-	as->success.mir = atoi(row[1]);
-	as->success.mmc = atoi(row[2]);
-	as->success.ruj = atoi(row[3]);
-	as->success.tak = atoi(row[4]);
-	as->failure.guk = atoi(row[5]);
-	as->failure.mir = atoi(row[6]);
-	as->failure.mmc = atoi(row[7]);
-	as->failure.ruj = atoi(row[8]);
-	as->failure.tak = atoi(row[9]);
+	as->success.guk = Strings::ToUnsignedInt(row[0]);
+	as->success.mir = Strings::ToUnsignedInt(row[1]);
+	as->success.mmc = Strings::ToUnsignedInt(row[2]);
+	as->success.ruj = Strings::ToUnsignedInt(row[3]);
+	as->success.tak = Strings::ToUnsignedInt(row[4]);
+	as->failure.guk = Strings::ToUnsignedInt(row[5]);
+	as->failure.mir = Strings::ToUnsignedInt(row[6]);
+	as->failure.mmc = Strings::ToUnsignedInt(row[7]);
+	as->failure.ruj = Strings::ToUnsignedInt(row[8]);
+	as->failure.tak = Strings::ToUnsignedInt(row[9]);
 	as->failure.total = as->failure.guk + as->failure.mir + as->failure.mmc + as->failure.ruj + as->failure.tak;
 	as->success.total = as->success.guk + as->success.mir + as->success.mmc + as->success.ruj + as->success.tak;
 
@@ -2044,7 +2026,7 @@ uint32 Database::GetGuildIDByCharID(uint32 character_id)
 		return 0;
 
 	auto row = results.begin();
-	return atoi(row[0]);
+	return Strings::ToUnsignedInt(row[0]);
 }
 
 uint32 Database::GetGroupIDByCharID(uint32 character_id)
@@ -2066,7 +2048,7 @@ uint32 Database::GetGroupIDByCharID(uint32 character_id)
 		return 0;
 
 	auto row = results.begin();
-	return atoi(row[0]);
+	return Strings::ToUnsignedInt(row[0]);
 }
 
 uint32 Database::GetRaidIDByCharID(uint32 character_id) {
@@ -2079,10 +2061,12 @@ uint32 Database::GetRaidIDByCharID(uint32 character_id) {
 		character_id
 	);
 	auto results = QueryDatabase(query);
-	for (auto row = results.begin(); row != results.end(); ++row) {
-		return atoi(row[0]);
+	if (!results.Success() || !results.RowCount()) {
+		return 0;
 	}
-	return 0;
+
+	auto row = results.begin();
+	return Strings::ToUnsignedInt(row[0]);
 }
 
 int Database::CountInvSnapshots() {
@@ -2094,7 +2078,7 @@ int Database::CountInvSnapshots() {
 
 	auto row = results.begin();
 
-	int64 count = atoll(row[0]);
+	int64 count = Strings::ToBigInt(row[0]);
 	if (count > 2147483647)
 		return -2;
 	if (count < 0)
@@ -2125,17 +2109,17 @@ struct TimeOfDay_Struct Database::LoadTime(time_t &realtime)
 		eqTime.day = 1;
 		eqTime.month = 1;
 		eqTime.year = 3100;
-		realtime = time(0);
+		realtime = time(nullptr);
 	}
 	else{
 		auto row = results.begin();
 
-		eqTime.minute = atoi(row[0]);
-		eqTime.hour = atoi(row[1]);
-		eqTime.day = atoi(row[2]);
-		eqTime.month = atoi(row[3]);
-		eqTime.year = atoi(row[4]);
-		realtime = atoi(row[5]);
+		eqTime.minute = Strings::ToUnsignedInt(row[0]);
+		eqTime.hour = Strings::ToUnsignedInt(row[1]);
+		eqTime.day = Strings::ToUnsignedInt(row[2]);
+		eqTime.month = Strings::ToUnsignedInt(row[3]);
+		eqTime.year = Strings::ToUnsignedInt(row[4]);
+		realtime = Strings::ToBigInt(row[5]);
 	}
 
 	return eqTime;
@@ -2162,7 +2146,7 @@ int Database::GetIPExemption(std::string account_ip) {
 	}
 
 	auto row = results.begin();
-	return std::stoi(row[0]);
+	return Strings::ToInt(row[0]);
 }
 
 void Database::SetIPExemption(std::string account_ip, int exemption_amount) {
@@ -2176,7 +2160,7 @@ void Database::SetIPExemption(std::string account_ip, int exemption_amount) {
 	auto results = QueryDatabase(query);
 	if (results.Success() && results.RowCount()) {
 		auto row = results.begin();
-		exemption_id = std::stoul(row[0]);
+		exemption_id = Strings::ToUnsignedInt(row[0]);
 	}
 
 	query = fmt::format(
@@ -2202,7 +2186,7 @@ int Database::GetInstanceID(uint32 char_id, uint32 zone_id) {
 
 	if (results.Success() && results.RowCount() > 0) {
 		auto row = results.begin();
-		return atoi(row[0]);;
+		return Strings::ToInt(row[0]);;
 	}
 
 	return 0;
@@ -2308,7 +2292,6 @@ bool Database::CopyCharacter(
 			new_rows.emplace_back(new_values);
 		}
 
-		std::string              insert_values;
 		std::vector<std::string> insert_rows;
 
 		for (auto &r: new_rows) {
@@ -2354,7 +2337,7 @@ void Database::SourceDatabaseTableFromUrl(std::string table_name, std::string ur
 		uri request_uri(url);
 
 		LogHTTP(
-			"[SourceDatabaseTableFromUrl] parsing url [{}] path [{}] host [{}] query_string [{}] protocol [{}] port [{}]",
+			"parsing url [{}] path [{}] host [{}] query_string [{}] protocol [{}] port [{}]",
 			url,
 			request_uri.get_path(),
 			request_uri.get_host(),
@@ -2381,7 +2364,7 @@ void Database::SourceDatabaseTableFromUrl(std::string table_name, std::string ur
 
 			int sourced_queries = 0;
 
-			if (auto res = cli.Get(request_uri.get_path().c_str())) {
+			if (auto res = cli.Get(request_uri.get_path())) {
 				if (res->status == 200) {
 					for (auto &s: Strings::Split(res->body, ';')) {
 						if (!Strings::Trim(s).empty()) {
@@ -2408,7 +2391,7 @@ void Database::SourceDatabaseTableFromUrl(std::string table_name, std::string ur
 
 	}
 	catch (std::invalid_argument iae) {
-		LogError("[SourceDatabaseTableFromUrl] URI parser error [{}]", iae.what());
+		LogError("URI parser error [{}]", iae.what());
 	}
 }
 

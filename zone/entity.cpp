@@ -17,14 +17,12 @@
 */
 #include "../common/data_verification.h"
 #include "../common/global_define.h"
-#include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
 #include <iostream>
 
 #ifdef _WINDOWS
-#include <process.h>
 #else
 #include <pthread.h>
 #include "../common/unix.h"
@@ -43,7 +41,6 @@
 #include "worldserver.h"
 #include "water_map.h"
 #include "npc_scale_manager.h"
-#include "../common/say_link.h"
 #include "dialogue_window.h"
 
 #ifdef _WINDOWS
@@ -52,9 +49,7 @@
 	#define strcasecmp	_stricmp
 #endif
 
-#ifdef BOTS
 #include "bot.h"
-#endif
 
 extern Zone *zone;
 extern volatile bool is_zone_loaded;
@@ -278,29 +273,15 @@ const Encounter* Entity::CastToEncounter() const
 	return static_cast<const Encounter *>(this);
 }
 
-#ifdef BOTS
 Bot *Entity::CastToBot()
 {
-#ifdef _EQDEBUG
-	if (!IsBot()) {
-		std::cout << "CastToBot error" << std::endl;
-		return 0;
-	}
-#endif
 	return static_cast<Bot *>(this);
 }
 
 const Bot *Entity::CastToBot() const
 {
-#ifdef _EQDEBUG
-	if (!IsBot()) {
-		std::cout << "CastToBot error" << std::endl;
-		return 0;
-	}
-#endif
 	return static_cast<const Bot *>(this);
 }
-#endif
 
 EntityList::EntityList()
 	:
@@ -348,8 +329,8 @@ bool EntityList::CanAddHateForMob(Mob *p)
 void EntityList::AddClient(Client *client)
 {
 	client->SetID(GetFreeID());
-	client_list.insert(std::pair<uint16, Client *>(client->GetID(), client));
-	mob_list.insert(std::pair<uint16, Mob *>(client->GetID(), client));
+	client_list.emplace(std::pair<uint16, Client *>(client->GetID(), client));
+	mob_list.emplace(std::pair<uint16, Mob *>(client->GetID(), client));
 }
 
 
@@ -405,9 +386,7 @@ void EntityList::GroupProcess()
 	for (auto &group : group_list)
 		group->Process();
 
-#if EQDEBUG >= 5
-	CheckGroupList (__FILE__, __LINE__);
-#endif
+
 }
 
 void EntityList::QueueToGroupsForNPCHealthAA(Mob *sender, const EQApplicationPacket *app)
@@ -554,11 +533,9 @@ void EntityList::MobProcess()
 			if(mob->IsMerc()) {
 				entity_list.RemoveMerc(id);
 			}
-#ifdef BOTS
 			else if(mob->IsBot()) {
 				entity_list.RemoveBot(id);
 			}
-#endif
 			else if(mob->IsNPC()) {
 				entity_list.RemoveNPC(id);
 			}
@@ -570,12 +547,10 @@ void EntityList::MobProcess()
 #endif
 				Group *g = GetGroupByMob(mob);
 				if(g) {
-					LogError("About to delete a client still in a group");
 					g->DelMember(mob);
 				}
 				Raid *r = entity_list.GetRaidByClient(mob->CastToClient());
 				if(r) {
-					LogError("About to delete a client still in a raid");
 					r->MemberZoned(mob->CastToClient());
 				}
 				entity_list.RemoveClient(id);
@@ -629,9 +604,7 @@ void EntityList::AddGroup(Group *group)
 	}
 
 	AddGroup(group, gid);
-#if EQDEBUG >= 5
-	CheckGroupList (__FILE__, __LINE__);
-#endif
+
 }
 
 void EntityList::AddGroup(Group *group, uint32 gid)
@@ -679,7 +652,7 @@ void EntityList::AddCorpse(Corpse *corpse, uint32 in_id)
 		corpse->SetID(in_id);
 
 	corpse->CalcCorpseName();
-	corpse_list.insert(std::pair<uint16, Corpse *>(corpse->GetID(), corpse));
+	corpse_list.emplace(std::pair<uint16, Corpse *>(corpse->GetID(), corpse));
 
 	if (!corpse_timer.Enabled())
 		corpse_timer.Start();
@@ -696,6 +669,13 @@ void EntityList::AddNPC(NPC *npc, bool send_spawn_packet, bool dont_queue)
 		if (owner) {
 			owner->SetPetID(npc->GetID());
 		}
+	}
+
+	npc_list.emplace(std::pair<uint16, NPC *>(npc->GetID(), npc));
+	mob_list.emplace(std::pair<uint16, Mob *>(npc->GetID(), npc));
+
+	if (parse->HasQuestSub(npc->GetNPCTypeID(), EVENT_SPAWN)) {
+		parse->EventNPC(EVENT_SPAWN, npc, nullptr, "", 0);
 	}
 
 	const auto emote_id = npc->GetEmoteID();
@@ -731,14 +711,13 @@ void EntityList::AddNPC(NPC *npc, bool send_spawn_packet, bool dont_queue)
 		}
 	}
 
-	npc_list.insert(std::pair<uint16, NPC *>(npc->GetID(), npc));
-	mob_list.insert(std::pair<uint16, Mob *>(npc->GetID(), npc));
-
-	parse->EventNPC(EVENT_SPAWN, npc, nullptr, "", 0);
+	npc->SendPositionToClients();
 
 	entity_list.ScanCloseMobs(npc->close_mobs, npc, true);
 
-	npc->DispatchZoneControllerEvent(EVENT_SPAWN_ZONE, npc, "", 0, nullptr);
+	if (parse->HasQuestSub(ZONE_CONTROLLER_NPC_ID, EVENT_SPAWN_ZONE)) {
+		npc->DispatchZoneControllerEvent(EVENT_SPAWN_ZONE, npc, "", 0, nullptr);
+	}
 
 	if (zone->HasMap() && zone->HasWaterMap()) {
 		npc->SetSpawnedInWater(false);
@@ -773,8 +752,8 @@ void EntityList::AddMerc(Merc *merc, bool SendSpawnPacket, bool dontqueue)
 			}
 		}
 
-		merc_list.insert(std::pair<uint16, Merc *>(merc->GetID(), merc));
-		mob_list.insert(std::pair<uint16, Mob *>(merc->GetID(), merc));
+		merc_list.emplace(std::pair<uint16, Merc *>(merc->GetID(), merc));
+		mob_list.emplace(std::pair<uint16, Mob *>(merc->GetID(), merc));
 	}
 }
 
@@ -791,7 +770,7 @@ void EntityList::AddObject(Object *obj, bool SendSpawnPacket)
 		QueueClients(0, &app,false);
 	}
 
-	object_list.insert(std::pair<uint16, Object *>(obj->GetID(), obj));
+	object_list.emplace(std::pair<uint16, Object *>(obj->GetID(), obj));
 
 	if (!object_timer.Enabled())
 		object_timer.Start();
@@ -800,7 +779,7 @@ void EntityList::AddObject(Object *obj, bool SendSpawnPacket)
 void EntityList::AddDoor(Doors *door)
 {
 	door->SetEntityID(GetFreeID());
-	door_list.insert(std::pair<uint16, Doors *>(door->GetEntityID(), door));
+	door_list.emplace(std::pair<uint16, Doors *>(door->GetEntityID(), door));
 
 	if (!door_timer.Enabled())
 		door_timer.Start();
@@ -809,7 +788,7 @@ void EntityList::AddDoor(Doors *door)
 void EntityList::AddTrap(Trap *trap)
 {
 	trap->SetID(GetFreeID());
-	trap_list.insert(std::pair<uint16, Trap *>(trap->GetID(), trap));
+	trap_list.emplace(std::pair<uint16, Trap *>(trap->GetID(), trap));
 	if (!trap_timer.Enabled())
 		trap_timer.Start();
 }
@@ -817,13 +796,13 @@ void EntityList::AddTrap(Trap *trap)
 void EntityList::AddBeacon(Beacon *beacon)
 {
 	beacon->SetID(GetFreeID());
-	beacon_list.insert(std::pair<uint16, Beacon *>(beacon->GetID(), beacon));
+	beacon_list.emplace(std::pair<uint16, Beacon *>(beacon->GetID(), beacon));
 }
 
 void EntityList::AddEncounter(Encounter *encounter)
 {
 	encounter->SetID(GetFreeID());
-	encounter_list.insert(std::pair<uint16, Encounter *>(encounter->GetID(), encounter));
+	encounter_list.emplace(std::pair<uint16, Encounter *>(encounter->GetID(), encounter));
 }
 
 void EntityList::AddToSpawnQueue(uint16 entityid, NewSpawn_Struct **ns)
@@ -862,8 +841,10 @@ void EntityList::CheckSpawnQueue()
 				NPC *pnpc = it->second;
 				pnpc->SendArmorAppearance();
 				pnpc->SetAppearance(pnpc->GetGuardPointAnim(), false);
-				if (!pnpc->IsTargetable())
+				if (!pnpc->IsTargetable()) {
 					pnpc->SendTargetable(false);
+				}
+				pnpc->SendPositionToClients();
 			}
 			safe_delete(outapp);
 			iterator.RemoveCurrent();
@@ -1571,16 +1552,18 @@ void EntityList::RemoveFromAutoXTargets(Mob *mob)
 
 void EntityList::RefreshAutoXTargets(Client *c)
 {
-	if (!c)
+	if (!c) {
 		return;
+	}
 
 	auto it = mob_list.begin();
 	while (it != mob_list.end()) {
 		Mob *m = it->second;
 		++it;
 
-		if (!m || m->GetHP() <= 0)
+		if (!m || m->GetHP() <= 0) {
 			continue;
+		}
 
 		if ((m->CheckAggro(c) || m->IsOnFeignMemory(c)) && !c->IsXTarget(m)) {
 			c->AddAutoXTarget(m, false); // we only call this before a bulk, so lets not send right away
@@ -1592,19 +1575,22 @@ void EntityList::RefreshAutoXTargets(Client *c)
 
 void EntityList::RefreshClientXTargets(Client *c)
 {
-	if (!c)
+	if (!c) {
 		return;
+	}
 
 	auto it = client_list.begin();
 	while (it != client_list.end()) {
 		Client *c2 = it->second;
 		++it;
 
-		if (!c2)
+		if (!c2) {
 			continue;
+		}
 
-		if (c2->IsClientXTarget(c))
+		if (c2->IsClientXTarget(c)) {
 			c2->UpdateClientXTarget(c);
+		}
 	}
 }
 
@@ -1801,12 +1787,29 @@ void EntityList::QueueClientsStatus(Mob *sender, const EQApplicationPacket *app,
 void EntityList::DuelMessage(Mob *winner, Mob *loser, bool flee)
 {
 	if (winner->GetLevelCon(winner->GetLevel(), loser->GetLevel()) > 2) {
-		std::vector<std::any> args;
-		args.push_back(winner);
-		args.push_back(loser);
+		if (parse->PlayerHasQuestSub(EVENT_DUEL_WIN)) {
+			std::vector<std::any> args = { winner, loser };
 
-		parse->EventPlayer(EVENT_DUEL_WIN, winner->CastToClient(), loser->GetName(), loser->CastToClient()->CharacterID(), &args);
-		parse->EventPlayer(EVENT_DUEL_LOSE, loser->CastToClient(), winner->GetName(), winner->CastToClient()->CharacterID(), &args);
+			parse->EventPlayer(
+				EVENT_DUEL_WIN,
+				winner->CastToClient(),
+				loser->GetName(),
+				loser->CastToClient()->CharacterID(),
+				&args
+			);
+		}
+
+		if (parse->PlayerHasQuestSub(EVENT_DUEL_LOSE)) {
+			std::vector<std::any> args = { winner, loser };
+
+			parse->EventPlayer(
+				EVENT_DUEL_LOSE,
+				loser->CastToClient(),
+				winner->GetName(),
+				winner->CastToClient()->CharacterID(),
+				&args
+			);
+		}
 	}
 
 	auto it = client_list.begin();
@@ -1869,7 +1872,6 @@ Client *EntityList::GetClientByLSID(uint32 iLSID)
 	return nullptr;
 }
 
-#ifdef BOTS
 Bot* EntityList::GetRandomBot(const glm::vec3& location, float distance, Bot* exclude_bot)
 {
 	auto is_whole_zone = false;
@@ -1900,7 +1902,6 @@ Bot* EntityList::GetRandomBot(const glm::vec3& location, float distance, Bot* ex
 	return bots_in_range[zone->random.Int(0, bots_in_range.size() - 1)];
 
 }
-#endif
 
 Client *EntityList::GetRandomClient(const glm::vec3& location, float distance, Client *exclude_client)
 {
@@ -2112,9 +2113,18 @@ Group *EntityList::GetGroupByMob(Mob *mob)
 			return *iterator;
 		++iterator;
 	}
-#if EQDEBUG >= 5
-	CheckGroupList (__FILE__, __LINE__);
-#endif
+	return nullptr;
+}
+
+Group *EntityList::GetGroupByMobName(const char* name)
+{
+	for (const auto& g : group_list) {
+		for (const auto& m : g->membername) {
+			if (strcmp(m, name) == 0) {
+				return g;
+			}
+		}
+	}
 	return nullptr;
 }
 
@@ -2129,9 +2139,6 @@ Group *EntityList::GetGroupByLeaderName(const char *leader)
 			return *iterator;
 		++iterator;
 	}
-#if EQDEBUG >= 5
-	CheckGroupList (__FILE__, __LINE__);
-#endif
 	return nullptr;
 }
 
@@ -2146,9 +2153,6 @@ Group *EntityList::GetGroupByID(uint32 group_id)
 			return *iterator;
 		++iterator;
 	}
-#if EQDEBUG >= 5
-	CheckGroupList (__FILE__, __LINE__);
-#endif
 	return nullptr;
 }
 
@@ -2167,13 +2171,12 @@ Group *EntityList::GetGroupByClient(Client *client)
 	iterator = group_list.begin();
 
 	while (iterator != group_list.end()) {
-		if ((*iterator)->IsGroupMember(client->CastToMob()))
+		if ((*iterator)->IsGroupMember(client->CastToMob())) {
 			return *iterator;
+		}
 		++iterator;
 	}
-#if EQDEBUG >= 5
-	CheckGroupList (__FILE__, __LINE__);
-#endif
+
 	return nullptr;
 }
 
@@ -2184,9 +2187,9 @@ Raid *EntityList::GetRaidByLeaderName(const char *leader)
 	iterator = raid_list.begin();
 
 	while (iterator != raid_list.end()) {
-		if ((*iterator)->GetLeader())
-			if(strcmp((*iterator)->GetLeader()->GetName(), leader) == 0)
-				return *iterator;
+		if ((*iterator)->GetLeader() && strcmp((*iterator)->GetLeader()->GetName(), leader) == 0) {
+			return *iterator;
+		}
 		++iterator;
 	}
 	return nullptr;
@@ -2206,22 +2209,20 @@ Raid *EntityList::GetRaidByID(uint32 id)
 	return nullptr;
 }
 
-Raid *EntityList::GetRaidByClient(Client* client)
+Raid* EntityList::GetRaidByClient(Client* client)
 {
 	if (client->p_raid_instance) {
 		return client->p_raid_instance;
 	}
 
-	std::list<Raid *>::iterator iterator;
+	std::list<Raid*>::iterator iterator;
 	iterator = raid_list.begin();
 
 	while (iterator != raid_list.end()) {
-		for (auto &member : (*iterator)->members) {
-			if (member.member) {
-				if (member.member == client) {
-					client->p_raid_instance = *iterator;
-					return *iterator;
-				}
+		for (const auto& member : (*iterator)->members) {
+			if (member.member && member.member == client) {
+				client->p_raid_instance = *iterator;
+				return *iterator;
 			}
 		}
 
@@ -2230,6 +2231,49 @@ Raid *EntityList::GetRaidByClient(Client* client)
 
 	return nullptr;
 }
+Raid* EntityList::GetRaidByBotName(const char* name)
+{
+	std::list<RaidMember> rm;
+	auto GetMembersWithNames = [&rm](Raid const* r) -> std::list<RaidMember> {
+		for (const auto& m : r->members) {
+			if (strlen(m.member_name) > 0)
+				rm.push_back(m);
+		}
+		return rm;
+	};
+
+	for (const auto& r : raid_list) {
+		for (const auto& m : GetMembersWithNames(r)) {
+			if (strcmp(m.member_name, name) == 0) {
+				return r;
+			}
+		}
+	}
+	return nullptr;
+}
+
+Raid* EntityList::GetRaidByBot(const Bot* bot)
+{
+	std::list<RaidMember> rm;
+	auto GetMembersWhoAreBots = [&rm](Raid* r) -> std::list<RaidMember> {
+		for (auto const& m : r->members) {
+			if (m.is_bot) {
+				rm.push_back(m);
+			}
+		}
+		return rm;
+	};
+
+	for (const auto& r : raid_list) {
+		for (const auto& m : GetMembersWhoAreBots(r)) {
+			if (m.member->CastToBot() == bot) {
+				return r;
+			}
+		}
+	}
+	return nullptr;
+}
+
 
 Raid *EntityList::GetRaidByMob(Mob *mob)
 {
@@ -2655,6 +2699,12 @@ void EntityList::RemoveAllNPCs()
 	npc_limit_list.clear();
 }
 
+void EntityList::RemoveAllBots()
+{
+	// doesn't clear the data
+	bot_list.clear();
+}
+
 void EntityList::RemoveAllMercs()
 {
 	// doesn't clear the data
@@ -2668,9 +2718,6 @@ void EntityList::RemoveAllGroups()
 		group_list.pop_front();
 		safe_delete(group);
 	}
-#if EQDEBUG >= 5
-	CheckGroupList (__FILE__, __LINE__);
-#endif
 }
 
 void EntityList::RemoveAllRaids()
@@ -2937,7 +2984,7 @@ void EntityList::ScanCloseMobs(
 
 		float distance = DistanceSquared(scanning_mob->GetPosition(), mob->GetPosition());
 		if (distance <= scan_range || mob->GetAggroRange() >= scan_range) {
-			close_mobs.insert(std::pair<uint16, Mob *>(mob->GetID(), mob));
+			close_mobs.emplace(std::pair<uint16, Mob *>(mob->GetID(), mob));
 
 			if (add_self_to_other_lists && scanning_mob->GetID() > 0) {
 				bool has_mob = false;
@@ -2956,7 +3003,7 @@ void EntityList::ScanCloseMobs(
 		}
 	}
 
-	LogAIScanCloseModerate(
+	LogAIScanCloseDetail(
 		"[{}] Scanning Close List | list_size [{}] moving [{}]",
 		scanning_mob->GetCleanName(),
 		close_mobs.size(),
@@ -3078,6 +3125,8 @@ void EntityList::Clear()
 {
 	RemoveAllClients();
 	entity_list.RemoveAllTraps(); //we can have child npcs so we go first
+	entity_list.RemoveAllMercs();
+	entity_list.RemoveAllBots();
 	entity_list.RemoveAllNPCs();
 	entity_list.RemoveAllMobs();
 	entity_list.RemoveAllCorpses();
@@ -3145,13 +3194,8 @@ void EntityList::RemoveEntity(uint16 id)
 		return;
 	else if (entity_list.RemoveMerc(id))
 		return;
-
-#ifdef BOTS
-	// This block of code is necessary to clean up bot objects
 	else if (entity_list.RemoveBot(id))
 		return;
-#endif //BOTS
-
 	else
 		entity_list.RemoveObject(id);
 }
@@ -3263,7 +3307,7 @@ char *EntityList::MakeNameUnique(char *name)
 		if (it->second->IsMob()) {
 			if (strncasecmp(it->second->CastToMob()->GetName(), name, len) == 0) {
 				if (Seperator::IsNumber(&it->second->CastToMob()->GetName()[len])) {
-					used[atoi(&it->second->CastToMob()->GetName()[len])] = true;
+					used[Strings::ToInt(&it->second->CastToMob()->GetName()[len])] = true;
 				}
 			}
 		}
@@ -3666,19 +3710,23 @@ void EntityList::ClearFeignAggro(Mob *targ)
 			}
 
 			if (targ->IsClient()) {
-				std::vector<std::any> args;
-				args.push_back(it->second);
-				int i = parse->EventPlayer(EVENT_FEIGN_DEATH, targ->CastToClient(), "", 0, &args);
-				if (i != 0) {
-					++it;
-					continue;
-				}
+				if (parse->PlayerHasQuestSub(EVENT_FEIGN_DEATH)) {
+					std::vector<std::any> args = { it->second };
 
-				if (it->second->IsNPC()) {
-					int i = parse->EventNPC(EVENT_FEIGN_DEATH, it->second->CastToNPC(), targ, "", 0);
+					int i = parse->EventPlayer(EVENT_FEIGN_DEATH, targ->CastToClient(), "", 0, &args);
 					if (i != 0) {
 						++it;
 						continue;
+					}
+				}
+
+				if (it->second->IsNPC()) {
+					if (parse->HasQuestSub(it->second->GetNPCTypeID(), EVENT_FEIGN_DEATH)) {
+						int i = parse->EventNPC(EVENT_FEIGN_DEATH, it->second->CastToNPC(), targ, "", 0);
+						if (i != 0) {
+							++it;
+							continue;
+						}
 					}
 				}
 			}
@@ -4013,29 +4061,43 @@ void EntityList::ProcessMove(Client *c, const glm::vec3& location)
 	for (auto iter = events.begin(); iter != events.end(); ++iter) {
 		quest_proximity_event& evt = (*iter);
 
-		std::vector<std::any> args;
-		args.push_back(&evt.area_id);
-		args.push_back(&evt.area_type);
+		std::vector<std::any> args = { &evt.area_id, &evt.area_type };
 
 		if (evt.npc) {
 			if (evt.event_id == EVENT_ENTER) {
-				parse->EventNPC(EVENT_ENTER, evt.npc, evt.client, "", 0);
+				if (parse->HasQuestSub(evt.npc->GetNPCTypeID(), EVENT_ENTER)) {
+					parse->EventNPC(EVENT_ENTER, evt.npc, evt.client, "", 0);
+				}
 			} else if (evt.event_id == EVENT_EXIT) {
-				parse->EventNPC(EVENT_EXIT, evt.npc, evt.client, "", 0);
+				if (parse->HasQuestSub(evt.npc->GetNPCTypeID(), EVENT_EXIT)) {
+					parse->EventNPC(EVENT_EXIT, evt.npc, evt.client, "", 0);
+				}
 			} else if (evt.event_id == EVENT_ENTER_AREA) {
-				parse->EventNPC(EVENT_ENTER_AREA, evt.npc, evt.client, "", 0, &args);
+				if (parse->HasQuestSub(evt.npc->GetNPCTypeID(), EVENT_ENTER_AREA)) {
+					parse->EventNPC(EVENT_ENTER_AREA, evt.npc, evt.client, "", 0, &args);
+				}
 			} else if (evt.event_id == EVENT_LEAVE_AREA) {
-				parse->EventNPC(EVENT_LEAVE_AREA, evt.npc, evt.client, "", 0, &args);
+				if (parse->HasQuestSub(evt.npc->GetNPCTypeID(), EVENT_LEAVE_AREA)) {
+					parse->EventNPC(EVENT_LEAVE_AREA, evt.npc, evt.client, "", 0, &args);
+				}
 			}
 		} else {
 			if (evt.event_id == EVENT_ENTER) {
-				parse->EventPlayer(EVENT_ENTER, evt.client, "", 0);
+				if (parse->PlayerHasQuestSub(EVENT_ENTER)) {
+					parse->EventPlayer(EVENT_ENTER, evt.client, "", 0);
+				}
 			} else if (evt.event_id == EVENT_EXIT) {
-				parse->EventPlayer(EVENT_EXIT, evt.client, "", 0);
+				if (parse->PlayerHasQuestSub(EVENT_EXIT)) {
+					parse->EventPlayer(EVENT_EXIT, evt.client, "", 0);
+				}
 			} else if (evt.event_id == EVENT_ENTER_AREA) {
-				parse->EventPlayer(EVENT_ENTER_AREA, evt.client, "", 0, &args);
+				if (parse->PlayerHasQuestSub(EVENT_ENTER_AREA)) {
+					parse->EventPlayer(EVENT_ENTER_AREA, evt.client, "", 0, &args);
+				}
 			} else if (evt.event_id == EVENT_LEAVE_AREA) {
-				parse->EventPlayer(EVENT_LEAVE_AREA, evt.client, "", 0, &args);
+				if (parse->PlayerHasQuestSub(EVENT_LEAVE_AREA)) {
+					parse->EventPlayer(EVENT_LEAVE_AREA, evt.client, "", 0, &args);
+				}
 			}
 		}
 	}
@@ -4048,20 +4110,22 @@ void EntityList::ProcessMove(NPC *n, float x, float y, float z) {
 
 	std::list<quest_proximity_event> events;
 
-	for (auto iter = area_list.begin(); iter != area_list.end(); ++iter) {
-
-		Area &a     = (*iter);
+	for (const auto& a : area_list) {
 		bool old_in = true;
 		bool new_in = true;
-		if (last_x < a.min_x || last_x > a.max_x ||
-			last_y < a.min_y || last_y > a.max_y ||
-			last_z < a.min_z || last_z > a.max_z) {
+		if (
+			!EQ::ValueWithin(last_x, a.min_x, a.max_x) ||
+			!EQ::ValueWithin(last_y, a.min_y, a.max_y) ||
+			!EQ::ValueWithin(last_z, a.min_z, a.max_z)
+		) {
 			old_in = false;
 		}
 
-		if (x < a.min_x || x > a.max_x ||
-			y < a.min_y || y > a.max_y ||
-			z < a.min_z || z > a.max_z) {
+		if (
+			!EQ::ValueWithin(x, a.min_x, a.max_x) ||
+			!EQ::ValueWithin(y, a.min_y, a.max_y) ||
+			!EQ::ValueWithin(z, a.min_z, a.max_z)
+		) {
 			new_in = false;
 		}
 
@@ -4073,7 +4137,7 @@ void EntityList::ProcessMove(NPC *n, float x, float y, float z) {
 			evt.npc       = n;
 			evt.area_id   = a.id;
 			evt.area_type = a.type;
-			events.push_back(evt);
+			events.emplace_back(evt);
 		}
 		else if (!old_in && new_in) {
 			//were not in but now are
@@ -4083,25 +4147,29 @@ void EntityList::ProcessMove(NPC *n, float x, float y, float z) {
 			evt.npc       = n;
 			evt.area_id   = a.id;
 			evt.area_type = a.type;
-			events.push_back(evt);
+			events.emplace_back(evt);
 		}
 	}
 
-	for (auto iter = events.begin(); iter != events.end(); ++iter) {
-		quest_proximity_event   &evt = (*iter);
-
-		std::vector<std::any> args;
-		args.push_back(&evt.area_id);
-		args.push_back(&evt.area_type);
+	for (const auto& evt : events) {
+		std::vector<std::any> args = { &evt.area_id, &evt.area_type };
 
 		if (evt.event_id == EVENT_ENTER) {
-			parse->EventNPC(EVENT_ENTER, evt.npc, evt.client, "", 0);
+			if (parse->HasQuestSub(evt.npc->GetNPCTypeID(), EVENT_ENTER)) {
+				parse->EventNPC(EVENT_ENTER, evt.npc, evt.client, "", 0);
+			}
 		} else if (evt.event_id == EVENT_EXIT) {
-			parse->EventNPC(EVENT_EXIT, evt.npc, evt.client, "", 0);
+			if (parse->HasQuestSub(evt.npc->GetNPCTypeID(), EVENT_EXIT)) {
+				parse->EventNPC(EVENT_EXIT, evt.npc, evt.client, "", 0);
+			}
 		} else if (evt.event_id == EVENT_ENTER_AREA) {
-			parse->EventNPC(EVENT_ENTER_AREA, evt.npc, evt.client, "", 0, &args);
+			if (parse->HasQuestSub(evt.npc->GetNPCTypeID(), EVENT_ENTER_AREA)) {
+				parse->EventNPC(EVENT_ENTER_AREA, evt.npc, evt.client, "", 0, &args);
+			}
 		} else if (evt.event_id == EVENT_LEAVE_AREA) {
-			parse->EventNPC(EVENT_LEAVE_AREA, evt.npc, evt.client, "", 0, &args);
+			if (parse->HasQuestSub(evt.npc->GetNPCTypeID(), EVENT_LEAVE_AREA)) {
+				parse->EventNPC(EVENT_LEAVE_AREA, evt.npc, evt.client, "", 0, &args);
+			}
 		}
 	}
 }
@@ -4155,24 +4223,31 @@ void EntityList::ClearAreas()
 	area_list.clear();
 }
 
-void EntityList::ProcessProximitySay(const char *Message, Client *c, uint8 language)
+void EntityList::ProcessProximitySay(const char *message, Client *c, uint8 language)
 {
-	if (!Message || !c)
+	if (!message || !c) {
 		return;
+	}
 
-	auto iter = proximity_list.begin();
-	for (; iter != proximity_list.end(); ++iter) {
-		NPC *d = (*iter);
-		NPCProximity *l = d->proximity;
-		if (l == nullptr || !l->say)
+	for (const auto& n : proximity_list) {
+		auto* p = n->proximity;
+		if (!p || !p->say) {
 			continue;
+		}
 
-		if (c->GetX() < l->min_x || c->GetX() > l->max_x
-				|| c->GetY() < l->min_y || c->GetY() > l->max_y
-				|| c->GetZ() < l->min_z || c->GetZ() > l->max_z)
+		if (!parse->HasQuestSub(n->GetNPCTypeID(), EVENT_PROXIMITY_SAY)) {
 			continue;
+		}
 
-		parse->EventNPC(EVENT_PROXIMITY_SAY, d, c, Message, language);
+		if (
+			!EQ::ValueWithin(c->GetX(), p->min_x, p->max_x) ||
+			!EQ::ValueWithin(c->GetY(), p->min_y, p->max_y) ||
+			!EQ::ValueWithin(c->GetZ(), p->min_z, p->max_z)
+		) {
+			continue;
+		}
+
+		parse->EventNPC(EVENT_PROXIMITY_SAY, n, c, message, language);
 	}
 }
 
@@ -4829,8 +4904,9 @@ void EntityList::SendZoneAppearance(Client *c)
 
 void EntityList::SendNimbusEffects(Client *c)
 {
-	if (!c)
+	if (!c) {
 		return;
+	}
 
 	auto it = mob_list.begin();
 	while (it != mob_list.end()) {
@@ -4857,8 +4933,9 @@ void EntityList::SendNimbusEffects(Client *c)
 
 void EntityList::SendUntargetable(Client *c)
 {
-	if (!c)
+	if (!c) {
 		return;
+	}
 
 	auto it = mob_list.begin();
 	while (it != mob_list.end()) {
@@ -4869,8 +4946,9 @@ void EntityList::SendUntargetable(Client *c)
 				++it;
 				continue;
 			}
-			if (!cur->IsTargetable())
+			if (!cur->IsTargetable()) {
 				cur->SendTargetable(false, c);
+			}
 		}
 		++it;
 	}
@@ -4878,8 +4956,9 @@ void EntityList::SendUntargetable(Client *c)
 
 void EntityList::SendAppearanceEffects(Client *c)
 {
-	if (!c)
+	if (!c) {
 		return;
+	}
 
 	auto it = mob_list.begin();
 	while (it != mob_list.end()) {
@@ -5186,7 +5265,6 @@ void EntityList::GetClientList(std::list<Client *> &c_list)
 	}
 }
 
-#ifdef BOTS
 void EntityList::GetBotList(std::list<Bot *> &b_list)
 {
 	b_list.clear();
@@ -5277,7 +5355,6 @@ void EntityList::SignalBotByBotName(std::string bot_name, int signal_id)
 		b->Signal(signal_id);
 	}
 }
-#endif
 
 void EntityList::GetCorpseList(std::list<Corpse *> &c_list)
 {
@@ -5370,8 +5447,9 @@ void EntityList::DeleteQGlobal(std::string name, uint32 npcID, uint32 charID, ui
 
 void EntityList::SendFindableNPCList(Client *c)
 {
-	if (!c)
+	if (!c) {
 		return;
+	}
 
 	auto outapp = new EQApplicationPacket(OP_SendFindableNPCs, sizeof(FindableNPC_Struct));
 
@@ -5437,8 +5515,9 @@ void EntityList::UpdateFindableNPCState(NPC *n, bool Remove)
 
 void EntityList::HideCorpses(Client *c, uint8 CurrentMode, uint8 NewMode)
 {
-	if (!c)
+	if (!c) {
 		return;
+	}
 
 	if (NewMode == HideCorpseNone) {
 		SendZoneCorpses(c);
@@ -5450,8 +5529,9 @@ void EntityList::HideCorpses(Client *c, uint8 CurrentMode, uint8 NewMode)
 	if (NewMode == HideCorpseAllButGroup) {
 		g = c->GetGroup();
 
-		if (!g)
+		if (!g) {
 			NewMode = HideCorpseAll;
+		}
 	}
 
 	auto it = corpse_list.begin();
@@ -5879,7 +5959,7 @@ void EntityList::DespawnGridNodes(int32 grid_id) {
 			mob->IsNPC() &&
 			mob->GetRace() == RACE_NODE_2254 &&
 			mob->EntityVariableExists("grid_id") &&
-			std::stoi(mob->GetEntityVariable("grid_id")) == grid_id)
+			Strings::ToInt(mob->GetEntityVariable("grid_id")) == grid_id)
 		{
 			mob->Depop();
 		}

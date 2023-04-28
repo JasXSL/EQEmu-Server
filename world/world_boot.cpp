@@ -30,7 +30,9 @@
 extern ZSList      zoneserver_list;
 extern WorldConfig Config;
 
-void WorldBoot::GMSayHookCallBackProcessWorld(uint16 log_category, std::string message)
+auto mutex = new Mutex;
+
+void WorldBoot::GMSayHookCallBackProcessWorld(uint16 log_category, const char *func, std::string message)
 {
 	// we don't want to loop up with chat messages
 	if (message.find("OP_SpecialMesg") != std::string::npos) {
@@ -71,15 +73,26 @@ void WorldBoot::GMSayHookCallBackProcessWorld(uint16 log_category, std::string m
 		AccountStatus::QuestTroupe,
 		LogSys.GetGMSayColorFromCategory(log_category),
 		"%s",
-		message.c_str()
+		fmt::format("[{}] [{}] {}", Logs::LogCategoryName[log_category], func, message).c_str()
 	);
 }
 
 bool WorldBoot::HandleCommandInput(int argc, char **argv)
 {
+	// command handler
+	if (argc > 1) {
+		LogSys.SilenceConsoleLogging();
+		path.LoadPaths();
+		WorldConfig::LoadConfig();
+		LoadDatabaseConnections();
+		RuleManager::Instance()->LoadRules(&database, "default", false);
+		LogSys.EnableConsoleLogging();
+		WorldserverCLI::CommandHandler(argc, argv);
+	}
+
 	// database version
 	uint32 database_version      = CURRENT_BINARY_DATABASE_VERSION;
-	uint32 bots_database_version = CURRENT_BINARY_BOTS_DATABASE_VERSION;
+	uint32 bots_database_version = RuleB(Bots, Enabled) ? CURRENT_BINARY_BOTS_DATABASE_VERSION : 0;
 	if (argc >= 2) {
 		if (strcasecmp(argv[1], "db_version") == 0) {
 			std::cout << "Binary Database Version: " << database_version << " : " << bots_database_version << std::endl;
@@ -87,24 +100,14 @@ bool WorldBoot::HandleCommandInput(int argc, char **argv)
 		}
 	}
 
-	// command handler
-	if (argc > 1) {
-		LogSys.SilenceConsoleLogging();
-		path.LoadPaths();
-		WorldConfig::LoadConfig();
-		LoadDatabaseConnections();
-		LogSys.EnableConsoleLogging();
-		WorldserverCLI::CommandHandler(argc, argv);
-	}
-
 	return false;
 }
 
 bool WorldBoot::LoadServerConfig()
 {
-	LogInfo("[WorldBoot::LoadServerConfig] Loading server configuration");
+	LogInfo("Loading server configuration");
 	if (!WorldConfig::LoadConfig()) {
-		LogError("[WorldBoot::LoadServerConfig] Loading server configuration failed");
+		LogError("Loading server configuration failed");
 		return false;
 	}
 
@@ -135,9 +138,7 @@ bool WorldBoot::LoadDatabaseConnections()
 		return false;
 	}
 
-	/**
-	 * Multi-tenancy: Content database
-	 */
+	// Multi-tenancy - content database
 	if (!c->ContentDbHost.empty()) {
 		if (!content_db.Connect(
 			c->ContentDbHost.c_str(),
@@ -152,7 +153,12 @@ bool WorldBoot::LoadDatabaseConnections()
 		}
 	}
 	else {
-		content_db.SetMysql(database.getMySQL());
+		content_db.SetMySQL(database);
+		// when database and content_db share the same underlying mysql connection
+		// it needs to be protected by a shared mutex otherwise we produce concurrency issues
+		// when database actions are occurring in different threads
+		database.SetMutex(mutex);
+		content_db.SetMutex(mutex);
 	}
 
 	return true;
@@ -198,7 +204,7 @@ void WorldBoot::CheckForServerScript(bool force_download)
 		r.set_read_timeout(1, 0);
 		r.set_write_timeout(1, 0);
 
-		if (auto res = r.Get(u.get_path().c_str())) {
+		if (auto res = r.Get(u.get_path())) {
 			if (res->status == 200) {
 				// write file
 
@@ -289,15 +295,15 @@ bool WorldBoot::DatabaseLoadRoutines(int argc, char **argv)
 		}
 	}
 
-	if (!ignore_db) {
-		LogInfo("Checking Database Conversions");
-		database.CheckDatabaseConversions();
-	}
-
 	// logging system init
 	auto logging = LogSys.SetDatabase(&database)
 		->SetLogPath(path.GetLogPath())
 		->LoadLogDatabaseSettings();
+
+	if (!ignore_db) {
+		LogInfo("Checking Database Conversions");
+		database.CheckDatabaseConversions();
+	}
 
 	if (RuleB(Logging, WorldGMSayLogging)) {
 		logging->SetGMSayHandler(&WorldBoot::GMSayHookCallBackProcessWorld);
@@ -324,6 +330,11 @@ bool WorldBoot::DatabaseLoadRoutines(int argc, char **argv)
 
 	zone_store.LoadZones(content_db);
 
+	if (zone_store.GetZones().empty()) {
+		LogError("Failed to load zones data, check your schema for possible errors");
+		return 1;
+	}
+
 	LogInfo("Clearing groups");
 	database.ClearGroup();
 	LogInfo("Clearing raids");
@@ -338,12 +349,10 @@ bool WorldBoot::DatabaseLoadRoutines(int argc, char **argv)
 		LogError("Error: Could not load item data. But ignoring");
 	}
 
-	LogInfo("Loading skill caps");
 	if (!content_db.LoadSkillCaps(std::string(hotfix_name))) {
 		LogError("Error: Could not load skill cap data. But ignoring");
 	}
 
-	LogInfo("Loading guilds");
 	guild_mgr.LoadGuilds();
 
 	//rules:
@@ -360,7 +369,7 @@ bool WorldBoot::DatabaseLoadRoutines(int argc, char **argv)
 		if (database.GetVariable("RuleSet", tmp)) {
 			LogInfo("Loading rule set [{}]", tmp.c_str());
 
-			if (!RuleManager::Instance()->LoadRules(&database, tmp.c_str(), false)) {
+			if (!RuleManager::Instance()->LoadRules(&database, tmp, false)) {
 				LogInfo("Failed to load ruleset [{}], falling back to defaults", tmp.c_str());
 			}
 		}
@@ -368,9 +377,6 @@ bool WorldBoot::DatabaseLoadRoutines(int argc, char **argv)
 
 			if (!RuleManager::Instance()->LoadRules(&database, "default", false)) {
 				LogInfo("No rule set configured, using default rules");
-			}
-			else {
-				LogInfo("Loaded default rule set [default]", tmp.c_str());
 			}
 		}
 
@@ -380,7 +386,6 @@ bool WorldBoot::DatabaseLoadRoutines(int argc, char **argv)
 	}
 
 	EQ::InitializeDynamicLookups();
-	LogInfo("Initialized dynamic dictionary entries");
 
 	if (RuleB(World, ClearTempMerchantlist)) {
 		LogInfo("Clearing temporary merchant lists");
@@ -650,5 +655,10 @@ void WorldBoot::CheckForPossibleConfigurationIssues()
 		);
 		std::cout << std::endl;
 	}
+}
+
+void WorldBoot::Shutdown()
+{
+	safe_delete(mutex);
 }
 

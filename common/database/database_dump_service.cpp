@@ -28,6 +28,7 @@
 #include "../database_schema.h"
 #include "../file.h"
 #include "../process/process.h"
+#include "../termcolor/rang.hpp"
 
 #include <ctime>
 
@@ -36,6 +37,7 @@
 #else
 
 #include <sys/time.h>
+#include <thread>
 
 #endif
 
@@ -118,109 +120,53 @@ std::string DatabaseDumpService::GetBaseMySQLDumpCommand()
 	);
 }
 
-/**
- * @return
- */
 std::string DatabaseDumpService::GetPlayerTablesList()
 {
-	std::string              tables_list;
-	std::vector<std::string> tables = DatabaseSchema::GetPlayerTables();
-	for (const auto          &table : tables) {
-		tables_list += table + " ";
-	}
-
-	return Strings::Trim(tables_list);
+	return Strings::Join(DatabaseSchema::GetPlayerTables(), " ");
 }
 
-/**
- * @return
- */
 std::string DatabaseDumpService::GetBotTablesList()
 {
-	std::string              tables_list;
-	std::vector<std::string> tables = DatabaseSchema::GetBotTables();
-	for (const auto          &table : tables) {
-		tables_list += table + " ";
-	}
-
-	return Strings::Trim(tables_list);
+	return Strings::Join(DatabaseSchema::GetBotTables(), " ");
 }
 
-/**
- * @return
- */
+std::string DatabaseDumpService::GetMercTablesList()
+{
+	return Strings::Join(DatabaseSchema::GetMercTables(), " ");
+}
+
 std::string DatabaseDumpService::GetLoginTableList()
 {
-	std::string              tables_list;
-	std::vector<std::string> tables = DatabaseSchema::GetLoginTables();
-	for (const auto          &table : tables) {
-		tables_list += table + " ";
-	}
-
-	return Strings::Trim(tables_list);
+	return Strings::Join(DatabaseSchema::GetLoginTables(), " ");
 }
 
-/**
- * @return
- */
 std::string DatabaseDumpService::GetQueryServTables()
 {
-	std::string              tables_list;
-	std::vector<std::string> tables = DatabaseSchema::GetQueryServerTables();
-	for (const auto          &table : tables) {
-		tables_list += table + " ";
-	}
-
-	return Strings::Trim(tables_list);
+	return Strings::Join(DatabaseSchema::GetQueryServerTables(), " ");
 }
 
-/**
- * @return
- */
 std::string DatabaseDumpService::GetSystemTablesList()
 {
-	std::string tables_list;
+	auto system_tables  = DatabaseSchema::GetServerTables();
+	auto version_tables = DatabaseSchema::GetVersionTables();
 
-	std::vector<std::string> tables = DatabaseSchema::GetServerTables();
-	for (const auto          &table : tables) {
-		tables_list += table + " ";
-	}
+	system_tables.insert(
+		std::end(system_tables),
+		std::begin(version_tables),
+		std::end(version_tables)
+	);
 
-	tables = DatabaseSchema::GetVersionTables();
-	for (const auto &table : tables) {
-		tables_list += table + " ";
-	}
-
-	return Strings::Trim(tables_list);
+	return Strings::Join(system_tables, " ");
 }
-/**
- * @return
- */
+
 std::string DatabaseDumpService::GetStateTablesList()
 {
-	std::string tables_list;
-
-	std::vector<std::string> tables = DatabaseSchema::GetStateTables();
-	for (const auto &table : tables) {
-		tables_list += table + " ";
-	}
-
-	return Strings::Trim(tables_list);
+	return Strings::Join(DatabaseSchema::GetStateTables(), " ");
 }
 
-/**
- * @return
- */
 std::string DatabaseDumpService::GetContentTablesList()
 {
-	std::string tables_list;
-
-	std::vector<std::string> tables = DatabaseSchema::GetContentTables();
-	for (const auto          &table : tables) {
-		tables_list += table + " ";
-	}
-
-	return Strings::Trim(tables_list);
+	return Strings::Join(DatabaseSchema::GetContentTables(), " ");
 }
 
 /**
@@ -255,7 +201,7 @@ std::string DatabaseDumpService::GetDumpFileNameWithPath()
 	return GetSetDumpPath() + GetDumpFileName();
 }
 
-void DatabaseDumpService::Dump()
+void DatabaseDumpService::DatabaseDump()
 {
 	if (!IsMySQLInstalled()) {
 		LogError("MySQL is not installed; Please check your PATH for a valid MySQL installation");
@@ -306,6 +252,11 @@ void DatabaseDumpService::Dump()
 			dump_descriptor += "-bots";
 		}
 
+		if (IsDumpMercTables()) {
+			tables_to_dump += GetMercTablesList() + " ";
+			dump_descriptor += "-mercs";
+		}
+
 		if (IsDumpSystemTables()) {
 			tables_to_dump += GetSystemTablesList() + " ";
 			dump_descriptor += "-system";
@@ -344,14 +295,6 @@ void DatabaseDumpService::Dump()
 		pipe_file = fmt::format(" > {}.sql", GetDumpFileNameWithPath());
 	}
 
-	std::string execute_command = fmt::format(
-		"{} {} {} {}",
-		GetBaseMySQLDumpCommand(),
-		options,
-		tables_to_dump,
-		pipe_file
-	);
-
 	if (!File::Exists(GetSetDumpPath()) && !IsDumpOutputToConsole()) {
 		File::Makedir(GetSetDumpPath());
 	}
@@ -359,7 +302,7 @@ void DatabaseDumpService::Dump()
 	if (IsDumpDropTableSyntaxOnly()) {
 		std::vector<std::string> tables = Strings::Split(tables_to_dump, ' ');
 
-		for (auto &table : tables) {
+		for (auto &table: tables) {
 			std::cout << "DROP TABLE IF EXISTS `" << table << "`;" << std::endl;
 		}
 
@@ -368,14 +311,42 @@ void DatabaseDumpService::Dump()
 		}
 	}
 	else {
+		const auto execute_command = fmt::format(
+			"{} {} {} {}",
+			GetBaseMySQLDumpCommand(),
+			options,
+			tables_to_dump,
+			pipe_file
+		);
+
 		std::string execution_result = Process::execute(execute_command);
 		if (!execution_result.empty() && IsDumpOutputToConsole()) {
 			std::cout << execution_result;
 		}
 	}
 
+	LogSys.EnableConsoleLogging();
+
+	if (!pipe_file.empty()) {
+		std::string file = fmt::format("{}.sql", GetDumpFileNameWithPath());
+		auto        r    = File::GetContents(file);
+		if (!r.error.empty()) {
+			LogError("{}", r.error);
+		}
+
+		for (auto &line: Strings::Split(r.contents, "\n")) {
+			if (Strings::Contains(line, "mysqldump:")) {
+				LogError("{}", line);
+				LogError("Database dump failed. Correct the error before continuing or trying again");
+				LogError("This is to prevent data loss on behalf of the server operator");
+				RemoveSqlBackup();
+				std::exit(1);
+			}
+		}
+	}
+
 	if (!tables_to_dump.empty()) {
-		LogInfo("Dumping Tables [{}]", tables_to_dump);
+		LogInfo("Dumping Tables [{}]", Strings::Trim(tables_to_dump));
 	}
 
 	LogInfo("Database dump created at [{}.sql]", GetDumpFileNameWithPath());
@@ -394,6 +365,7 @@ void DatabaseDumpService::Dump()
 					)
 				);
 				LogInfo("Compressed dump created at [{}.tar.gz]", GetDumpFileNameWithPath());
+				RemoveSqlBackup();
 			}
 			else if (Is7ZipAvailable()) {
 				Process::execute(
@@ -404,6 +376,7 @@ void DatabaseDumpService::Dump()
 					)
 				);
 				LogInfo("Compressed dump created at [{}.zip]", GetDumpFileNameWithPath());
+				RemoveSqlBackup();
 			}
 			else {
 				LogInfo("Compression requested, but no available compression binary was found");
@@ -575,4 +548,22 @@ bool DatabaseDumpService::IsDumpBotTables() const
 void DatabaseDumpService::SetDumpBotTables(bool dump_bot_tables)
 {
 	DatabaseDumpService::dump_bot_tables = dump_bot_tables;
+}
+
+bool DatabaseDumpService::IsDumpMercTables() const
+{
+	return dump_merc_tables;
+}
+
+void DatabaseDumpService::SetDumpMercTables(bool dump_merc_tables)
+{
+	DatabaseDumpService::dump_merc_tables = dump_merc_tables;
+}
+
+void DatabaseDumpService::RemoveSqlBackup()
+{
+	std::string file = fmt::format("{}.sql", GetDumpFileNameWithPath());
+	if (File::Exists(file)) {
+		std::filesystem::remove(file);
+	}
 }

@@ -53,7 +53,10 @@ class Corpse : public Mob {
 	/* Corpse: General */
 	virtual bool	Death(Mob* killerMob, int64 damage, uint16 spell_id, EQ::skills::SkillType attack_skill) { return true; }
 	virtual void	Damage(Mob* from, int64 damage, uint16 spell_id, EQ::skills::SkillType attack_skill, bool avoidable = true, int8 buffslot = -1, bool iBuffTic = false, eSpecialAttacks special = eSpecialAttacks::None) { return; }
-	virtual bool	Attack(Mob* other, int Hand = EQ::invslot::slotPrimary, bool FromRiposte = false, bool IsStrikethrough = true, bool IsFromSpell = false, ExtraAttackOptions *opts = nullptr) { return false; }
+	bool			Attack(Mob* other, int Hand = EQ::invslot::slotPrimary, bool FromRiposte = false, bool IsStrikethrough = true,
+		bool IsFromSpell = false, ExtraAttackOptions *opts = nullptr) override {
+		return false;
+	}
 	virtual bool	HasRaid()			{ return false; }
 	virtual bool	HasGroup()			{ return false; }
 	virtual Raid*	GetRaid()			{ return 0; }
@@ -97,7 +100,20 @@ class Corpse : public Mob {
 	void	RemoveItem(uint16 lootslot);
 	void	RemoveItem(ServerLootItem_Struct* item_data);
 	void	RemoveItemByID(uint32 item_id, int quantity = 1);
-	void	AddItem(uint32 itemnum, uint16 charges, int16 slot = 0, uint32 aug1 = 0, uint32 aug2 = 0, uint32 aug3 = 0, uint32 aug4 = 0, uint32 aug5 = 0, uint32 aug6 = 0, uint8 attuned = 0);
+	void	AddItem(uint32 itemnum, 
+		uint16 charges, 
+		int16 slot = 0, 
+		uint32 aug1 = 0, 
+		uint32 aug2 = 0, 
+		uint32 aug3 = 0, 
+		uint32 aug4 = 0, 
+		uint32 aug5 = 0, 
+		uint32 aug6 = 0, 
+		bool attuned = false, 
+		const std::string &custom_data = std::string(), 
+		uint32 ornamenticon = 0,
+		uint32 ornamentidfile = 0,
+		uint32 ornament_hero_model = 0);
 
 	/* Corpse: Coin */
 	void	SetCash(uint32 in_copper, uint32 in_silver, uint32 in_gold, uint32 in_platinum);
@@ -169,7 +185,6 @@ private:
 	uint32		being_looted_by; /* Determines what the corpse is being looted by internally for logic */
 	uint32		rez_experience; /* Amount of experience that the corpse would rez for */
 	bool		rez;
-	bool		can_corpse_be_rezzed; /* Bool declaring whether or not a corpse can be rezzed */
 	bool		become_npc;
 	int			allowed_looters[MAX_LOOTERS]; /* People allowed to loot the corpse, character id */
 	Timer		corpse_decay_timer; /* The amount of time in millseconds in which a corpse will take to decay (Depop/Poof) */

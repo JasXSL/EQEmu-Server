@@ -476,6 +476,13 @@ bool Database::CheckDatabaseConversions() {
 	CheckDatabaseConvertPPDeblob();
 	CheckDatabaseConvertCorpseDeblob();
 
+	auto *r = RuleManager::Instance();
+	r->LoadRules(this, "default", false);
+	if (!RuleB(Bots, Enabled) && DoesTableExist("bot_data")) {
+		LogInfo("Bot tables found but rule not enabled, enabling");
+		r->SetRule("Bots:Enabled", "true", this, true, true);
+	}
+
 	/* Run EQEmu Server script (Checks for database updates) */
 
 	const std::string file = fmt::format("{}/eqemu_server.pl", path.GetServerPath());
@@ -492,7 +499,7 @@ bool Database::CheckDatabaseConvertPPDeblob(){
 	ExtendedProfile_Struct* e_pp;
 	uint32 pplen = 0;
 	uint32 i;
-	int character_id = 0;
+	uint32 character_id = 0;
 	int account_id = 0;
 	int number_of_characters = 0;
 	int printppdebug = 0; /* Prints Player Profile */
@@ -523,7 +530,7 @@ bool Database::CheckDatabaseConvertPPDeblob(){
 		rquery = StringFormat("SELECT COUNT(`id`) FROM `character_`");
 		results = QueryDatabase(rquery);
 		for (auto row = results.begin(); row != results.end(); ++row) {
-			number_of_characters = atoi(row[0]);
+			number_of_characters = Strings::ToInt(row[0]);
 			printf("Number of Characters in Database: %i \n", number_of_characters);
 		}
 
@@ -922,19 +929,19 @@ bool Database::CheckDatabaseConvertPPDeblob(){
 
 		for (auto row = results.begin(); row != results.end(); ++row) {
 			char_iter_count++;
-			squery = StringFormat("SELECT `id`, `profile`, `name`, `level`, `account_id`, `firstlogon`, `lfg`, `lfp`, `mailkey`, `xtargets`, `inspectmessage`, `extprofile` FROM `character_` WHERE `id` = %i", atoi(row[0]));
+			squery = StringFormat("SELECT `id`, `profile`, `name`, `level`, `account_id`, `firstlogon`, `lfg`, `lfp`, `mailkey`, `xtargets`, `inspectmessage`, `extprofile` FROM `character_` WHERE `id` = %i", Strings::ToUnsignedInt(row[0]));
 			auto results2 = QueryDatabase(squery);
 			auto row2 = results2.begin();
 			pp = (Convert::PlayerProfile_Struct*)row2[1];
 			e_pp = (ExtendedProfile_Struct*)row2[11];
-			character_id = atoi(row[0]);
-			account_id = atoi(row2[4]);
+			character_id = Strings::ToUnsignedInt(row[0]);
+			account_id = Strings::ToInt(row2[4]);
 			/* Convert some data from the character_ table that is still relevant */
-			firstlogon = atoi(row2[5]);
-			lfg = atoi(row2[6]);
-			lfp = atoi(row2[7]);
+			firstlogon = Strings::ToUnsignedInt(row2[5]);
+			lfg = Strings::ToUnsignedInt(row2[6]);
+			lfp = Strings::ToUnsignedInt(row2[7]);
 			mailkey = row2[8];
-			xtargets = atoi(row2[9]);
+			xtargets = Strings::ToUnsignedInt(row2[9]);
 			inspectmessage = row2[10];
 
 			/* Verify PP Integrity */
@@ -960,7 +967,7 @@ bool Database::CheckDatabaseConvertPPDeblob(){
 				loadbar(char_iter_count, number_of_characters, 50);
 
 				/* Run inspect message convert  */
-				if (inspectmessage != ""){
+				if (!inspectmessage.empty()){
 					std::string rquery = StringFormat("REPLACE INTO `character_inspect_messages` (id, inspect_message)"
 						"VALUES (%u, '%s')",
 						character_id,
@@ -1307,7 +1314,7 @@ bool Database::CheckDatabaseConvertPPDeblob(){
 				The speed difference is dramatic
 				*/
 				/* Run AA Convert */
-				int first_entry = 0; rquery = "";
+				int first_entry = 0; rquery.clear();
 				for (i = 0; i < MAX_PP_AA_ARRAY; i++){
 					if (pp->aa_array[i].AA > 0 && pp->aa_array[i].value > 0){
 						if (first_entry != 1){
@@ -1320,14 +1327,14 @@ bool Database::CheckDatabaseConvertPPDeblob(){
 						}
 					}
 				}
-				if (rquery != ""){ results = QueryDatabase(rquery); }
+				if (!rquery.empty()){ results = QueryDatabase(rquery); }
 
 				/* Run Bind Home Convert */
 				if (pp->binds[4].zone_id < 999 && !_ISNAN_(pp->binds[4].x) && !_ISNAN_(pp->binds[4].y) && !_ISNAN_(pp->binds[4].z) && !_ISNAN_(pp->binds[4].heading)) {
 					rquery = StringFormat("REPLACE INTO `character_bind` (id, zone_id, instance_id, x, y, z, heading, is_home)"
 						" VALUES (%u, %u, %u, %f, %f, %f, %f, 1)",
 						character_id, pp->binds[4].zone_id, 0, pp->binds[4].x, pp->binds[4].y, pp->binds[4].z, pp->binds[4].heading);
-					if (rquery != ""){ results = QueryDatabase(rquery); }
+					if (!rquery.empty()){ results = QueryDatabase(rquery); }
 				}
 
 				/* Run Bind Convert */
@@ -1335,10 +1342,10 @@ bool Database::CheckDatabaseConvertPPDeblob(){
 					rquery = StringFormat("REPLACE INTO `character_bind` (id, zone_id, instance_id, x, y, z, heading, is_home)"
 						" VALUES (%u, %u, %u, %f, %f, %f, %f, 0)",
 						character_id, pp->binds[0].zone_id, 0, pp->binds[0].x, pp->binds[0].y, pp->binds[0].z, pp->binds[0].heading);
-					if (rquery != ""){ results = QueryDatabase(rquery); }
+					if (!rquery.empty()){ results = QueryDatabase(rquery); }
 				}
 				/* Run Language Convert */
-				first_entry = 0; rquery = "";
+				first_entry = 0; rquery.clear();
 				for (i = 0; i < MAX_PP_LANGUAGE; i++){
 					if (pp->languages[i] > 0){
 						if (first_entry != 1){
@@ -1348,9 +1355,9 @@ bool Database::CheckDatabaseConvertPPDeblob(){
 						rquery = rquery + StringFormat(", (%u, %u, %u)", character_id, i, pp->languages[i]);
 					}
 				}
-				if (rquery != ""){ results = QueryDatabase(rquery); }
+				if (!rquery.empty()){ results = QueryDatabase(rquery); }
 				/* Run Skill Convert */
-				first_entry = 0; rquery = "";
+				first_entry = 0; rquery.clear();
 				for (i = 0; i < MAX_PP_SKILL; i++){
 					if (pp->skills[i] > 0){
 						if (first_entry != 1){
@@ -1360,9 +1367,9 @@ bool Database::CheckDatabaseConvertPPDeblob(){
 						rquery = rquery + StringFormat(", (%u, %u, %u)", character_id, i, pp->skills[i]);
 					}
 				}
-				if (rquery != ""){ results = QueryDatabase(rquery); }
+				if (!rquery.empty()){ results = QueryDatabase(rquery); }
 				/* Run Spell Convert */
-				first_entry = 0; rquery = "";
+				first_entry = 0; rquery.clear();
 				for (i = 0; i < 480; i++){
 					if (pp->spell_book[i] > 0 && pp->spell_book[i] != 4294967295 && pp->spell_book[i] < 40000 && pp->spell_book[i] != 1){
 						if (first_entry != 1){
@@ -1372,9 +1379,9 @@ bool Database::CheckDatabaseConvertPPDeblob(){
 						rquery = rquery + StringFormat(", (%u, %u, %u)", character_id, i, pp->spell_book[i]);
 					}
 				}
-				if (rquery != ""){ results = QueryDatabase(rquery); }
+				if (!rquery.empty()){ results = QueryDatabase(rquery); }
 				/* Run Max Memmed Spell Convert */
-				first_entry = 0; rquery = "";
+				first_entry = 0; rquery.clear();
 				for (i = 0; i < 9; i++){
 					if (pp->mem_spells[i] > 0 && pp->mem_spells[i] != 65535 && pp->mem_spells[i] != 4294967295){
 						if (first_entry != 1){
@@ -1384,9 +1391,9 @@ bool Database::CheckDatabaseConvertPPDeblob(){
 						rquery = rquery + StringFormat(", (%u, %u, %u)", character_id, i, pp->mem_spells[i]);
 					}
 				}
-				if (rquery != ""){ results = QueryDatabase(rquery); }
+				if (!rquery.empty()){ results = QueryDatabase(rquery); }
 				/* Run Discipline Convert */
-				first_entry = 0; rquery = "";
+				first_entry = 0; rquery.clear();
 				for (i = 0; i < MAX_PP_DISCIPLINES; i++){
 					if (pp->disciplines.values[i] > 0 && pp->disciplines.values[i] < 60000){
 						if (first_entry != 1){
@@ -1396,9 +1403,9 @@ bool Database::CheckDatabaseConvertPPDeblob(){
 						rquery = rquery + StringFormat(", (%u, %u, %u)", character_id, i, pp->disciplines.values[i]);
 					}
 				}
-				if (rquery != ""){ results = QueryDatabase(rquery); }
+				if (!rquery.empty()){ results = QueryDatabase(rquery); }
 				/* Run Material Color Convert */
-				first_entry = 0; rquery = "";
+				first_entry = 0; rquery.clear();
 				for (i = EQ::textures::textureBegin; i < EQ::textures::materialCount; i++){
 					if (pp->item_tint[i].color > 0){
 						if (first_entry != 1){
@@ -1408,9 +1415,9 @@ bool Database::CheckDatabaseConvertPPDeblob(){
 						rquery = rquery + StringFormat(", (%u, %u, %u, %u, %u, %u, %u)", character_id, i, pp->item_tint[i].rgb.blue, pp->item_tint[i].rgb.green, pp->item_tint[i].rgb.red, pp->item_tint[i].rgb.use_tint, pp->item_tint[i].color);
 					}
 				}
-				if (rquery != ""){ results = QueryDatabase(rquery); }
+				if (!rquery.empty()){ results = QueryDatabase(rquery); }
 				/* Run Tribute Convert */
-				first_entry = 0; rquery = "";
+				first_entry = 0; rquery.clear();
 				for (i = 0; i < 5; i++){
 					if (pp->tributes[i].tribute > 0 && pp->tributes[i].tribute != 4294967295){
 						if (first_entry != 1){
@@ -1420,9 +1427,9 @@ bool Database::CheckDatabaseConvertPPDeblob(){
 						rquery = rquery + StringFormat(", (%u, %u, %u)", character_id, pp->tributes[i].tier, pp->tributes[i].tribute);
 					}
 				}
-				if (rquery != ""){ results = QueryDatabase(rquery); }
+				if (!rquery.empty()){ results = QueryDatabase(rquery); }
 				/* Run Bandolier Convert */
-				first_entry = 0; rquery = "";
+				first_entry = 0; rquery.clear();
 				for (i = 0; i < Convert::BANDOLIERS_SIZE; i++){
 					if (strlen(pp->bandoliers[i].Name) < 32) {
 						for (int si = 0; si < Convert::BANDOLIER_ITEM_COUNT; si++){
@@ -1436,9 +1443,9 @@ bool Database::CheckDatabaseConvertPPDeblob(){
 						}
 					}
 				}
-				if (rquery != ""){ results = QueryDatabase(rquery); }
+				if (!rquery.empty()){ results = QueryDatabase(rquery); }
 				/* Run Potion Belt Convert */
-				first_entry = 0; rquery = "";
+				first_entry = 0; rquery.clear();
 				for (i = 0; i < Convert::POTION_BELT_ITEM_COUNT; i++){
 					if (pp->potionbelt.Items[i].ID > 0){
 						if (first_entry != 1){
@@ -1449,9 +1456,9 @@ bool Database::CheckDatabaseConvertPPDeblob(){
 
 					}
 				}
-				if (rquery != ""){ results = QueryDatabase(rquery); }
+				if (!rquery.empty()){ results = QueryDatabase(rquery); }
 				/* Run Leadership AA Convert */
-				first_entry = 0; rquery = "";
+				first_entry = 0; rquery.clear();
 				for (i = 0; i < MAX_LEADERSHIP_AA_ARRAY; i++){
 					if (pp->leader_abilities.ranks[i] > 0 && pp->leader_abilities.ranks[i] < 6){
 						if (first_entry != 1){
@@ -1461,7 +1468,7 @@ bool Database::CheckDatabaseConvertPPDeblob(){
 						rquery = rquery + StringFormat(", (%i, %u, %u)", character_id, i, pp->leader_abilities.ranks[i]);
 					}
 				}
-				if (rquery != ""){ results = QueryDatabase(rquery); }
+				if (!rquery.empty()){ results = QueryDatabase(rquery); }
 			}
 		}
 		if (runconvert == 1){
@@ -1560,7 +1567,7 @@ bool Database::CheckDatabaseConvertCorpseDeblob(){
 		rquery = StringFormat("SELECT DISTINCT charid FROM character_corpses");
 		results = QueryDatabase(rquery);
 		for (auto row = results.begin(); row != results.end(); ++row) {
-			std::string squery = StringFormat("SELECT id, charname, data, time_of_death, is_rezzed FROM character_corpses WHERE `charid` = %i", atoi(row[0]));
+			std::string squery = StringFormat("SELECT id, charname, data, time_of_death, is_rezzed FROM character_corpses WHERE `charid` = %i", Strings::ToUnsignedInt(row[0]));
 			auto results2 = QueryDatabase(squery);
 			for (auto row2 = results2.begin(); row2 != results2.end(); ++row2) {
 				in_datasize = results2.LengthOfColumn(2);
@@ -1592,7 +1599,7 @@ bool Database::CheckDatabaseConvertCorpseDeblob(){
 					c_type = "NULL";
 					continue;
 				}
-				std::cout << "Converting Corpse: [OK] [" << c_type << "]: " << "ID: " << atoi(row2[0]) << std::endl;
+				std::cout << "Converting Corpse: [OK] [" << c_type << "]: " << "ID: " << Strings::ToUnsignedInt(row2[0]) << std::endl;
 
 				if (is_sof){
 					scquery = StringFormat("UPDATE `character_corpses` SET \n"
@@ -1663,19 +1670,19 @@ bool Database::CheckDatabaseConvertCorpseDeblob(){
 						dbpc->item_tint[6].color,
 						dbpc->item_tint[7].color,
 						dbpc->item_tint[8].color,
-						atoi(row2[0])
+						Strings::ToUnsignedInt(row2[0])
 						);
-					if (scquery != ""){ auto sc_results = QueryDatabase(scquery); }
+					if (!scquery.empty()){ auto sc_results = QueryDatabase(scquery); }
 
 					first_entry = 0;
-					scquery = "";
+					scquery.clear();
 					/* Print Items */
 					for (unsigned int i = 0; i < dbpc->itemcount; i++) {
 						if (first_entry != 1){
 							scquery = StringFormat("REPLACE INTO `character_corpse_items` \n"
 								" (corpse_id, equip_slot, item_id, charges, aug_1, aug_2, aug_3, aug_4, aug_5, aug_6, attuned) \n"
 								" VALUES (%u, %u, %u, %u, %u, %u, %u, %u, %u, %u, %u) \n",
-								atoi(row2[0]),
+								Strings::ToUnsignedInt(row2[0]),
 								dbpc->items[i].equipSlot,
 								dbpc->items[i].item_id,
 								dbpc->items[i].charges,
@@ -1691,7 +1698,7 @@ bool Database::CheckDatabaseConvertCorpseDeblob(){
 						}
 						else{
 							scquery = scquery + StringFormat(", (%u, %u, %u, %u, %u, %u, %u, %u, %u, %u, %u) \n",
-								atoi(row2[0]),
+								Strings::ToUnsignedInt(row2[0]),
 								dbpc->items[i].equipSlot,
 								dbpc->items[i].item_id,
 								dbpc->items[i].charges,
@@ -1705,7 +1712,7 @@ bool Database::CheckDatabaseConvertCorpseDeblob(){
 								);
 						}
 					}
-					if (scquery != ""){ auto sc_results = QueryDatabase(scquery); }
+					if (!scquery.empty()){ auto sc_results = QueryDatabase(scquery); }
 				}
 				else{
 					/* Classic Converter */
@@ -1771,12 +1778,12 @@ bool Database::CheckDatabaseConvertCorpseDeblob(){
 						dbpc_c->item_tint[6].color,
 						dbpc_c->item_tint[7].color,
 						dbpc_c->item_tint[8].color,
-						atoi(row2[0])
+						Strings::ToUnsignedInt(row2[0])
 						);
-					if (scquery != ""){ auto sc_results = QueryDatabase(scquery); }
+					if (!scquery.empty()){ auto sc_results = QueryDatabase(scquery); }
 
 					first_entry = 0;
-					scquery = "";
+					scquery.clear();
 
 					/* Print Items */
 					for (unsigned int i = 0; i < dbpc_c->itemcount; i++) {
@@ -1784,7 +1791,7 @@ bool Database::CheckDatabaseConvertCorpseDeblob(){
 							scquery = StringFormat("REPLACE INTO `character_corpse_items` \n"
 								" (corpse_id, equip_slot, item_id, charges, aug_1, aug_2, aug_3, aug_4, aug_5, aug_6, attuned) \n"
 								" VALUES (%u, %u, %u, %u, %u, %u, %u, %u, %u, %u, %u) \n",
-								atoi(row2[0]),
+								Strings::ToUnsignedInt(row2[0]),
 								dbpc_c->items[i].equipSlot,
 								dbpc_c->items[i].item_id,
 								dbpc_c->items[i].charges,
@@ -1800,7 +1807,7 @@ bool Database::CheckDatabaseConvertCorpseDeblob(){
 						}
 						else{
 							scquery = scquery + StringFormat(", (%u, %u, %u, %u, %u, %u, %u, %u, %u, %u, %u) \n",
-								atoi(row2[0]),
+								Strings::ToUnsignedInt(row2[0]),
 								dbpc_c->items[i].equipSlot,
 								dbpc_c->items[i].item_id,
 								dbpc_c->items[i].charges,
@@ -1814,7 +1821,7 @@ bool Database::CheckDatabaseConvertCorpseDeblob(){
 								);
 						}
 					}
-					if (scquery != ""){ auto sc_results = QueryDatabase(scquery); }
+					if (!scquery.empty()){ auto sc_results = QueryDatabase(scquery); }
 				}
 			}
 		}

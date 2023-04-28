@@ -26,7 +26,8 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include "clientlist.h"
 #include "ucsconfig.h"
 #include "database.h"
-#include "../common/discord_manager.h"
+#include "../common/discord/discord_manager.h"
+#include "../common/events/player_event_logs.h"
 
 #include <iostream>
 #include <string.h>
@@ -39,10 +40,10 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 extern WorldServer     worldserver;
 extern Clientlist      *g_Clientlist;
 extern const ucsconfig *Config;
-extern Database        database;
+extern UCSDatabase       database;
 extern DiscordManager  discord_manager;
 
-void ProcessMailTo(Client *c, std::string from, std::string subject, std::string message);
+void ProcessMailTo(Client *c, const std::string& from, const std::string& subject, const std::string& message);
 
 void Client45ToServerSayLink(std::string& serverSayLink, const std::string& clientSayLink);
 void Client50ToServerSayLink(std::string& serverSayLink, const std::string& clientSayLink);
@@ -76,6 +77,18 @@ void WorldServer::ProcessMessage(uint16 opcode, EQ::Net::Packet &p)
 	}
 	case ServerOP_ReloadLogs: {
 		LogSys.LoadLogDatabaseSettings();
+		player_event_logs.ReloadSettings();
+		break;
+	}
+	case ServerOP_PlayerEvent: {
+		auto n = PlayerEvent::PlayerEventContainer{};
+		auto s = (ServerSendPlayerEvent_Struct*) pack->pBuffer;
+		EQ::Util::MemoryStreamReader ss(s->cereal_data, s->cereal_size);
+		cereal::BinaryInputArchive archive(ss);
+		archive(n);
+
+		discord_manager.QueuePlayerEventMessage(n);
+
 		break;
 	}
 	case ServerOP_DiscordWebhookMessage: {
@@ -107,8 +120,7 @@ void WorldServer::ProcessMessage(uint16 opcode, EQ::Net::Packet &p)
 		if (Message.length() < 2)
 			break;
 
-		if (!c)
-		{
+		if (!c) {
 			LogInfo("Client not found");
 			break;
 		}
@@ -138,7 +150,7 @@ void WorldServer::ProcessMessage(uint16 opcode, EQ::Net::Packet &p)
 		}
 		else if (Message[0] == '[')
 		{
-			g_Clientlist->ProcessOPMailCommand(c, Message.substr(1, std::string::npos));
+			g_Clientlist->ProcessOPMailCommand(c, Message.substr(1, std::string::npos), true); // Flag as command_directed
 		}
 
 		break;

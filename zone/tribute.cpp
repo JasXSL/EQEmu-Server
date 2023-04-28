@@ -26,8 +26,6 @@
 
 #ifdef _WINDOWS
     #include <winsock2.h>
-    #include <windows.h>
-    #include <process.h>
     #define snprintf	_snprintf
 	#define vsnprintf	_vsnprintf
     #define strncasecmp	_strnicmp
@@ -247,8 +245,6 @@ int32 Client::TributeItem(uint32 slot, uint32 quantity) {
 	//figure out what its worth
 	int32 pts = inst->GetItem()->Favor;
 
-	pts = mod_tribute_item_value(pts, m_inv[slot]);
-
 	if(pts < 1) {
 		Message(Chat::Red, "This item is worthless for favor.");
 		return(0);
@@ -394,7 +390,7 @@ bool ZoneDatabase::LoadTributes() {
 	}
 
     for (auto row = results.begin(); row != results.end(); ++row) {
-        uint32 id = atoul(row[0]);
+        uint32 id = Strings::ToUnsignedInt(row[0]);
 		tributeData.name = row[1];
 		tributeData.description = row[2];
 		tributeData.unknown = strtoul(row[3], nullptr, 10);
@@ -403,6 +399,8 @@ bool ZoneDatabase::LoadTributes() {
 		tribute_list[id] = tributeData;
     }
 
+	LogInfo("Loaded [{}] tributes", Strings::Commify(results.RowCount()));
+
 	const std::string query2 = "SELECT tribute_id, level, cost, item_id FROM tribute_levels ORDER BY tribute_id, level";
 	results = QueryDatabase(query2);
 	if (!results.Success()) {
@@ -410,7 +408,7 @@ bool ZoneDatabase::LoadTributes() {
 	}
 
 	for (auto row = results.begin(); row != results.end(); ++row) {
-		uint32 id = atoul(row[0]);
+		uint32 id = Strings::ToUnsignedInt(row[0]);
 
 		if (tribute_list.count(id) != 1) {
 			LogError("Error in LoadTributes: unknown tribute [{}] in tribute_levels", (unsigned long) id);
@@ -426,11 +424,13 @@ bool ZoneDatabase::LoadTributes() {
 
 		TributeLevel_Struct &s = cur.tiers[cur.tier_count];
 
-		s.level           = atoul(row[1]);
-		s.cost            = atoul(row[2]);
-		s.tribute_item_id = atoul(row[3]);
+		s.level           = Strings::ToUnsignedInt(row[1]);
+		s.cost            = Strings::ToUnsignedInt(row[2]);
+		s.tribute_item_id = Strings::ToUnsignedInt(row[3]);
 		cur.tier_count++;
 	}
+
+	LogInfo("Loaded [{}] tribute levels", Strings::Commify(results.RowCount()));
 
 	return true;
 }

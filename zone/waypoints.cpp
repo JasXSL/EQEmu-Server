@@ -20,7 +20,6 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include <iostream>
 #endif
 
-#include "../common/features.h"
 #include "../common/rulesys.h"
 #include "../common/strings.h"
 #include "../common/misc_functions.h"
@@ -34,7 +33,6 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include "mob_movement_manager.h"
 
 #include <math.h>
-#include <stdlib.h>
 
 extern FastMath g_Math;
 
@@ -66,14 +64,14 @@ void NPC::AI_SetRoambox(
 	uint32 min_delay
 )
 {
-	roambox_distance      = distance;
-	roambox_max_x         = max_x;
-	roambox_min_x         = min_x;
-	roambox_max_y         = max_y;
-	roambox_min_y         = min_y;
-	roambox_destination_x = roambox_max_x + 1; // this will trigger a recalc
-	roambox_delay         = delay;
-	roambox_min_delay     = min_delay;
+	m_roambox.distance  = distance;
+	m_roambox.max_x     = max_x;
+	m_roambox.min_x     = min_x;
+	m_roambox.max_y     = max_y;
+	m_roambox.min_y     = min_y;
+	m_roambox.dest_x    = max_x + 1; // this will trigger a recalc
+	m_roambox.delay     = delay;
+	m_roambox.min_delay = min_delay;
 }
 
 void NPC::DisplayWaypointInfo(Client *client) {
@@ -165,10 +163,12 @@ void NPC::ResumeWandering()
 
 		if (m_CurrentWayPoint.x == GetX() && m_CurrentWayPoint.y == GetY())
 		{	// are we we at a waypoint? if so, trigger event and start to next
-			std::string export_string = fmt::format("{}", cur_wp);
 			CalculateNewWaypoint();
 			SetAppearance(eaStanding, false);
-			parse->EventNPC(EVENT_WAYPOINT_DEPART, this, nullptr, export_string, 0);
+
+			if (parse->HasQuestSub(GetNPCTypeID(), EVENT_WAYPOINT_DEPART)) {
+				parse->EventNPC(EVENT_WAYPOINT_DEPART, this, nullptr, std::to_string(cur_wp), 0);
+			}
 		}	// if not currently at a waypoint, we continue on to the one we were headed to before the stop
 	}
 	else
@@ -239,7 +239,7 @@ void NPC::MoveTo(const glm::vec4 &position, bool saveguardspot)
 		if (m_GuardPoint.w == -1)
 			m_GuardPoint.w = CalculateHeadingToTarget(position.x, position.y);
 
-		LogAIModerate("Setting guard position to [{}]", to_string(static_cast<glm::vec3>(m_GuardPoint)).c_str());
+		LogAIDetail("Setting guard position to [{}]", to_string(static_cast<glm::vec3>(m_GuardPoint)).c_str());
 	}
 
 	cur_wp_pause        = 0;
@@ -261,7 +261,7 @@ void NPC::UpdateWaypoint(int wp_index)
 
 	m_CurrentWayPoint = glm::vec4(cur->x, cur->y, cur->z, cur->heading);
 	cur_wp_pause = cur->pause;
-	LogAIModerate("Next waypoint [{}]: ({}, {}, {}, {})", wp_index, m_CurrentWayPoint.x, m_CurrentWayPoint.y, m_CurrentWayPoint.z, m_CurrentWayPoint.w);
+	LogAIDetail("Next waypoint [{}]: ({}, {}, {}, {})", wp_index, m_CurrentWayPoint.x, m_CurrentWayPoint.y, m_CurrentWayPoint.z, m_CurrentWayPoint.w);
 
 }
 
@@ -559,7 +559,7 @@ void NPC::SetWaypointPause()
 
 void NPC::SaveGuardSpot(bool ClearGuardSpot) {
 	if (ClearGuardSpot) {
-		LogAIModerate("Clearing guard order.");
+		LogAIDetail("Clearing guard order.");
 		m_GuardPoint = glm::vec4();
 	} else {
 		m_GuardPoint = m_Position;
@@ -728,7 +728,7 @@ void Mob::SendTo(float new_x, float new_y, float new_z) {
 
 			float newz = zone->zonemap->FindBestZ(dest, nullptr);
 
-			LogAIModerate("BestZ returned {} at {}, {}, {}", newz, m_Position.x, m_Position.y, m_Position.z);
+			LogAIDetail("BestZ returned {} at {}, {}, {}", newz, m_Position.x, m_Position.y, m_Position.z);
 
 			if ((newz > -2000) && std::abs(newz - dest.z) < RuleR(Map, FixPathingZMaxDeltaSendTo)) // Sanity check.
 				m_Position.z = newz + 1;
@@ -771,17 +771,27 @@ float Mob::GetFixedZ(const glm::vec3 &destination, int32 z_find_offset) {
 	float new_z = destination.z;
 
 	if (zone->HasMap()) {
-
-		if (flymode == GravityBehavior::Flying)
+		if (flymode == GravityBehavior::Flying) {
 			return new_z;
+		}
 
-		if (zone->HasWaterMap() && zone->watermap->InLiquid(glm::vec3(m_Position)))
+		if (zone->HasWaterMap() && zone->watermap->InLiquid(glm::vec3(m_Position))) {
 			return new_z;
+		}
 
-		/*
-		 * Any more than 5 in the offset makes NPC's hop/snap to ceiling in small corridors
-		 */
-		new_z = FindDestGroundZ(destination, z_find_offset);
+		new_z = FindDestGroundZ(destination, ((-GetZOffset() / 2) + z_find_offset));
+
+		if (RuleB(Map, MobPathingVisualDebug)) {
+			DrawDebugCoordinateNode(
+				fmt::format("{} search z node", GetCleanName()),
+				glm::vec4{
+					m_Position.x,
+					m_Position.y,
+					((-GetZOffset() / 2) + z_find_offset),
+					m_Position.w
+				}
+			);
+		}
 		if (new_z != BEST_Z_INVALID) {
 			new_z += GetZOffset();
 
@@ -792,7 +802,7 @@ float Mob::GetFixedZ(const glm::vec3 &destination, int32 z_find_offset) {
 
 		auto duration = timer.elapsed();
 
-		LogFixZ("Mob::GetFixedZ() ([{}]) returned [{}] at [{}], [{}], [{}] - Took [{}]",
+		LogFixZ("[{}] returned [{}] at [{}] [{}] [{}] - Took [{}]",
 			GetCleanName(),
 			new_z,
 			destination.x,
@@ -833,6 +843,10 @@ void Mob::FixZ(int32 z_find_offset /*= 5*/, bool fix_client_z /*= false*/) {
 		}
 
 		m_Position.z = new_z;
+
+		if (RuleB(Map, MobPathingVisualDebug)) {
+			DrawDebugCoordinateNode(fmt::format("{} new fixed z node", GetCleanName()), GetPosition());
+		}
 	}
 	else {
 		if (RuleB(Map, MobZVisualDebug)) {
@@ -918,6 +932,7 @@ float Mob::GetZOffset() const {
 		case RACE_AMYGDALAN_663:
 			offset = 5.0f;
 			break;
+		case RACE_SPECTRAL_IKSAR_147:
 		case RACE_SANDMAN_664:
 			offset = 4.0f;
 			break;
@@ -928,6 +943,7 @@ float Mob::GetZOffset() const {
 		case RACE_RABBIT_668:
 			offset = 5.0f;
 			break;
+		case RACE_WURM_158:
 		case RACE_BLIND_DREAMER_669:
 			offset = 7.0f;
 			break;
@@ -1029,7 +1045,7 @@ int	ZoneDatabase::GetHighestGrid(uint32 zoneid) {
 		return 0;
 
 	auto row = results.begin();
-	return atoi(row[0]);
+	return Strings::ToInt(row[0]);
 }
 
 uint8 ZoneDatabase::GetGridType2(uint32 grid, uint16 zoneid) {
@@ -1046,7 +1062,7 @@ uint8 ZoneDatabase::GetGridType2(uint32 grid, uint16 zoneid) {
 
 	auto row = results.begin();
 
-	return atoi(row[0]);
+	return Strings::ToInt(row[0]);
 }
 
 bool ZoneDatabase::GetWaypoints(uint32 grid, uint16 zoneid, uint32 num, wplist* wp) {
@@ -1066,11 +1082,11 @@ bool ZoneDatabase::GetWaypoints(uint32 grid, uint16 zoneid, uint32 num, wplist* 
 
 	auto row = results.begin();
 
-	wp->x = atof(row[0]);
-	wp->y = atof(row[1]);
-	wp->z = atof(row[2]);
-	wp->pause = atoi(row[3]);
-	wp->heading = atof(row[4]);
+	wp->x = Strings::ToFloat(row[0]);
+	wp->y = Strings::ToFloat(row[1]);
+	wp->z = Strings::ToFloat(row[2]);
+	wp->pause = Strings::ToInt(row[3]);
+	wp->heading = Strings::ToFloat(row[4]);
 
 	return true;
 }
@@ -1211,7 +1227,7 @@ uint32 ZoneDatabase::AddWPForSpawn(Client *client, uint32 spawn2id, const glm::v
 		return 0;
 
 	auto row = results.begin();
-	grid_num = atoi(row[0]);
+	grid_num = Strings::ToInt(row[0]);
 
 	if (grid_num == 0)
 	{ // Our spawn doesn't have a grid assigned to it -- we need to create a new grid and assign it to the spawn
@@ -1241,7 +1257,7 @@ uint32 ZoneDatabase::AddWPForSpawn(Client *client, uint32 spawn2id, const glm::v
 
 	row = results.begin();
 	if (row[0] != 0)
-		next_wp_num = atoi(row[0]) + 1;
+		next_wp_num = Strings::ToInt(row[0]) + 1;
 	else	// No waypoints in this grid yet
 		next_wp_num = 1;
 
@@ -1265,7 +1281,7 @@ uint32 ZoneDatabase::GetFreeGrid(uint16 zoneid) {
 		return 0;
 
 	auto row = results.begin();
-	uint32 freeGridID = row[0] ? atoi(row[0]) + 1 : 1;
+	uint32 freeGridID = row[0] ? Strings::ToInt(row[0]) + 1 : 1;
 
 	return freeGridID;
 }
@@ -1283,7 +1299,7 @@ int ZoneDatabase::GetHighestWaypoint(uint32 zoneid, uint32 gridid) {
 		return 0;
 
 	auto row = results.begin();
-	return atoi(row[0]);
+	return Strings::ToInt(row[0]);
 }
 
 int ZoneDatabase::GetRandomWaypointLocFromGrid(glm::vec4 &loc, uint16 zoneid, int grid)
@@ -1308,10 +1324,10 @@ int ZoneDatabase::GetRandomWaypointLocFromGrid(glm::vec4 &loc, uint16 zoneid, in
 			row++;
 			i++;
 		}
-		loc.x = atof(row[0]);
-		loc.y = atof(row[1]);
-		loc.z = atof(row[2]);
-		loc.w = atof(row[3]);
+		loc.x = Strings::ToFloat(row[0]);
+		loc.y = Strings::ToFloat(row[1]);
+		loc.z = Strings::ToFloat(row[2]);
+		loc.w = Strings::ToFloat(row[3]);
 		return i;
 	}
 	return 0;
@@ -1330,7 +1346,6 @@ void NPC::RestoreGuardSpotCharm()
 /******************
 * Bot-specific overloads to make them play nice with the new movement system
 */
-#ifdef BOTS
 #include "bot.h"
 
 void Bot::WalkTo(float x, float y, float z)
@@ -1348,4 +1363,3 @@ void Bot::RunTo(float x, float y, float z)
 
 	Mob::RunTo(x, y, z);
 }
-#endif

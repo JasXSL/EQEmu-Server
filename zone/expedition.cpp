@@ -25,9 +25,6 @@
 #include "string_ids.h"
 #include "worldserver.h"
 #include "zonedb.h"
-#include "../common/eqemu_logsys.h"
-#include "../common/expedition_lockout_timer.h"
-#include "../common/repositories/dynamic_zone_members_repository.h"
 #include "../common/repositories/expedition_lockouts_repository.h"
 
 extern WorldServer worldserver;
@@ -92,7 +89,7 @@ Expedition* Expedition::TryCreate(Client* requester, DynamicZone& dz_request, bo
 	// request parses leader, members list, and lockouts while validating
 	if (!request.Validate(requester))
 	{
-		LogExpeditionsModerate("[{}] request by [{}] denied", request.GetExpeditionName(), requester->GetName());
+		LogExpeditionsDetail("[{}] request by [{}] denied", request.GetExpeditionName(), requester->GetName());
 		return nullptr;
 	}
 
@@ -230,6 +227,8 @@ bool Expedition::CacheAllFromDatabase()
 	zone->expedition_cache.reserve(expeditions.size());
 
 	CacheExpeditions(std::move(expeditions));
+
+	LogInfo("Loaded [{}] expedition(s)", Strings::Commify(zone->expedition_cache.size()));
 
 	LogExpeditions("Caching [{}] expedition(s) took [{}s]", zone->expedition_cache.size(), benchmark.elapsed());
 
@@ -425,12 +424,11 @@ void Expedition::RemoveLockout(const std::string& event_name)
 void Expedition::SendClientExpeditionInvite(
 	Client* client, const std::string& inviter_name, const std::string& swap_remove_name)
 {
-	if (!client)
-	{
+	if (!client) {
 		return;
 	}
 
-	LogExpeditionsModerate(
+	LogExpeditionsDetail(
 		"Sending expedition [{}] invite to player [{}] inviter [{}] swap name [{}]",
 		m_id, client->GetName(), inviter_name, swap_remove_name
 	);
@@ -575,7 +573,7 @@ void Expedition::DzInviteResponse(Client* add_client, bool accepted, const std::
 		return;
 	}
 
-	LogExpeditionsModerate("Invite response by [{}] accepted [{}] swap_name [{}]",
+	LogExpeditionsDetail("Invite response by [{}] accepted [{}] swap_name [{}]",
 		add_client->GetName(), accepted, swap_remove_name);
 
 	// a null leader_client is handled by SendLeaderMessage fallbacks
@@ -681,7 +679,7 @@ void Expedition::TryAddClient(
 		return;
 	}
 
-	LogExpeditionsModerate(
+	LogExpeditionsDetail(
 		"Add player request for expedition [{}] by inviter [{}] add name [{}] swap name [{}]",
 		m_id, inviter_name, add_client->GetName(), swap_remove_name
 	);

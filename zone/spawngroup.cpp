@@ -24,7 +24,6 @@
 #include "spawngroup.h"
 #include "zone.h"
 #include "zonedb.h"
-#include "../common/zone_store.h"
 #include "../common/repositories/criteria/content_filter_criteria.h"
 
 extern EntityList entity_list;
@@ -145,17 +144,6 @@ SpawnGroup *SpawnGroupList::GetSpawnGroup(uint32 in_id)
 	return (m_spawn_groups[in_id].get());
 }
 
-bool SpawnGroupList::RemoveSpawnGroup(uint32 in_id)
-{
-	if (m_spawn_groups.count(in_id) != 1) {
-		return (false);
-	}
-
-	m_spawn_groups.erase(in_id);
-
-	return (true);
-}
-
 void SpawnGroupList::ReloadSpawnGroups()
 {
 	ClearSpawnGroups();
@@ -207,23 +195,25 @@ bool ZoneDatabase::LoadSpawnGroups(const char *zone_name, uint16 version, SpawnG
 
 	for (auto row = results.begin(); row != results.end(); ++row) {
 		auto new_spawn_group = std::make_unique<SpawnGroup>(
-			atoi(row[0]),
+			Strings::ToInt(row[0]),
 			row[1],
-			atoi(row[2]),
-			atof(row[3]),
-			atof(row[4]),
-			atof(row[5]),
-			atof(row[6]),
-			atof(row[7]),
-			atoi(row[8]),
-			atoi(row[9]),
-			atoi(row[10]),
-			atoi(row[11]),
-			atoi(row[12])
+			Strings::ToInt(row[2]),
+			Strings::ToFloat(row[3]),
+			Strings::ToFloat(row[4]),
+			Strings::ToFloat(row[5]),
+			Strings::ToFloat(row[6]),
+			Strings::ToFloat(row[7]),
+			Strings::ToInt(row[8]),
+			Strings::ToInt(row[9]),
+			Strings::ToInt(row[10]),
+			Strings::ToInt(row[11]),
+			Strings::ToInt(row[12])
 		);
 
 		spawn_group_list->AddSpawnGroup(new_spawn_group);
 	}
+
+	LogInfo("Loaded [{}] spawn group(s)", Strings::Commify(results.RowCount()));
 
 	query = fmt::format(
 		SQL(
@@ -258,13 +248,13 @@ bool ZoneDatabase::LoadSpawnGroups(const char *zone_name, uint16 version, SpawnG
 
 	for (auto row = results.begin(); row != results.end(); ++row) {
 		auto new_spawn_entry = std::make_unique<SpawnEntry>(
-			atoi(row[1]),
-			atoi(row[2]),
-			atoi(row[3]),
-			(row[4] ? atoi(row[4]) : 0)
+			Strings::ToInt(row[1]),
+			Strings::ToInt(row[2]),
+			Strings::ToInt(row[3]),
+			(row[4] ? Strings::ToInt(row[4]) : 0)
 		);
 
-		SpawnGroup *spawn_group = spawn_group_list->GetSpawnGroup(atoi(row[0]));
+		SpawnGroup *spawn_group = spawn_group_list->GetSpawnGroup(Strings::ToInt(row[0]));
 
 		if (!spawn_group) {
 			continue;
@@ -272,6 +262,9 @@ bool ZoneDatabase::LoadSpawnGroups(const char *zone_name, uint16 version, SpawnG
 
 		spawn_group->AddSpawnEntry(new_spawn_entry);
 	}
+
+	LogInfo("Loaded [{}] spawn entries", Strings::Commify(results.RowCount()));
+
 
 	return true;
 }
@@ -314,7 +307,7 @@ bool ZoneDatabase::LoadSpawnGroupsByID(int spawn_group_id, SpawnGroupList *spawn
 
 	for (auto row = results.begin(); row != results.end(); ++row) {
 		LogSpawnsDetail(
-			"[LoadSpawnGroupsByID] Loading spawn_group spawn_group_id [{}] name [{}] spawn_limit [{}] dist [{}]",
+			"Loading spawn_group spawn_group_id [{}] name [{}] spawn_limit [{}] dist [{}]",
 			row[0],
 			row[1],
 			row[2],
@@ -322,19 +315,19 @@ bool ZoneDatabase::LoadSpawnGroupsByID(int spawn_group_id, SpawnGroupList *spawn
 		);
 
 		auto new_spawn_group = std::make_unique<SpawnGroup>(
-			atoi(row[0]),
+			Strings::ToInt(row[0]),
 			row[1],
-			atoi(row[2]),
-			atof(row[3]),
-			atof(row[4]),
-			atof(row[5]),
-			atof(row[6]),
-			atof(row[7]),
-			atoi(row[8]),
-			atoi(row[9]),
-			atoi(row[10]),
-			atoi(row[11]),
-			atoi(row[12])
+			Strings::ToInt(row[2]),
+			Strings::ToFloat(row[3]),
+			Strings::ToFloat(row[4]),
+			Strings::ToFloat(row[5]),
+			Strings::ToFloat(row[6]),
+			Strings::ToFloat(row[7]),
+			Strings::ToInt(row[8]),
+			Strings::ToInt(row[9]),
+			Strings::ToInt(row[10]),
+			Strings::ToInt(row[11]),
+			Strings::ToInt(row[12])
 		);
 
 		spawn_group_list->AddSpawnGroup(new_spawn_group);
@@ -365,14 +358,14 @@ bool ZoneDatabase::LoadSpawnGroupsByID(int spawn_group_id, SpawnGroupList *spawn
 
 	for (auto row = results.begin(); row != results.end(); ++row) {
 		auto new_spawn_entry = std::make_unique<SpawnEntry>(
-			atoi(row[1]),
-			atoi(row[2]),
-			atoi(row[3]),
-			(row[4] ? atoi(row[4]) : 0)
+			Strings::ToInt(row[1]),
+			Strings::ToInt(row[2]),
+			Strings::ToInt(row[3]),
+			(row[4] ? Strings::ToInt(row[4]) : 0)
 		);
 
 		LogSpawnsDetail(
-			"[LoadSpawnGroupsByID] Loading spawn_entry spawn_group_id [{}] npc_id [{}] chance [{}] condition_value_filter [{}] spawn_limit [{}]",
+			"Loading spawn_entry spawn_group_id [{}] npc_id [{}] chance [{}] condition_value_filter [{}] spawn_limit [{}]",
 			row[0],
 			row[1],
 			row[2],
@@ -380,7 +373,7 @@ bool ZoneDatabase::LoadSpawnGroupsByID(int spawn_group_id, SpawnGroupList *spawn
 			row[4]
 		);
 
-		SpawnGroup *spawn_group = spawn_group_list->GetSpawnGroup(atoi(row[0]));
+		SpawnGroup *spawn_group = spawn_group_list->GetSpawnGroup(Strings::ToInt(row[0]));
 		if (!spawn_group) {
 			continue;
 		}

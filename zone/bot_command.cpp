@@ -32,14 +32,10 @@
 
 */
 
-#ifdef BOTS
-
 #include <string.h>
 #include <stdlib.h>
-#include <sstream>
 #include <algorithm>
 #include <ctime>
-#include <thread>
 
 #ifdef _WINDOWS
 #define strcasecmp _stricmp
@@ -49,21 +45,14 @@
 #include "../common/global_define.h"
 #include "../common/eq_packet.h"
 #include "../common/features.h"
-#include "../common/guilds.h"
-#include "../common/patches/patches.h"
 #include "../common/ptimer.h"
 #include "../common/rulesys.h"
 #include "../common/serverinfo.h"
 #include "../common/strings.h"
 #include "../common/say_link.h"
-#include "../common/eqemu_logsys.h"
-#include "../common/emu_constants.h"
-
 
 #include "bot_command.h"
 #include "zonedb.h"
-#include "../common/zone_store.h"
-#include "guild_mgr.h"
 #include "map.h"
 #include "doors.h"
 #include "qglobals.h"
@@ -124,82 +113,94 @@ public:
 		}
 
 		for (int spell_id = 2; spell_id < SPDAT_RECORDS; ++spell_id) {
-			if (spells[spell_id].player_1[0] == '\0')
+			if (!IsValidSpell(spell_id)) {
 				continue;
-			if (spells[spell_id].target_type != ST_Target && spells[spell_id].cast_restriction != 0) // watch
+			}
+
+			if (spells[spell_id].player_1[0] == '\0') {
 				continue;
+			}
+
+			if (
+				spells[spell_id].target_type != ST_Target &&
+				spells[spell_id].cast_restriction != 0
+				) {
+				continue;
+			}
 
 			auto target_type = BCEnum::TT_None;
 			switch (spells[spell_id].target_type) {
-			case ST_GroupTeleport:
-				target_type = BCEnum::TT_GroupV1;
-				break;
-			case ST_AECaster:
-				// Disabled until bot code works correctly
-				//target_type = BCEnum::TT_AECaster;
-				break;
-			case ST_AEBard:
-				// Disabled until bot code works correctly
-				//target_type = BCEnum::TT_AEBard;
-				break;
-			case ST_Target:
-				switch (spells[spell_id].cast_restriction) {
-				case 0:
-					target_type = BCEnum::TT_Single;
+				case ST_GroupTeleport:
+					target_type = BCEnum::TT_GroupV1;
 					break;
-				case 104:
+				case ST_AECaster:
+					// Disabled until bot code works correctly
+					//target_type = BCEnum::TT_AECaster;
+					break;
+				case ST_AEBard:
+					// Disabled until bot code works correctly
+					//target_type = BCEnum::TT_AEBard;
+					break;
+				case ST_Target:
+					switch (spells[spell_id].cast_restriction) {
+						case 0:
+							target_type = BCEnum::TT_Single;
+							break;
+						case 104:
+							target_type = BCEnum::TT_Animal;
+							break;
+						case 105:
+							target_type = BCEnum::TT_Plant;
+							break;
+						case 118:
+							target_type = BCEnum::TT_Summoned;
+							break;
+						case 120:
+							target_type = BCEnum::TT_Undead;
+							break;
+						default:
+							break;
+					}
+					break;
+				case ST_Self:
+					target_type = BCEnum::TT_Self;
+					break;
+				case ST_AETarget:
+					// Disabled until bot code works correctly
+					//target_type = BCEnum::TT_AETarget;
+					break;
+				case ST_Animal:
 					target_type = BCEnum::TT_Animal;
 					break;
-				case 105:
-					target_type = BCEnum::TT_Plant;
+				case ST_Undead:
+					target_type = BCEnum::TT_Undead;
 					break;
-				case 118:
+				case ST_Summoned:
 					target_type = BCEnum::TT_Summoned;
 					break;
-				case 120:
-					target_type = BCEnum::TT_Undead;
+				case ST_Corpse:
+					target_type = BCEnum::TT_Corpse;
+					break;
+				case ST_Plant:
+					target_type = BCEnum::TT_Plant;
+					break;
+				case ST_Group:
+					target_type = BCEnum::TT_GroupV2;
 					break;
 				default:
 					break;
-				}
-				break;
-			case ST_Self:
-				target_type = BCEnum::TT_Self;
-				break;
-			case ST_AETarget:
-				// Disabled until bot code works correctly
-				//target_type = BCEnum::TT_AETarget;
-				break;
-			case ST_Animal:
-				target_type = BCEnum::TT_Animal;
-				break;
-			case ST_Undead:
-				target_type = BCEnum::TT_Undead;
-				break;
-			case ST_Summoned:
-				target_type = BCEnum::TT_Summoned;
-				break;
-			case ST_Corpse:
-				target_type = BCEnum::TT_Corpse;
-				break;
-			case ST_Plant:
-				target_type = BCEnum::TT_Plant;
-				break;
-			case ST_Group:
-				target_type = BCEnum::TT_GroupV2;
-				break;
-			default:
-				break;
 			}
 			if (target_type == BCEnum::TT_None)
 				continue;
 
-			uint8 class_levels[16] = { 0 };
+			uint8 class_levels[16] = {0};
 			bool player_spell = false;
 			for (int class_type = WARRIOR; class_type <= BERSERKER; ++class_type) {
 				int class_index = CLASSIDTOINDEX(class_type);
-				if (spells[spell_id].classes[class_index] == 0 || spells[spell_id].classes[class_index] > HARD_LEVEL_CAP)
+				if (spells[spell_id].classes[class_index] == 0 ||
+					spells[spell_id].classes[class_index] > HARD_LEVEL_CAP) {
 					continue;
+					}
 
 				class_levels[class_index] = spells[spell_id].classes[class_index];
 				player_spell = true;
@@ -210,124 +211,122 @@ public:
 			STBaseEntry* entry_prototype = nullptr;
 			while (true) {
 				switch (spells[spell_id].effect_id[EFFECTIDTOINDEX(1)]) {
-				case SE_BindAffinity:
-					entry_prototype = new STBaseEntry(BCEnum::SpT_BindAffinity);
-					break;
-				case SE_Charm:
-					if (spells[spell_id].spell_affect_index != 12)
+					case SE_BindAffinity:
+						entry_prototype = new STBaseEntry(BCEnum::SpT_BindAffinity);
 						break;
-					entry_prototype = new STCharmEntry();
-					if (spells[spell_id].resist_difficulty <= -1000)
-						entry_prototype->SafeCastToCharm()->dire = true;
-					break;
-				case SE_Teleport:
-					entry_prototype = new STDepartEntry;
-					entry_prototype->SafeCastToDepart()->single = !BCSpells::IsGroupType(target_type);
-					break;
-				case SE_Succor:
-					if (!strcmp(spells[spell_id].teleport_zone, "same")) {
-						entry_prototype = new STEscapeEntry;
-					}
-					else {
+					case SE_Charm:
+						if (spells[spell_id].spell_affect_index != 12)
+							break;
+						entry_prototype = new STCharmEntry();
+						if (spells[spell_id].resist_difficulty <= -1000)
+							entry_prototype->SafeCastToCharm()->dire = true;
+						break;
+					case SE_Teleport:
 						entry_prototype = new STDepartEntry;
 						entry_prototype->SafeCastToDepart()->single = !BCSpells::IsGroupType(target_type);
-					}
-					break;
-				case SE_Translocate:
-					if (spells[spell_id].teleport_zone[0] == '\0') {
-						entry_prototype = new STSendHomeEntry();
-						entry_prototype->SafeCastToSendHome()->group = BCSpells::IsGroupType(target_type);
-					}
-					else {
-						entry_prototype = new STDepartEntry;
-						entry_prototype->SafeCastToDepart()->single = !BCSpells::IsGroupType(target_type);
-					}
-					break;
-				case SE_ModelSize:
-					if (spells[spell_id].base_value[EFFECTIDTOINDEX(1)] > 100) {
-						entry_prototype = new STSizeEntry;
-						entry_prototype->SafeCastToSize()->size_type = BCEnum::SzT_Enlarge;
-					}
-					else if (spells[spell_id].base_value[EFFECTIDTOINDEX(1)] > 0 && spells[spell_id].base_value[EFFECTIDTOINDEX(1)] < 100) {
-						entry_prototype = new STSizeEntry;
-						entry_prototype->SafeCastToSize()->size_type = BCEnum::SzT_Reduce;
-					}
-					break;
-				case SE_Identify:
-					entry_prototype = new STBaseEntry(BCEnum::SpT_Identify);
-					break;
-				case SE_Invisibility:
-					if (spells[spell_id].spell_affect_index != 9)
 						break;
-					entry_prototype = new STInvisibilityEntry;
-					entry_prototype->SafeCastToInvisibility()->invis_type = BCEnum::IT_Living;
-					break;
-				case SE_SeeInvis:
-					if (spells[spell_id].spell_affect_index != 5)
+					case SE_Succor:
+						if (!strcmp(spells[spell_id].teleport_zone, "same")) {
+							entry_prototype = new STEscapeEntry;
+						} else {
+							entry_prototype = new STDepartEntry;
+							entry_prototype->SafeCastToDepart()->single = !BCSpells::IsGroupType(target_type);
+						}
 						break;
-					entry_prototype = new STInvisibilityEntry;
-					entry_prototype->SafeCastToInvisibility()->invis_type = BCEnum::IT_See;
-					break;
-				case SE_InvisVsUndead:
-					if (spells[spell_id].spell_affect_index != 9)
+					case SE_Translocate:
+						if (spells[spell_id].teleport_zone[0] == '\0') {
+							entry_prototype = new STSendHomeEntry();
+							entry_prototype->SafeCastToSendHome()->group = BCSpells::IsGroupType(target_type);
+						} else {
+							entry_prototype = new STDepartEntry;
+							entry_prototype->SafeCastToDepart()->single = !BCSpells::IsGroupType(target_type);
+						}
 						break;
-					entry_prototype = new STInvisibilityEntry;
-					entry_prototype->SafeCastToInvisibility()->invis_type = BCEnum::IT_Undead;
-					break;
-				case SE_InvisVsAnimals:
-					if (spells[spell_id].spell_affect_index != 9)
+					case SE_ModelSize:
+						if (spells[spell_id].base_value[EFFECTIDTOINDEX(1)] > 100) {
+							entry_prototype = new STSizeEntry;
+							entry_prototype->SafeCastToSize()->size_type = BCEnum::SzT_Enlarge;
+						} else if (spells[spell_id].base_value[EFFECTIDTOINDEX(1)] > 0 &&
+								   spells[spell_id].base_value[EFFECTIDTOINDEX(1)] < 100) {
+							entry_prototype = new STSizeEntry;
+							entry_prototype->SafeCastToSize()->size_type = BCEnum::SzT_Reduce;
+						}
 						break;
-					entry_prototype = new STInvisibilityEntry;
-					entry_prototype->SafeCastToInvisibility()->invis_type = BCEnum::IT_Animal;
-					break;
-				case SE_Mez:
-					if (spells[spell_id].spell_affect_index != 12)
+					case SE_Identify:
+						entry_prototype = new STBaseEntry(BCEnum::SpT_Identify);
 						break;
-					entry_prototype = new STBaseEntry(BCEnum::SpT_Mesmerize);
-					break;
-				case SE_Revive:
-					if (spells[spell_id].spell_affect_index != 1)
+					case SE_Invisibility:
+						if (spells[spell_id].spell_affect_index != 9)
+							break;
+						entry_prototype = new STInvisibilityEntry;
+						entry_prototype->SafeCastToInvisibility()->invis_type = BCEnum::IT_Living;
 						break;
-					entry_prototype = new STResurrectEntry();
-					entry_prototype->SafeCastToResurrect()->aoe = BCSpells::IsCasterCentered(target_type);
-					break;
-				case SE_Rune:
-					if (spells[spell_id].spell_affect_index != 2)
+					case SE_SeeInvis:
+						if (spells[spell_id].spell_affect_index != 5)
+							break;
+						entry_prototype = new STInvisibilityEntry;
+						entry_prototype->SafeCastToInvisibility()->invis_type = BCEnum::IT_See;
 						break;
-					entry_prototype = new STBaseEntry(BCEnum::SpT_Rune);
-					break;
-				case SE_SummonCorpse:
-					entry_prototype = new STBaseEntry(BCEnum::SpT_SummonCorpse);
-					break;
-				case SE_WaterBreathing:
-					entry_prototype = new STBaseEntry(BCEnum::SpT_WaterBreathing);
-					break;
-				default:
-					break;
+					case SE_InvisVsUndead:
+						if (spells[spell_id].spell_affect_index != 9)
+							break;
+						entry_prototype = new STInvisibilityEntry;
+						entry_prototype->SafeCastToInvisibility()->invis_type = BCEnum::IT_Undead;
+						break;
+					case SE_InvisVsAnimals:
+						if (spells[spell_id].spell_affect_index != 9)
+							break;
+						entry_prototype = new STInvisibilityEntry;
+						entry_prototype->SafeCastToInvisibility()->invis_type = BCEnum::IT_Animal;
+						break;
+					case SE_Mez:
+						if (spells[spell_id].spell_affect_index != 12)
+							break;
+						entry_prototype = new STBaseEntry(BCEnum::SpT_Mesmerize);
+						break;
+					case SE_Revive:
+						if (spells[spell_id].spell_affect_index != 1)
+							break;
+						entry_prototype = new STResurrectEntry();
+						entry_prototype->SafeCastToResurrect()->aoe = BCSpells::IsCasterCentered(target_type);
+						break;
+					case SE_Rune:
+						if (spells[spell_id].spell_affect_index != 2)
+							break;
+						entry_prototype = new STBaseEntry(BCEnum::SpT_Rune);
+						break;
+					case SE_SummonCorpse:
+						entry_prototype = new STBaseEntry(BCEnum::SpT_SummonCorpse);
+						break;
+					case SE_WaterBreathing:
+						entry_prototype = new STBaseEntry(BCEnum::SpT_WaterBreathing);
+						break;
+					default:
+						break;
 				}
 				if (entry_prototype)
 					break;
 
 				switch (spells[spell_id].effect_id[EFFECTIDTOINDEX(2)]) {
-				case SE_Succor:
-					entry_prototype = new STEscapeEntry;
-					std::string is_lesser = spells[spell_id].name;
-					if (is_lesser.find("Lesser") != std::string::npos)
-						entry_prototype->SafeCastToEscape()->lesser = true;
-					break;
+					case SE_Succor:
+						entry_prototype = new STEscapeEntry;
+						std::string is_lesser = spells[spell_id].name;
+						if (is_lesser.find("Lesser") != std::string::npos)
+							entry_prototype->SafeCastToEscape()->lesser = true;
+						break;
 				}
 				if (entry_prototype)
 					break;
 
 				switch (spells[spell_id].effect_id[EFFECTIDTOINDEX(3)]) {
-				case SE_Lull:
-					entry_prototype = new STBaseEntry(BCEnum::SpT_Lull);
-					break;
-				case SE_Levitate: // needs more criteria
-					entry_prototype = new STBaseEntry(BCEnum::SpT_Levitation);
-					break;
-				default:
-					break;
+					case SE_Lull:
+						entry_prototype = new STBaseEntry(BCEnum::SpT_Lull);
+						break;
+					case SE_Levitate: // needs more criteria
+						entry_prototype = new STBaseEntry(BCEnum::SpT_Levitation);
+						break;
+					default:
+						break;
 				}
 				if (entry_prototype)
 					break;
@@ -335,7 +334,8 @@ public:
 				while (spells[spell_id].type_description_id == 27) {
 					if (!spells[spell_id].good_effect)
 						break;
-					if (spells[spell_id].skill != EQ::skills::SkillOffense && spells[spell_id].skill != EQ::skills::SkillDefense)
+					if (spells[spell_id].skill != EQ::skills::SkillOffense &&
+						spells[spell_id].skill != EQ::skills::SkillDefense)
 						break;
 
 					entry_prototype = new STStanceEntry();
@@ -350,98 +350,111 @@ public:
 					break;
 
 				switch (spells[spell_id].spell_affect_index) {
-				case 1: {
-					bool valid_spell = false;
-					entry_prototype = new STCureEntry;
+					case 1: {
+						bool valid_spell = false;
+						entry_prototype = new STCureEntry;
 
-					for (int i = EffectIDFirst; i <= EffectIDLast; ++i) {
-						int effect_index = EFFECTIDTOINDEX(i);
-						if (spells[spell_id].effect_id[effect_index] != SE_Blind && spells[spell_id].base_value[effect_index] >= 0)
-							continue;
-						else if (spells[spell_id].effect_id[effect_index] == SE_Blind && !spells[spell_id].good_effect)
-							continue;
+						for (int i = EffectIDFirst; i <= EffectIDLast; ++i) {
+							int effect_index = EFFECTIDTOINDEX(i);
+							if (spells[spell_id].effect_id[effect_index] != SE_Blind &&
+								spells[spell_id].base_value[effect_index] >= 0)
+								continue;
+							else if (spells[spell_id].effect_id[effect_index] == SE_Blind &&
+									 !spells[spell_id].good_effect)
+								continue;
 
-						switch (spells[spell_id].effect_id[effect_index]) {
-						case SE_Blind:
-							entry_prototype->SafeCastToCure()->cure_value[AILMENTIDTOINDEX(BCEnum::AT_Blindness)] += spells[spell_id].base_value[effect_index];
-							break;
-						case SE_DiseaseCounter:
-							entry_prototype->SafeCastToCure()->cure_value[AILMENTIDTOINDEX(BCEnum::AT_Disease)] += spells[spell_id].base_value[effect_index];
-							break;
-						case SE_PoisonCounter:
-							entry_prototype->SafeCastToCure()->cure_value[AILMENTIDTOINDEX(BCEnum::AT_Poison)] += spells[spell_id].base_value[effect_index];
-							break;
-						case SE_CurseCounter:
-							entry_prototype->SafeCastToCure()->cure_value[AILMENTIDTOINDEX(BCEnum::AT_Curse)] += spells[spell_id].base_value[effect_index];
-							break;
-						case SE_CorruptionCounter:
-							entry_prototype->SafeCastToCure()->cure_value[AILMENTIDTOINDEX(BCEnum::AT_Corruption)] += spells[spell_id].base_value[effect_index];
-							break;
-						default:
-							continue;
+							switch (spells[spell_id].effect_id[effect_index]) {
+								case SE_Blind:
+									entry_prototype->SafeCastToCure()->cure_value[AILMENTIDTOINDEX(
+										BCEnum::AT_Blindness)] += spells[spell_id].base_value[effect_index];
+									break;
+								case SE_DiseaseCounter:
+									entry_prototype->SafeCastToCure()->cure_value[AILMENTIDTOINDEX(
+										BCEnum::AT_Disease)] += spells[spell_id].base_value[effect_index];
+									break;
+								case SE_PoisonCounter:
+									entry_prototype->SafeCastToCure()->cure_value[AILMENTIDTOINDEX(
+										BCEnum::AT_Poison)] += spells[spell_id].base_value[effect_index];
+									break;
+								case SE_CurseCounter:
+									entry_prototype->SafeCastToCure()->cure_value[AILMENTIDTOINDEX(
+										BCEnum::AT_Curse)] += spells[spell_id].base_value[effect_index];
+									break;
+								case SE_CorruptionCounter:
+									entry_prototype->SafeCastToCure()->cure_value[AILMENTIDTOINDEX(
+										BCEnum::AT_Corruption)] += spells[spell_id].base_value[effect_index];
+									break;
+								default:
+									continue;
+							}
+							entry_prototype->SafeCastToCure()->cure_total += spells[spell_id].base_value[effect_index];
+							valid_spell = true;
 						}
-						entry_prototype->SafeCastToCure()->cure_total += spells[spell_id].base_value[effect_index];
-						valid_spell = true;
-					}
-					if (!valid_spell) {
-						safe_delete(entry_prototype);
-						entry_prototype = nullptr;
-					}
-
-					break;
-				}
-				case 2: {
-					bool valid_spell = false;
-					entry_prototype = new STResistanceEntry;
-
-					for (int i = EffectIDFirst; i <= EffectIDLast; ++i) {
-						int effect_index = EFFECTIDTOINDEX(i);
-						if (spells[spell_id].base_value[effect_index] <= 0)
-							continue;
-
-						switch (spells[spell_id].effect_id[effect_index]) {
-						case SE_ResistFire:
-							entry_prototype->SafeCastToResistance()->resist_value[RESISTANCEIDTOINDEX(BCEnum::RT_Fire)] += spells[spell_id].base_value[effect_index];
-							break;
-						case SE_ResistCold:
-							entry_prototype->SafeCastToResistance()->resist_value[RESISTANCEIDTOINDEX(BCEnum::RT_Cold)] += spells[spell_id].base_value[effect_index];
-							break;
-						case SE_ResistPoison:
-							entry_prototype->SafeCastToResistance()->resist_value[RESISTANCEIDTOINDEX(BCEnum::RT_Poison)] += spells[spell_id].base_value[effect_index];
-							break;
-						case SE_ResistDisease:
-							entry_prototype->SafeCastToResistance()->resist_value[RESISTANCEIDTOINDEX(BCEnum::RT_Disease)] += spells[spell_id].base_value[effect_index];
-							break;
-						case SE_ResistMagic:
-							entry_prototype->SafeCastToResistance()->resist_value[RESISTANCEIDTOINDEX(BCEnum::RT_Magic)] += spells[spell_id].base_value[effect_index];
-							break;
-						case SE_ResistCorruption:
-							entry_prototype->SafeCastToResistance()->resist_value[RESISTANCEIDTOINDEX(BCEnum::RT_Corruption)] += spells[spell_id].base_value[effect_index];
-							break;
-						default:
-							continue;
+						if (!valid_spell) {
+							safe_delete(entry_prototype);
+							entry_prototype = nullptr;
 						}
-						entry_prototype->SafeCastToResistance()->resist_total += spells[spell_id].base_value[effect_index];
-						valid_spell = true;
-					}
-					if (!valid_spell) {
-						safe_delete(entry_prototype);
-						entry_prototype = nullptr;
-					}
 
-					break;
-				}
-				case 7:
-				case 10:
-					if (spells[spell_id].effect_description_id != 65)
 						break;
-					if (IsEffectInSpell(spell_id, SE_NegateIfCombat))
+					}
+					case 2: {
+						bool valid_spell = false;
+						entry_prototype = new STResistanceEntry;
+
+						for (int i = EffectIDFirst; i <= EffectIDLast; ++i) {
+							int effect_index = EFFECTIDTOINDEX(i);
+							if (spells[spell_id].base_value[effect_index] <= 0)
+								continue;
+
+							switch (spells[spell_id].effect_id[effect_index]) {
+								case SE_ResistFire:
+									entry_prototype->SafeCastToResistance()->resist_value[RESISTANCEIDTOINDEX(
+										BCEnum::RT_Fire)] += spells[spell_id].base_value[effect_index];
+									break;
+								case SE_ResistCold:
+									entry_prototype->SafeCastToResistance()->resist_value[RESISTANCEIDTOINDEX(
+										BCEnum::RT_Cold)] += spells[spell_id].base_value[effect_index];
+									break;
+								case SE_ResistPoison:
+									entry_prototype->SafeCastToResistance()->resist_value[RESISTANCEIDTOINDEX(
+										BCEnum::RT_Poison)] += spells[spell_id].base_value[effect_index];
+									break;
+								case SE_ResistDisease:
+									entry_prototype->SafeCastToResistance()->resist_value[RESISTANCEIDTOINDEX(
+										BCEnum::RT_Disease)] += spells[spell_id].base_value[effect_index];
+									break;
+								case SE_ResistMagic:
+									entry_prototype->SafeCastToResistance()->resist_value[RESISTANCEIDTOINDEX(
+										BCEnum::RT_Magic)] += spells[spell_id].base_value[effect_index];
+									break;
+								case SE_ResistCorruption:
+									entry_prototype->SafeCastToResistance()->resist_value[RESISTANCEIDTOINDEX(
+										BCEnum::RT_Corruption)] += spells[spell_id].base_value[effect_index];
+									break;
+								default:
+									continue;
+							}
+							entry_prototype->SafeCastToResistance()->resist_total += spells[spell_id].base_value[effect_index];
+							valid_spell = true;
+						}
+						if (!valid_spell) {
+							safe_delete(entry_prototype);
+							entry_prototype = nullptr;
+						}
+
 						break;
-					entry_prototype = new STMovementSpeedEntry();
-					entry_prototype->SafeCastToMovementSpeed()->group = BCSpells::IsGroupType(target_type);
-					break;
-				default:
-					break;
+					}
+					case 7:
+					case 10:
+						if (spells[spell_id].effect_description_id != 65)
+							break;
+						if (IsEffectInSpell(spell_id, SE_NegateIfCombat))
+							break;
+						entry_prototype = new STMovementSpeedEntry();
+						entry_prototype->SafeCastToMovementSpeed()->group = BCSpells::IsGroupType(target_type);
+						break;
+					default:
+						break;
 				}
 				if (entry_prototype)
 					break;
@@ -451,7 +464,8 @@ public:
 			if (!entry_prototype)
 				continue;
 
-			if (target_type == BCEnum::TT_Self && (entry_prototype->BCST() != BCEnum::SpT_Stance && entry_prototype->BCST() != BCEnum::SpT_SummonCorpse)) {
+			if (target_type == BCEnum::TT_Self && (entry_prototype->BCST() != BCEnum::SpT_Stance &&
+												   entry_prototype->BCST() != BCEnum::SpT_SummonCorpse)) {
 #ifdef BCSTSPELLDUMP
 				LogError("DELETING entry_prototype (primary clause) - name: [{}], target_type: [{}], BCST: [{}]",
 					spells[spell_id].name, BCEnum::TargetTypeEnumToString(target_type).c_str(), BCEnum::SpellTypeEnumToString(entry_prototype->BCST()).c_str());
@@ -481,53 +495,53 @@ public:
 
 				STBaseEntry* spell_entry = nullptr;
 				switch (entry_prototype->BCST()) {
-				case BCEnum::SpT_Charm:
-					if (entry_prototype->IsCharm())
-						spell_entry = new STCharmEntry(entry_prototype->SafeCastToCharm());
-					break;
-				case BCEnum::SpT_Cure:
-					if (entry_prototype->IsCure())
-						spell_entry = new STCureEntry(entry_prototype->SafeCastToCure());
-					break;
-				case BCEnum::SpT_Depart:
-					if (entry_prototype->IsDepart())
-						spell_entry = new STDepartEntry(entry_prototype->SafeCastToDepart());
-					break;
-				case BCEnum::SpT_Escape:
-					if (entry_prototype->IsEscape())
-						spell_entry = new STEscapeEntry(entry_prototype->SafeCastToEscape());
-					break;
-				case BCEnum::SpT_Invisibility:
-					if (entry_prototype->IsInvisibility())
-						spell_entry = new STInvisibilityEntry(entry_prototype->SafeCastToInvisibility());
-					break;
-				case BCEnum::SpT_MovementSpeed:
-					if (entry_prototype->IsMovementSpeed())
-						spell_entry = new STMovementSpeedEntry(entry_prototype->SafeCastToMovementSpeed());
-					break;
-				case BCEnum::SpT_Resistance:
-					if (entry_prototype->IsResistance())
-						spell_entry = new STResistanceEntry(entry_prototype->SafeCastToResistance());
-					break;
-				case BCEnum::SpT_Resurrect:
-					if (entry_prototype->IsResurrect())
-						spell_entry = new STResurrectEntry(entry_prototype->SafeCastToResurrect());
-					break;
-				case BCEnum::SpT_SendHome:
-					if (entry_prototype->IsSendHome())
-						spell_entry = new STSendHomeEntry(entry_prototype->SafeCastToSendHome());
-					break;
-				case BCEnum::SpT_Size:
-					if (entry_prototype->IsSize())
-						spell_entry = new STSizeEntry(entry_prototype->SafeCastToSize());
-					break;
-				case BCEnum::SpT_Stance:
-					if (entry_prototype->IsStance())
-						spell_entry = new STStanceEntry(entry_prototype->SafeCastToStance());
-					break;
-				default:
-					spell_entry = new STBaseEntry(entry_prototype);
-					break;
+					case BCEnum::SpT_Charm:
+						if (entry_prototype->IsCharm())
+							spell_entry = new STCharmEntry(entry_prototype->SafeCastToCharm());
+						break;
+					case BCEnum::SpT_Cure:
+						if (entry_prototype->IsCure())
+							spell_entry = new STCureEntry(entry_prototype->SafeCastToCure());
+						break;
+					case BCEnum::SpT_Depart:
+						if (entry_prototype->IsDepart())
+							spell_entry = new STDepartEntry(entry_prototype->SafeCastToDepart());
+						break;
+					case BCEnum::SpT_Escape:
+						if (entry_prototype->IsEscape())
+							spell_entry = new STEscapeEntry(entry_prototype->SafeCastToEscape());
+						break;
+					case BCEnum::SpT_Invisibility:
+						if (entry_prototype->IsInvisibility())
+							spell_entry = new STInvisibilityEntry(entry_prototype->SafeCastToInvisibility());
+						break;
+					case BCEnum::SpT_MovementSpeed:
+						if (entry_prototype->IsMovementSpeed())
+							spell_entry = new STMovementSpeedEntry(entry_prototype->SafeCastToMovementSpeed());
+						break;
+					case BCEnum::SpT_Resistance:
+						if (entry_prototype->IsResistance())
+							spell_entry = new STResistanceEntry(entry_prototype->SafeCastToResistance());
+						break;
+					case BCEnum::SpT_Resurrect:
+						if (entry_prototype->IsResurrect())
+							spell_entry = new STResurrectEntry(entry_prototype->SafeCastToResurrect());
+						break;
+					case BCEnum::SpT_SendHome:
+						if (entry_prototype->IsSendHome())
+							spell_entry = new STSendHomeEntry(entry_prototype->SafeCastToSendHome());
+						break;
+					case BCEnum::SpT_Size:
+						if (entry_prototype->IsSize())
+							spell_entry = new STSizeEntry(entry_prototype->SafeCastToSize());
+						break;
+					case BCEnum::SpT_Stance:
+						if (entry_prototype->IsStance())
+							spell_entry = new STStanceEntry(entry_prototype->SafeCastToStance());
+						break;
+					default:
+						spell_entry = new STBaseEntry(entry_prototype);
+						break;
 				}
 
 				assert(spell_entry);
@@ -537,7 +551,8 @@ public:
 
 				bot_command_spells[spell_entry->BCST()].push_back(spell_entry);
 
-				if (bot_levels.find(class_type) == bot_levels.end() || bot_levels[class_type] > class_levels[class_index])
+				if (bot_levels.find(class_type) == bot_levels.end() ||
+					bot_levels[class_type] > class_levels[class_index])
 					bot_levels[class_type] = class_levels[class_index];
 			}
 
@@ -553,15 +568,15 @@ public:
 #ifdef BCSTSPELLDUMP
 		spell_dump();
 #endif
-
 	}
 
 	static void Unload() {
 		for (auto map_iter : bot_command_spells) {
 			if (map_iter.second.empty())
 				continue;
-			for (auto list_iter : map_iter.second)
-				safe_delete(list_iter);
+			for (auto list_iter: map_iter.second) {
+			safe_delete(list_iter);
+			}
 			map_iter.second.clear();
 		}
 		bot_command_spells.clear();
@@ -571,24 +586,23 @@ public:
 
 	static bool IsCasterCentered(BCEnum::TType target_type) {
 		switch (target_type) {
-		case BCEnum::TT_AECaster:
-		case BCEnum::TT_AEBard:
-			return true;
-		default:
-			return false;
+			case BCEnum::TT_AECaster:
+			case BCEnum::TT_AEBard:
+				return true;
+			default:
+				return false;
 		}
 	}
 
 	static bool IsGroupType(BCEnum::TType target_type) {
 		switch (target_type) {
-		case BCEnum::TT_GroupV1:
-		case BCEnum::TT_GroupV2:
-			return true;
-		default:
-			return false;
+			case BCEnum::TT_GroupV1:
+			case BCEnum::TT_GroupV2:
+				return true;
+			default:
+				return false;
 		}
 	}
-
 private:
 	static void remove_inactive() {
 		if (bot_command_spells.empty())
@@ -612,8 +626,10 @@ private:
 				}
 			});
 
-			for (auto del_iter : *removed_spells_list)
+			for (auto del_iter: *removed_spells_list)
+			{
 				safe_delete(del_iter);
+			}
 			removed_spells_list->clear();
 
 			if (RuleI(Bots, CommandSpellRank) == 1) {
@@ -637,8 +653,9 @@ private:
 					return false;
 				});
 
-				for (auto del_iter : *removed_spells_list)
+				for (auto del_iter: *removed_spells_list) {
 					safe_delete(del_iter);
+				}
 				removed_spells_list->clear();
 			}
 
@@ -661,8 +678,9 @@ private:
 					return false;
 				});
 
-				for (auto del_iter : *removed_spells_list)
+				for (auto del_iter: *removed_spells_list) {
 					safe_delete(del_iter);
+				}
 				removed_spells_list->clear();
 			}
 
@@ -688,8 +706,9 @@ private:
 					return false;
 				});
 
-				for (auto del_iter : *removed_spells_list)
+				for (auto del_iter: *removed_spells_list) {
 					safe_delete(del_iter);
+				}
 				removed_spells_list->clear();
 			}
 
@@ -1247,6 +1266,8 @@ int bot_command_count;					// how many bot commands we have
 // init has been performed to point at the real function
 int (*bot_command_dispatch)(Client *,char const *) = bot_command_not_avail;
 
+
+
 std::map<std::string, BotCommandRecord *> bot_command_list;
 std::map<std::string, std::string> bot_command_aliases;
 
@@ -1331,14 +1352,6 @@ int bot_command_init(void)
 		bot_command_add("boteyes", "Changes the eye colors of a bot", AccountStatus::Player, bot_subcommand_bot_eyes) ||
 		bot_command_add("botface", "Changes the facial appearance of your bot", AccountStatus::Player, bot_subcommand_bot_face) ||
 		bot_command_add("botfollowdistance", "Changes the follow distance(s) of a bot(s)", AccountStatus::Player, bot_subcommand_bot_follow_distance) ||
-		bot_command_add("botgroup", "Lists the available bot-group [subcommands]", AccountStatus::Player, bot_command_botgroup) ||
-		bot_command_add("botgroupaddmember", "Adds a member to a bot-group", AccountStatus::Player, bot_subcommand_botgroup_add_member) ||
-		bot_command_add("botgroupautospawn", "Toggles auto spawning for a bot-group, spawning the bot group when you zone automatically", AccountStatus::Player, bot_subcommand_botgroup_auto_spawn) ||
-		bot_command_add("botgroupcreate", "Creates a bot-group and designates a leader", AccountStatus::Player, bot_subcommand_botgroup_create) ||
-		bot_command_add("botgroupdelete", "Deletes a bot-group and releases its members", AccountStatus::Player, bot_subcommand_botgroup_delete) ||
-		bot_command_add("botgrouplist", "Lists all of your existing bot-groups", AccountStatus::Player, bot_subcommand_botgroup_list) ||
-		bot_command_add("botgroupload", "Loads all members of a bot-group", AccountStatus::Player, bot_subcommand_botgroup_load) ||
-		bot_command_add("botgroupremovemember", "Removes a bot from its bot-group", AccountStatus::Player, bot_subcommand_botgroup_remove_member) ||
 		bot_command_add("bothaircolor", "Changes the hair color of a bot", AccountStatus::Player, bot_subcommand_bot_hair_color) ||
 		bot_command_add("bothairstyle", "Changes the hairstyle of a bot", AccountStatus::Player, bot_subcommand_bot_hairstyle) ||
 		bot_command_add("botheritage", "Changes the Drakkin heritage of a bot", AccountStatus::Player, bot_subcommand_bot_heritage) ||
@@ -1358,6 +1371,7 @@ int bot_command_init(void)
 		bot_command_add("bottitle", "Sets a bots title", AccountStatus::Player, bot_subcommand_bot_title) ||
 		bot_command_add("botupdate", "Updates a bot to reflect any level changes that you have experienced", AccountStatus::Player, bot_subcommand_bot_update) ||
 		bot_command_add("botwoad", "Changes the Barbarian woad of a bot", AccountStatus::Player, bot_subcommand_bot_woad) ||
+		bot_command_add("casterrange", "Controls the range casters will try to stay away from a mob (if too far, they will skip spells that are out-of-range)", AccountStatus::Player, bot_command_caster_range) ||
 		bot_command_add("charm", "Attempts to have a bot charm your target", AccountStatus::Player, bot_command_charm) ||
 		bot_command_add("circle", "Orders a Druid bot to open a magical doorway to a specified destination", AccountStatus::Player, bot_subcommand_circle) ||
 		bot_command_add("cure", "Orders a bot to remove any ailments", AccountStatus::Player, bot_command_cure) ||
@@ -1467,7 +1481,7 @@ int bot_command_init(void)
 		auto bcs_iter = bot_command_settings.find(working_bcl_iter.first);
 		if (bcs_iter == bot_command_settings.end()) {
 
-			injected_bot_command_settings.push_back(std::pair<std::string, uint8>(working_bcl_iter.first, working_bcl_iter.second->access));
+			injected_bot_command_settings.emplace_back(std::pair<std::string, uint8>(working_bcl_iter.first, working_bcl_iter.second->access));
 			LogInfo(
 				"New Bot Command [{}] found... Adding to `bot_command_settings` table with access [{}]",
 				working_bcl_iter.first.c_str(),
@@ -1616,8 +1630,6 @@ int bot_command_real_dispatch(Client *c, const char *message)
 {
 	Seperator sep(message, ' ', 10, 100, true); // "three word argument" should be considered 1 arg
 
-	bot_command_log_command(c, message);
-
 	std::string cstr(sep.arg[0]+1);
 
 	if(bot_command_list.count(cstr) != 1) {
@@ -1650,77 +1662,6 @@ int bot_command_real_dispatch(Client *c, const char *message)
 	return 0;
 
 }
-
-void bot_command_log_command(Client *c, const char *message)
-{
-int admin = c->Admin();
-
-	bool continueevents = false;
-	switch (zone->loglevelvar){ //catch failsafe
-		case 9: { // log only LeadGM
-			if (
-				admin >= AccountStatus::GMLeadAdmin &&
-				admin < AccountStatus::GMMgmt
-			) {
-				continueevents = true;
-			}
-			break;
-		}
-		case 8: { // log only GM
-			if (
-				admin >= AccountStatus::GMAdmin &&
-				admin < AccountStatus::GMLeadAdmin
-			) {
-				continueevents = true;
-			}
-			break;
-		}
-		case 1: {
-			if (admin >= AccountStatus::GMMgmt) {
-				continueevents = true;
-			}
-			break;
-		}
-		case 2: {
-			if (admin >= AccountStatus::GMLeadAdmin) {
-				continueevents = true;
-			}
-			break;
-		}
-		case 3: {
-			if (admin >= AccountStatus::GMAdmin) {
-				continueevents = true;
-			}
-			break;
-		}
-		case 4: {
-			if (admin >= AccountStatus::QuestTroupe) {
-				continueevents = true;
-			}
-			break;
-		}
-		case 5: {
-			if (admin >= AccountStatus::ApprenticeGuide) {
-				continueevents = true;
-			}
-			break;
-		}
-		case 6: {
-			if (admin >= AccountStatus::Steward) {
-				continueevents = true;
-			}
-			break;
-		}
-		case 7: {
-			continueevents = true;
-			break;
-		}
-	}
-
-	if (continueevents)
-		database.logevents(c->AccountName(), c->AccountID(), admin,c->GetName(), c->GetTarget()?c->GetTarget()->GetName():"None", "BotCommand", message, 1);
-}
-
 
 /*
  * helper functions by use
@@ -1953,44 +1894,7 @@ namespace MyBots
 		sbl.remove(nullptr);
 	}
 
-	static void PopulateSBL_ByBotGroup(Client *bot_owner, std::list<Bot*> &sbl, const char* name, bool clear_list = true) {
-		if (clear_list)
-			sbl.clear();
-		if (!bot_owner || !name)
-			return;
-
-		std::string group_name = name;
-
-		uint32 botgroup_id = 0;
-		if (!database.botdb.LoadBotGroupIDForLoadBotGroup(bot_owner->CharacterID(), group_name, botgroup_id) || !botgroup_id)
-			return;
-
-		std::map<uint32, std::list<uint32>> botgroup_list;
-		if (!database.botdb.LoadBotGroup(group_name, botgroup_list) || botgroup_list.find(botgroup_id) == botgroup_list.end() || !botgroup_list[botgroup_id].size())
-			return;
-
-		std::list<Bot*> selectable_bot_list;
-		PopulateSBL_BySpawnedBots(bot_owner, selectable_bot_list);
-		if (selectable_bot_list.empty())
-			return;
-
-		selectable_bot_list.remove(nullptr);
-		for (auto group_iter : botgroup_list[botgroup_id]) {
-			for (auto bot_iter : selectable_bot_list) {
-				if (bot_iter->GetBotID() != group_iter)
-					continue;
-
-				if (IsMyBot(bot_owner, bot_iter)) {
-					sbl.push_back(bot_iter);
-					break;
-				}
-			}
-		}
-
-		if (!clear_list)
-			UniquifySBL(sbl);
-	}
-};
+}
 
 namespace ActionableTarget
 {
@@ -2184,7 +2088,7 @@ namespace ActionableTarget
 			return target[target_type];
 		}
 	};
-};
+}
 
 namespace ActionableBots
 {
@@ -2208,7 +2112,6 @@ namespace ActionableBots
 		ABM_Target = (1 << (ABT_Target - 1)),
 		ABM_ByName = (1 << (ABT_ByName - 1)),
 		ABM_OwnerGroup = (1 << (ABT_OwnerGroup - 1)),
-		ABM_BotGroup = (1 << (ABT_BotGroup - 1)),
 		ABM_TargetGroup = (1 << (ABT_TargetGroup - 1)),
 		ABM_NamesGroup = (1 << (ABT_NamesGroup - 1)),
 		ABM_HealRotation = (1 << (ABT_HealRotation - 1)),
@@ -2219,8 +2122,8 @@ namespace ActionableBots
 		ABM_Spawned_All = (3 << (ABT_Spawned - 1)),
 		ABM_NoFilter = ~0,
 		// grouped values
-		ABM_Type1 = (ABM_Target | ABM_ByName | ABM_OwnerGroup | ABM_BotGroup | ABM_TargetGroup | ABM_NamesGroup | ABM_HealRotationTargets | ABM_Spawned),
-		ABM_Type2 = (ABM_ByName | ABM_OwnerGroup | ABM_BotGroup | ABM_NamesGroup | ABM_HealRotation | ABM_Spawned)
+		ABM_Type1 = (ABM_Target | ABM_ByName | ABM_OwnerGroup | ABM_TargetGroup | ABM_NamesGroup | ABM_HealRotationTargets | ABM_Spawned),
+		ABM_Type2 = (ABM_ByName | ABM_OwnerGroup | ABM_NamesGroup | ABM_HealRotation | ABM_Spawned)
 	};
 
 	// Populates 'sbl'
@@ -2237,8 +2140,6 @@ namespace ActionableBots
 			ab_type = ABT_ByName;
 		else if (!ab_type_arg.compare("ownergroup"))
 			ab_type = ABT_OwnerGroup;
-		else if (!ab_type_arg.compare("botgroup"))
-			ab_type = ABT_BotGroup;
 		else if (!ab_type_arg.compare("targetgroup"))
 			ab_type = ABT_TargetGroup;
 		else if (!ab_type_arg.compare("namesgroup"))
@@ -2269,10 +2170,6 @@ namespace ActionableBots
 		case ABT_OwnerGroup:
 			if (ab_mask & ABM_OwnerGroup)
 				MyBots::PopulateSBL_ByMyGroupedBots(bot_owner, sbl, clear_list);
-			break;
-		case ABT_BotGroup:
-			if (ab_mask & ABM_BotGroup)
-				MyBots::PopulateSBL_ByBotGroup(bot_owner, sbl, name, clear_list);
 			break;
 		case ABT_TargetGroup:
 			if (ab_mask & ABM_TargetGroup)
@@ -2525,7 +2422,7 @@ namespace ActionableBots
 
 		ActionableBots::Filter_ByHighestSkill(bot_owner, sbl, EQ::skills::SkillPickLock, pick_lock_value);
 	}
-};
+}
 
 
 /*
@@ -2629,9 +2526,17 @@ void bot_command_apply_poison(Client *c, const Seperator *sep)
 	}
 
 	Bot *my_rogue_bot = nullptr;
-	if (c->GetTarget() && c->GetTarget()->IsBot() && c->GetTarget()->CastToBot()->GetBotOwnerCharacterID() == c->CharacterID() && c->GetTarget()->CastToBot()->GetClass() == ROGUE) {
-		my_rogue_bot = c->GetTarget()->CastToBot();
+	auto t = c->GetTarget();
+
+	if (
+		t &&
+		t->IsBot() &&
+		t->CastToBot()->GetBotOwnerCharacterID() == c->CharacterID() &&
+		t->GetClass() == ROGUE
+	) {
+		my_rogue_bot = t->CastToBot();
 	}
+
 	if (!my_rogue_bot) {
 
 		c->Message(Chat::White, "You must target a rogue bot that you own to use this command!");
@@ -2799,7 +2704,7 @@ void bot_command_attack(Client *c, const Seperator *sep)
 	}
 
 	std::list<Bot*> sbl;
-	if (ActionableBots::PopulateSBL(c, ab_arg.c_str(), sbl, ab_mask, sep->arg[2]) == ActionableBots::ABT_None) {
+	if (ActionableBots::PopulateSBL(c, ab_arg, sbl, ab_mask, sep->arg[2]) == ActionableBots::ABT_None) {
 		return;
 	}
 
@@ -2881,7 +2786,7 @@ void bot_command_bind_affinity(Client *c, const Seperator *sep)
 
 void bot_command_bot(Client *c, const Seperator *sep)
 {
-	/* VS2012 code - begin */
+
 	std::list<const char*> subcommand_list;
 	subcommand_list.push_back("botappearance");
 	subcommand_list.push_back("botcamp");
@@ -2902,14 +2807,6 @@ void bot_command_bot(Client *c, const Seperator *sep)
 	subcommand_list.push_back("bottogglearcher");
 	subcommand_list.push_back("bottogglehelm");
 	subcommand_list.push_back("botupdate");
-	/* VS2012 code - end */
-
-	/* VS2013 code
-	const std::list<const char*> subcommand_list = {
-		"botappearance", "botcamp", "botclone", "botcreate", "botdelete", "botdetails", "botdyearmor", "botinspectmessage", "botfollowdistance",
-		"botlist", "botoutofcombat", "botreport", "botspawn", "botstance", "botsummon", "bottogglearcher", "bottogglehelm", "botupdate"
-	};
-	*/
 
 	if (helper_command_alias_fail(c, "bot_command_bot", sep->arg[0], "bot"))
 		return;
@@ -3243,7 +3140,14 @@ void bot_command_find_aliases(Client *c, const Seperator *sep)
 		if (strcasecmp(find_iter->second.c_str(), alias_iter.second.c_str()) || c->Admin() < command_iter->second->access)
 			continue;
 
-		c->Message(Chat::White, "%c%s", BOT_COMMAND_CHAR, alias_iter.first.c_str());
+		c->Message(
+			Chat::White,
+			fmt::format(
+				"^{}",
+				alias_iter.first
+			).c_str()
+		);
+
 		++bot_command_aliases_shown;
 	}
 	c->Message(Chat::White, "%d bot command alias%s listed.", bot_command_aliases_shown, bot_command_aliases_shown != 1 ? "es" : "");
@@ -3409,7 +3313,7 @@ void bot_command_guard(Client *c, const Seperator *sep)
 
 void bot_command_heal_rotation(Client *c, const Seperator *sep)
 {
-	/* VS2012 code - begin */
+
 	std::list<const char*> subcommand_list;
 	subcommand_list.push_back("healrotationadaptivetargeting");
 	subcommand_list.push_back("healrotationaddmember");
@@ -3431,16 +3335,6 @@ void bot_command_heal_rotation(Client *c, const Seperator *sep)
 	subcommand_list.push_back("healrotationsethot");
 	subcommand_list.push_back("healrotationstart");
 	subcommand_list.push_back("healrotationstop");
-	/* VS2012 code - end */
-
-	/* VS2013 code
-	const std::list<const char*> subcommand_list = {
-		"healrotationadaptivetargeting", "healrotationaddmember", "healrotationaddtarget", "healrotationadjustcritical", "healrotationadjustsafe",
-		"healrotationcastoverride", "healrotationchangeinterval", "healrotationclearhot", "healrotationcleartargets", "healrotationcreate",
-		"healrotationdelete", "healrotationfastheals", "healrotationlist", "healrotationremovemember", "healrotationremovetarget", "healrotationsave",
-		"healrotationresetlimits", "healrotationsethot", "healrotationstart", "healrotationstop"
-	};
-	*/
 
 	if (helper_command_alias_fail(c, "bot_command_heal_rotation", sep->arg[0], "healrotation"))
 		return;
@@ -3477,7 +3371,15 @@ void bot_command_help(Client *c, const Seperator *sep)
 		if (c->Admin() < command_iter.second->access)
 			continue;
 
-		c->Message(Chat::White, "%c%s - %s", BOT_COMMAND_CHAR, command_iter.first.c_str(), command_iter.second->desc == nullptr ? "[no description]" : command_iter.second->desc);
+		c->Message(
+			Chat::White,
+			fmt::format(
+				"^{} - {}",
+				command_iter.first,
+				command_iter.second->desc ? command_iter.second->desc : "No Description"
+			).c_str()
+		);
+
 		++bot_commands_shown;
 	}
 	if (parse->PlayerHasQuestSub(EVENT_BOT_COMMAND)) {
@@ -3589,17 +3491,12 @@ void bot_command_identify(Client *c, const Seperator *sep)
 
 void bot_command_inventory(Client *c, const Seperator *sep)
 {
-	/* VS2012 code - begin */
+
 	std::list<const char*> subcommand_list;
 	subcommand_list.push_back("inventorygive");
 	subcommand_list.push_back("inventorylist");
 	subcommand_list.push_back("inventoryremove");
 	subcommand_list.push_back("inventorywindow");
-	/* VS2012 code - end */
-
-	/* VS2013 code
-	const std::list<const char*> subcommand_list = { "inventorygive", "inventorylist", "inventoryremove", "inventorywindow" };
-	*/
 
 	if (helper_command_alias_fail(c, "bot_command_inventory", sep->arg[0], "inventory"))
 		return;
@@ -3693,14 +3590,13 @@ void bot_command_item_use(Client* c, const Seperator* sep)
 		return;
 	}
 
-	std::list<int16> equipable_slot_list;
+	std::vector<int16> equipable_slot_list;
 	for (int16 equipable_slot = EQ::invslot::EQUIPMENT_BEGIN; equipable_slot <= EQ::invslot::EQUIPMENT_END; ++equipable_slot) {
 		if (item_data->Slots & (1 << equipable_slot)) {
-			equipable_slot_list.push_back(equipable_slot);
+			equipable_slot_list.emplace_back(equipable_slot);
 		}
 	}
 
-	std::string msg;
 	std::string text_link;
 
 	EQ::SayLinkEngine linker;
@@ -3718,10 +3614,16 @@ void bot_command_item_use(Client* c, const Seperator* sep)
 			continue;
 		}
 
-		msg = StringFormat("%cinventorygive byname %s", BOT_COMMAND_CHAR, bot_iter->GetCleanName());
-		text_link = bot_iter->CreateSayLink(c, msg.c_str(), bot_iter->GetCleanName());
+		text_link = bot_iter->CreateSayLink(
+			c,
+			fmt::format(
+				"^inventorygive byname {}",
+				bot_iter->GetCleanName()
+			).c_str(),
+			bot_iter->GetCleanName()
+		);
 
-		for (auto slot_iter : equipable_slot_list) {
+		for (const auto& slot_iter : equipable_slot_list) {
 			// needs more failure criteria - this should cover the bulk for now
 			if (slot_iter == EQ::invslot::slotSecondary && item_data->Damage && !bot_iter->CanThisClassDualWield()) {
 				continue;
@@ -4058,7 +3960,7 @@ void bot_command_owner_option(Client *c, const Seperator *sep)
 
 		database.botdb.SaveOwnerOption(c->CharacterID(), Client::booDeathMarquee, c->GetBotOption(Client::booDeathMarquee));
 
-		c->Message(Chat::White, "Bot 'death marquee' is now %s.", (c->GetBotOption(Client::booDeathMarquee) == true ? "enabled" : "disabled"));
+		c->Message(Chat::White, "Bot 'death marquee' is now %s.", (c->GetBotOption(Client::booDeathMarquee) ? "enabled" : "disabled"));
 	}
 	else if (!owner_option.compare("statsupdate")) {
 
@@ -4074,7 +3976,7 @@ void bot_command_owner_option(Client *c, const Seperator *sep)
 
 		database.botdb.SaveOwnerOption(c->CharacterID(), Client::booStatsUpdate, c->GetBotOption(Client::booStatsUpdate));
 
-		c->Message(Chat::White, "Bot 'stats update' is now %s.", (c->GetBotOption(Client::booStatsUpdate) == true ? "enabled" : "disabled"));
+		c->Message(Chat::White, "Bot 'stats update' is now %s.", (c->GetBotOption(Client::booStatsUpdate) ? "enabled" : "disabled"));
 	}
 	else if (!owner_option.compare("spawnmessage")) {
 
@@ -4160,7 +4062,7 @@ void bot_command_owner_option(Client *c, const Seperator *sep)
 
 			database.botdb.SaveOwnerOption(c->CharacterID(), Client::booAltCombat, c->GetBotOption(Client::booAltCombat));
 
-			c->Message(Chat::White, "Bot 'alt combat' is now %s.", (c->GetBotOption(Client::booAltCombat) == true ? "enabled" : "disabled"));
+			c->Message(Chat::White, "Bot 'alt combat' is now %s.", (c->GetBotOption(Client::booAltCombat) ? "enabled" : "disabled"));
 		}
 		else {
 			c->Message(Chat::White, "Bot owner option 'altcombat' is not allowed on this server.");
@@ -4182,7 +4084,7 @@ void bot_command_owner_option(Client *c, const Seperator *sep)
 
 			database.botdb.SaveOwnerOption(c->CharacterID(), Client::booAutoDefend, c->GetBotOption(Client::booAutoDefend));
 
-			c->Message(Chat::White, "Bot 'auto defend' is now %s.", (c->GetBotOption(Client::booAutoDefend) == true ? "enabled" : "disabled"));
+			c->Message(Chat::White, "Bot 'auto defend' is now %s.", (c->GetBotOption(Client::booAutoDefend) ? "enabled" : "disabled"));
 		}
 		else {
 			c->Message(Chat::White, "Bot owner option 'autodefend' is not allowed on this server.");
@@ -4202,7 +4104,7 @@ void bot_command_owner_option(Client *c, const Seperator *sep)
 
 		database.botdb.SaveOwnerOption(c->CharacterID(), Client::booBuffCounter, c->GetBotOption(Client::booBuffCounter));
 
-		c->Message(Chat::White, "Bot 'buff counter' is now %s.", (c->GetBotOption(Client::booBuffCounter) == true ? "enabled" : "disabled"));
+		c->Message(Chat::White, "Bot 'buff counter' is now %s.", (c->GetBotOption(Client::booBuffCounter) ? "enabled" : "disabled"));
 	}
 	else if (!owner_option.compare("monkwumessage")) {
 
@@ -4218,7 +4120,11 @@ void bot_command_owner_option(Client *c, const Seperator *sep)
 
 		database.botdb.SaveOwnerOption(c->CharacterID(), Client::booMonkWuMessage, c->GetBotOption(Client::booMonkWuMessage));
 
-		c->Message(Chat::White, "Bot 'monk wu message' is now %s.", (c->GetBotOption(Client::booMonkWuMessage) == true ? "enabled" : "disabled"));
+		c->Message(
+			Chat::White,
+			"Bot 'monk wu message' is now %s.",
+			(c->GetBotOption(Client::booMonkWuMessage) ? "enabled" : "disabled")
+		);
 	}
 	else if (!owner_option.compare("current")) {
 
@@ -4257,16 +4163,11 @@ void bot_command_owner_option(Client *c, const Seperator *sep)
 
 void bot_command_pet(Client *c, const Seperator *sep)
 {
-	/* VS2012 code - begin */
+
 	std::list<const char*> subcommand_list;
 	subcommand_list.push_back("petgetlost");
 	subcommand_list.push_back("petremove");
 	subcommand_list.push_back("petsettype");
-	/* VS2012 code - end */
-
-	/* VS2013 code
-	const std::list<const char*> subcommand_list = { "petgetlost", "petremove", "petsettype" };
-	*/
 
 	if (helper_command_alias_fail(c, "bot_command_pet", sep->arg[0], "pet"))
 		return;
@@ -4360,7 +4261,7 @@ void bot_command_precombat(Client* c, const Seperator* sep)
 		c->SetBotPrecombat(!c->GetBotPrecombat());
 	}
 
-	c->Message(Chat::White, "Precombat flag is now %s.", (c->GetBotPrecombat() == true ? "set" : "clear"));
+	c->Message(Chat::White, "Precombat flag is now %s.", (c->GetBotPrecombat() ? "set" : "clear"));
 }
 
 // TODO: Rework to allow owner specificed criteria for puller
@@ -5057,7 +4958,7 @@ void bot_command_water_breathing(Client *c, const Seperator *sep)
  */
 void bot_subcommand_bot_appearance(Client *c, const Seperator *sep)
 {
-	/* VS2012 code - begin */
+
 	std::list<const char*> subcommand_list;
 	subcommand_list.push_back("botbeardcolor");
 	subcommand_list.push_back("botbeardstyle");
@@ -5069,14 +4970,6 @@ void bot_subcommand_bot_appearance(Client *c, const Seperator *sep)
 	subcommand_list.push_back("botheritage");
 	subcommand_list.push_back("bottattoo");
 	subcommand_list.push_back("botwoad");
-	/* VS2012 code - end */
-
-	/* VS2013 code
-	const std::list<const char*> subcommand_list = {
-		"botbeardcolor", "botbeardstyle", "botdetails", "boteyes", "botface",
-		"bothaircolor", "bothairstyle", "botheritage", "bottattoo", "botwoad"
-	};
-	*/
 
 	if (helper_command_alias_fail(c, "bot_subcommand_bot_appearance", sep->arg[0], "botappearance"))
 		return;
@@ -5105,7 +4998,7 @@ void bot_subcommand_bot_beard_color(Client *c, const Seperator *sep)
 		return;
 	}
 
-	uint8 uvalue = atoi(sep->arg[1]);
+	uint8 uvalue = Strings::ToInt(sep->arg[1]);
 
 	auto fail_type = BCEnum::AFT_None;
 	if (my_bot->GetGender() != MALE && my_bot->GetRace() != DWARF)
@@ -5142,7 +5035,7 @@ void bot_subcommand_bot_beard_style(Client *c, const Seperator *sep)
 		return;
 	}
 
-	uint8 uvalue = atoi(sep->arg[1]);
+	uint8 uvalue = Strings::ToInt(sep->arg[1]);
 
 	auto fail_type = BCEnum::AFT_None;
 	if (my_bot->GetGender() != MALE && my_bot->GetRace() != DWARF)
@@ -5237,8 +5130,6 @@ void bot_subcommand_bot_clone(Client *c, const Seperator *sep)
 		);
 		return;
 	}
-
-	std::string error_message;
 
 	bool available_flag = false;
 	if (!database.botdb.QueryNameAvailablity(bot_name, available_flag)) {
@@ -5366,40 +5257,54 @@ void bot_subcommand_bot_clone(Client *c, const Seperator *sep)
 
 void bot_command_view_combos(Client *c, const Seperator *sep)
 {
-	const std::string class_substrs[17] = { "",
-		"%u (WAR)", "%u (CLR)", "%u (PAL)", "%u (RNG)",
-		"%u (SHD)", "%u (DRU)", "%u (MNK)", "%u (BRD)",
-		"%u (ROG)", "%u (SHM)", "%u (NEC)", "%u (WIZ)",
-		"%u (MAG)", "%u (ENC)", "%u (BST)", "%u (BER)"
+	const std::string class_substrs[17] = {
+		"",
+		"WAR", "CLR", "PAL", "RNG",
+		"SHD", "DRU", "MNK", "BRD",
+		"ROG", "SHM", "NEC", "WIZ",
+		"MAG", "ENC", "BST", "BER"
 	};
 
-	const std::string race_substrs[17] = { "",
-		"%u (HUM)", "%u (BAR)", "%u (ERU)", "%u (ELF)",
-		"%u (HIE)", "%u (DEF)", "%u (HEF)", "%u (DWF)",
-		"%u (TRL)", "%u (OGR)", "%u (HFL)", "%u (GNM)",
-		"%u (IKS)", "%u (VAH)", "%u (FRG)", "%u (DRK)"
+	const std::string race_substrs[17] = {
+		"",
+		"HUM", "BAR", "ERU", "ELF",
+		"HIE", "DEF", "HEF", "DWF",
+		"TRL", "OGR", "HFL", "GNM",
+		"IKS", "VAH", "FRG", "DRK"
 	};
 
-	const uint16 race_values[17] = { 0,
-		HUMAN, BARBARIAN, ERUDITE, WOOD_ELF,
-		HIGH_ELF, DARK_ELF, HALF_ELF, DWARF,
-		TROLL, OGRE, HALFLING, GNOME,
-		IKSAR, VAHSHIR, FROGLOK, DRAKKIN
+	const uint16 race_values[17] = {
+		RACE_DOUG_0,
+		RACE_HUMAN_1, RACE_BARBARIAN_2, RACE_ERUDITE_3, RACE_WOOD_ELF_4,
+		RACE_HIGH_ELF_5, RACE_DARK_ELF_6, RACE_HALF_ELF_7, RACE_DWARF_8,
+		RACE_TROLL_9, RACE_OGRE_10, RACE_HALFLING_11, RACE_GNOME_12,
+		RACE_IKSAR_128, RACE_VAH_SHIR_130, RACE_FROGLOK_330, RACE_DRAKKIN_522
 	};
-	if (helper_command_alias_fail(c, "bot_command_view_combos", sep->arg[0], "viewcombos"))
+
+	if (helper_command_alias_fail(c, "bot_command_view_combos", sep->arg[0], "viewcombos")) {
 		return;
+	}
+
 	if (helper_is_help_or_usage(sep->arg[1])) {
-		std::string window_title = "Bot Races";
 		std::string window_text;
 		std::string message_separator = " ";
-		c->Message(Chat::White, "Usage: %s [bot_race]", sep->arg[0]);
-		window_text.append("<c \"#FFFFFF\">Races:<c \"#FFFF\">");
+		c->Message(Chat::White, fmt::format("Usage: {} [Race]", sep->arg[0]).c_str());
+
+		window_text.append("<c \"#FFFF\">");
+
 		for (int race_id = 0; race_id <= 15; ++race_id) {
 			window_text.append(message_separator);
-			window_text.append(StringFormat(race_substrs[race_id + 1].c_str(), race_values[race_id + 1]));
+			window_text.append(
+				fmt::format(
+					"{} ({})",
+					race_substrs[race_id + 1],
+					race_values[race_id + 1]
+				)
+			);
+
 			message_separator = ", ";
 		}
-		c->SendPopupToClient(window_title.c_str(), window_text.c_str());
+		c->SendPopupToClient("Bot Races", window_text.c_str());
 		return;
 	}
 
@@ -5407,53 +5312,92 @@ void bot_command_view_combos(Client *c, const Seperator *sep)
 		c->Message(Chat::White, "Invalid Race!");
 		return;
 	}
-	uint16 bot_race = atoi(sep->arg[1]);
-	auto classes_bitmask = database.botdb.GetRaceClassBitmask(bot_race);
-	auto race_name = GetRaceIDName(bot_race);
-	std::string window_title = "Bot Classes";
+
+	const uint16 bot_race = static_cast<uint16>(Strings::ToUnsignedInt(sep->arg[1]));
+	const std::string race_name = GetRaceIDName(bot_race);
+
+	if (!Mob::IsPlayerRace(bot_race)) {
+		c->Message(
+			Chat::White,
+			fmt::format(
+				"{} ({}) is not a race bots can use.",
+				race_name,
+				bot_race
+			).c_str()
+		);
+		return;
+	}
+
+	const auto classes_bitmask = database.botdb.GetRaceClassBitmask(bot_race);
+
 	std::string window_text;
 	std::string message_separator = " ";
-	c->Message(Chat::White, "%s can be these classes.", race_name);
-	window_text.append("<c \"#FFFFFF\">Classes:<c \"#FFFF\">");
+
+	window_text.append("<c \"#FFFF\">");
+
+	const int object_max = 4;
+	auto object_count = 0;
+
 	for (int class_id = 0; class_id <= 15; ++class_id) {
 		if (classes_bitmask & GetPlayerClassBit(class_id)) {
 			window_text.append(message_separator);
-			window_text.append(StringFormat(class_substrs[class_id].c_str(), class_id));
+
+			if (object_count >= object_max) {
+				window_text.append(DialogueWindow::Break());
+				object_count = 0;
+			}
+
+			window_text.append(
+				fmt::format(
+					"{} ({})",
+					class_substrs[class_id],
+					class_id
+				)
+			);
+
+			++object_count;
 			message_separator = ", ";
 		}
 	}
-	c->SendPopupToClient(window_title.c_str(), window_text.c_str());
-	return;
+
+	c->SendPopupToClient(
+		fmt::format(
+			"Bot Classes for {} ({})",
+			race_name,
+			bot_race
+		).c_str(),
+		window_text.c_str()
+	);
 }
 
 void bot_subcommand_bot_create(Client *c, const Seperator *sep)
 {
 	const std::string class_substrs[17] = {
 		"",
-		"{} (WAR)", "{} (CLR)", "{} (PAL)", "{} (RNG)",
-		"{} (SHD)", "{} (DRU)", "{} (MNK)", "{} (BRD)",
-		"{} (ROG)", "{} (SHM)", "{} (NEC)", "{} (WIZ)",
-		"{} (MAG)", "{} (ENC)", "{} (BST)", "{} (BER)"
+		"WAR", "CLR", "PAL", "RNG",
+		"SHD", "DRU", "MNK", "BRD",
+		"ROG", "SHM", "NEC", "WIZ",
+		"MAG", "ENC", "BST", "BER"
 	};
 
 	const std::string race_substrs[17] = {
 		"",
-		"{} (HUM)", "{} (BAR)", "{} (ERU)", "{} (ELF)",
-		"{} (HIE)", "{} (DEF)", "{} (HEF)", "{} (DWF)",
-		"{} (TRL)", "{} (OGR)", "{} (HFL)", "{} (GNM)",
-		"{} (IKS)", "{} (VAH)", "{} (FRG)", "{} (DRK)"
+		"HUM", "BAR", "ERU", "ELF",
+		"HIE", "DEF", "HEF", "DWF",
+		"TRL", "OGR", "HFL", "GNM",
+		"IKS", "VAH", "FRG", "DRK"
 	};
 
 	const uint16 race_values[17] = {
-		0,
-		HUMAN, BARBARIAN, ERUDITE, WOOD_ELF,
-		HIGH_ELF, DARK_ELF, HALF_ELF, DWARF,
-		TROLL, OGRE, HALFLING, GNOME,
-		IKSAR, VAHSHIR, FROGLOK, DRAKKIN
+		RACE_DOUG_0,
+		RACE_HUMAN_1, RACE_BARBARIAN_2, RACE_ERUDITE_3, RACE_WOOD_ELF_4,
+		RACE_HIGH_ELF_5, RACE_DARK_ELF_6, RACE_HALF_ELF_7, RACE_DWARF_8,
+		RACE_TROLL_9, RACE_OGRE_10, RACE_HALFLING_11, RACE_GNOME_12,
+		RACE_IKSAR_128, RACE_VAH_SHIR_130, RACE_FROGLOK_330, RACE_DRAKKIN_522
 	};
 
 	const std::string gender_substrs[2] = {
-		"{} (M)", "{} (F)",
+		"Male", "Female",
 	};
 
 	if (helper_command_alias_fail(c, "bot_subcommand_bot_create", sep->arg[0], "botcreate")) {
@@ -5464,7 +5408,7 @@ void bot_subcommand_bot_create(Client *c, const Seperator *sep)
 		c->Message(
 			Chat::White,
 			fmt::format(
-				"Usage: {} [bot_name] [bot_class] [bot_race] [bot_gender]",
+				"Usage: {} [Name] [Class] [Race] [Gender]",
 				sep->arg[0]
 			).c_str()
 		);
@@ -5472,22 +5416,27 @@ void bot_subcommand_bot_create(Client *c, const Seperator *sep)
 		std::string window_text;
 		std::string message_separator;
 		int object_count = 0;
-		const int object_max = 5;
+		const int object_max = 4;
 
-		window_text.append("<c \"#FFFFFF\">Classes:<c \"#FFFF\">");
+		window_text.append(
+			fmt::format(
+				"Classes{}<c \"#FFFF\">",
+				DialogueWindow::Break()
+			)
+		);
 
 		message_separator = " ";
-		object_count = 1;
+		object_count = 0;
 		for (int i = 0; i <= 15; ++i) {
 			window_text.append(message_separator);
 
 			if (object_count >= object_max) {
-				window_text.append("<br>");
+				window_text.append(DialogueWindow::Break());
 				object_count = 0;
 			}
 
 			window_text.append(
-				fmt::format("{} {}",
+				fmt::format("{} ({})",
 					class_substrs[i + 1],
 					(i + 1)
 				)
@@ -5497,22 +5446,27 @@ void bot_subcommand_bot_create(Client *c, const Seperator *sep)
 			message_separator = ", ";
 		}
 
-		window_text.append("<br><br>");
+		window_text.append(DialogueWindow::Break(2));
 
-		window_text.append("<c \"#FFFFFF\">Races:<c \"#FFFF\">");
+		window_text.append(
+			fmt::format(
+				"<c \"#FFFFFF\">Races{}<c \"#FFFF\">",
+				DialogueWindow::Break()
+			)
+		);
 
 		message_separator = " ";
-		object_count = 1;
+		object_count = 0;
 		for (int i = 0; i <= 15; ++i) {
 			window_text.append(message_separator);
 
 			if (object_count >= object_max) {
-				window_text.append("<br>");
+				window_text.append(DialogueWindow::Break());
 				object_count = 0;
 			}
 
 			window_text.append(
-				fmt::format("{}, {}",
+				fmt::format("{} ({})",
 					race_substrs[i + 1],
 					race_values[i + 1]
 				)
@@ -5522,16 +5476,21 @@ void bot_subcommand_bot_create(Client *c, const Seperator *sep)
 			message_separator = ", ";
 		}
 
-		window_text.append("<br><br>");
+		window_text.append(DialogueWindow::Break(2));
 
-		window_text.append("<c \"#FFFFFF\">Genders:<c \"#FFFF\">");
+		window_text.append(
+			fmt::format(
+				"<c \"#FFFFFF\">Genders{}<c \"#FFFF\">",
+				DialogueWindow::Break()
+			)
+		);
 
 		message_separator = " ";
 		for (int i = 0; i <= 1; ++i) {
 			window_text.append(message_separator);
 
 			window_text.append(
-				fmt::format("{}, {}",
+				fmt::format("{} ({})",
 					gender_substrs[i],
 					i
 				)
@@ -5540,13 +5499,12 @@ void bot_subcommand_bot_create(Client *c, const Seperator *sep)
 			message_separator = ", ";
 		}
 
-		c->SendPopupToClient("Bot Create Options", window_text.c_str());
+		c->SendPopupToClient("Bot Creation Options", window_text.c_str());
 
 		return;
 	}
 
-	auto arguments = sep->argnum;
-
+	const auto arguments = sep->argnum;
 	if (!arguments || sep->IsNumber(1)) {
 		c->Message(Chat::White, "You must name your bot!");
 		return;
@@ -5559,29 +5517,32 @@ void bot_subcommand_bot_create(Client *c, const Seperator *sep)
 		return;
 	}
 
-	auto bot_class = static_cast<uint8>(std::stoul(sep->arg[2]));
+	auto bot_class = static_cast<uint8>(Strings::ToUnsignedInt(sep->arg[2]));
 
 	if (arguments < 3 || !sep->IsNumber(3)) {
 		c->Message(Chat::White, "Invalid race!");
 		return;
 	}
 
-	auto bot_race = static_cast<uint16>(std::stoul(sep->arg[3]));
+	auto bot_race = static_cast<uint16>(Strings::ToUnsignedInt(sep->arg[3]));
 
 	if (arguments < 4) {
 		c->Message(Chat::White, "Invalid gender!");
 		return;
 	}
 
-	auto bot_gender = 0;
+	auto bot_gender = MALE;
 
 	if (sep->IsNumber(4)) {
-		bot_gender = static_cast<uint8>(std::stoul(sep->arg[4]));
+		bot_gender = static_cast<uint8>(Strings::ToUnsignedInt(sep->arg[4]));
+		if (bot_gender == NEUTER) {
+			bot_gender = MALE;
+		}
 	} else {
 		if (!strcasecmp(sep->arg[4], "m") || !strcasecmp(sep->arg[4], "male")) {
-			bot_gender = 0;
+			bot_gender = MALE;
 		} else if (!strcasecmp(sep->arg[4], "f") || !strcasecmp(sep->arg[4], "female")) {
-			bot_gender = 1;
+			bot_gender = FEMALE;
 		}
 	}
 
@@ -5602,8 +5563,6 @@ void bot_subcommand_bot_delete(Client *c, const Seperator *sep)
 		c->Message(Chat::White, "You must <target> a bot that you own to use this command");
 		return;
 	}
-
-	std::string error_message;
 
 	if (!my_bot->DeleteBot()) {
 		c->Message(Chat::White, "Failed to delete '%s' due to database error", my_bot->GetCleanName());
@@ -5641,7 +5600,7 @@ void bot_subcommand_bot_details(Client *c, const Seperator *sep)
 		return;
 	}
 
-	uint32 uvalue = atoi(sep->arg[1]);
+	uint32 uvalue = Strings::ToInt(sep->arg[1]);
 
 	auto fail_type = BCEnum::AFT_None;
 	if (my_bot->GetRace() != DRAKKIN)
@@ -5676,7 +5635,7 @@ void bot_subcommand_bot_dye_armor(Client *c, const Seperator *sep)
 		return;
 	}
 
-	if (helper_is_help_or_usage(sep->arg[1])) {
+	if (helper_is_help_or_usage(sep->arg[1]) || !sep->arg[1] || (sep->arg[1] && !Strings::IsNumber(sep->arg[1]))) {
 		c->Message(
 			Chat::White,
 			fmt::format(
@@ -5694,7 +5653,7 @@ void bot_subcommand_bot_dye_armor(Client *c, const Seperator *sep)
 
 	bool dye_all = (sep->arg[1][0] == '*');
 	if (!dye_all) {
-		material_slot = std::stoi(sep->arg[1]);
+		material_slot = Strings::ToInt(sep->arg[1]);
 		slot_id = EQ::InventoryProfile::CalcSlotFromMaterial(material_slot);
 
 		if (!sep->IsNumber(1) || slot_id == INVALID_INDEX || material_slot > EQ::textures::LastTintableTexture) {
@@ -5709,7 +5668,7 @@ void bot_subcommand_bot_dye_armor(Client *c, const Seperator *sep)
 		return;
 	}
 
-	uint32 red_value = std::stoul(sep->arg[2]);
+	uint32 red_value = Strings::ToUnsignedInt(sep->arg[2]);
 	if (red_value > 255) {
 		red_value = 255;
 	}
@@ -5719,7 +5678,7 @@ void bot_subcommand_bot_dye_armor(Client *c, const Seperator *sep)
 		return;
 	}
 
-	uint32 green_value = std::stoul(sep->arg[3]);
+	uint32 green_value = Strings::ToUnsignedInt(sep->arg[3]);
 	if (green_value > 255) {
 		green_value = 255;
 	}
@@ -5729,7 +5688,7 @@ void bot_subcommand_bot_dye_armor(Client *c, const Seperator *sep)
 		return;
 	}
 
-	uint32 blue_value = std::stoul(sep->arg[4]);
+	uint32 blue_value = Strings::ToUnsignedInt(sep->arg[4]);
 	if (blue_value > 255) {
 		blue_value = 255;
 	}
@@ -5809,7 +5768,7 @@ void bot_subcommand_bot_eyes(Client *c, const Seperator *sep)
 		return;
 	}
 
-	uint8 uvalue = atoi(sep->arg[1]);
+	uint8 uvalue = Strings::ToInt(sep->arg[1]);
 
 	//uint8 eye_bias = 0;
 	//std::string arg2 = sep->arg[2];
@@ -5863,7 +5822,7 @@ void bot_subcommand_bot_face(Client *c, const Seperator *sep)
 		return;
 	}
 
-	uint8 uvalue = atoi(sep->arg[1]);
+	uint8 uvalue = Strings::ToInt(sep->arg[1]);
 
 	auto fail_type = BCEnum::AFT_None;
 	if (!PlayerAppearance::IsValidFace(my_bot->GetRace(), my_bot->GetGender(), uvalue)) {
@@ -5903,7 +5862,7 @@ void bot_subcommand_bot_follow_distance(Client *c, const Seperator *sep)
 			return;
 		}
 
-		bfd = atoi(sep->arg[2]);
+		bfd = Strings::ToInt(sep->arg[2]);
 		if (bfd < 1)
 			bfd = 1;
 		if (bfd > BOT_FOLLOW_DISTANCE_DEFAULT_MAX)
@@ -5969,7 +5928,7 @@ void bot_subcommand_bot_hair_color(Client *c, const Seperator *sep)
 		return;
 	}
 
-	uint8 uvalue = atoi(sep->arg[1]);
+	uint8 uvalue = Strings::ToInt(sep->arg[1]);
 
 	auto fail_type = BCEnum::AFT_None;
 	if (!PlayerAppearance::IsValidHairColor(my_bot->GetRace(), my_bot->GetGender(), uvalue))
@@ -6004,7 +5963,7 @@ void bot_subcommand_bot_hairstyle(Client *c, const Seperator *sep)
 		return;
 	}
 
-	uint8 uvalue = atoi(sep->arg[1]);
+	uint8 uvalue = Strings::ToInt(sep->arg[1]);
 
 	auto fail_type = BCEnum::AFT_None;
 	if (!PlayerAppearance::IsValidHair(my_bot->GetRace(), my_bot->GetGender(), uvalue))
@@ -6041,7 +6000,7 @@ void bot_subcommand_bot_heritage(Client *c, const Seperator *sep)
 		return;
 	}
 
-	uint32 uvalue = atoi(sep->arg[1]);
+	uint32 uvalue = Strings::ToInt(sep->arg[1]);
 
 	auto fail_type = BCEnum::AFT_None;
 	if (my_bot->GetRace() != DRAKKIN)
@@ -6178,13 +6137,13 @@ void bot_subcommand_bot_list(Client *c, const Seperator *sep)
 
 		if (!strcasecmp(sep->arg[i], "class")) {
 			filter_mask |= MaskClass;
-			filter_value[FilterClass] = atoi(sep->arg[i + 1]);
+			filter_value[FilterClass] = Strings::ToInt(sep->arg[i + 1]);
 			continue;
 		}
 
 		if (!strcasecmp(sep->arg[i], "race")) {
 			filter_mask |= MaskRace;
-			filter_value[FilterRace] = atoi(sep->arg[i + 1]);
+			filter_value[FilterRace] = Strings::ToInt(sep->arg[i + 1]);
 			continue;
 		}
 
@@ -6451,19 +6410,20 @@ void bot_subcommand_bot_report(Client *c, const Seperator *sep)
 
 	std::string ab_type_arg = sep->arg[1];
 	if (ab_type_arg.empty()) {
-		if (c->GetTarget()) {
-			if (c->GetTarget()->IsClient() && c->GetTarget()->CastToClient() == c)
+		auto t = c->GetTarget();
+		if (t && t->IsClient()) {
+			if (t->CastToClient() == c) {
 				ab_type_arg = "ownergroup";
-			else if (c->GetTarget()->IsClient() && c->GetTarget()->CastToClient() != c)
+			} else {
 				ab_type_arg = "targetgroup";
-		}
-		else {
+			}
+		} else {
 			ab_type_arg = "spawned";
 		}
 	}
 
 	std::list<Bot*> sbl;
-	if (ActionableBots::PopulateSBL(c, ab_type_arg.c_str(), sbl, ab_mask, sep->arg[2]) == ActionableBots::ABT_None)
+	if (ActionableBots::PopulateSBL(c, ab_type_arg, sbl, ab_mask, sep->arg[2]) == ActionableBots::ABT_None)
 		return;
 
 	for (auto bot_iter : sbl) {
@@ -6512,8 +6472,7 @@ void bot_subcommand_bot_spawn(Client *c, const Seperator *sep)
 		return;
 	}
 
-	if (c->GetFeigned()) {
-		c->Message(Chat::White, "You cannot spawn a bot while feigned.");
+	if (!Bot::CheckSpawnConditions(c)) {
 		return;
 	}
 
@@ -6627,39 +6586,6 @@ void bot_subcommand_bot_spawn(Client *c, const Seperator *sep)
 		return;
 	}
 
-	// this probably needs work...
-	if (c->GetGroup()) {
-		std::list<Mob*> group_list;
-		c->GetGroup()->GetMemberList(group_list);
-		for (auto member_iter : group_list) {
-			if (!member_iter) {
-				continue;
-			}
-
-			if (member_iter->qglobal) { // what is this?? really should have had a message to describe failure... (can't spawn bots if you are assigned to a task/instance?)
-				return;
-			}
-
-			if (
-				!member_iter->qglobal &&
-				member_iter->GetAppearance() != eaDead &&
-				(
-					member_iter->IsEngaged() ||
-					(
-						member_iter->IsClient() &&
-						member_iter->CastToClient()->GetAggroCount()
-					)
-				)
-			) {
-				c->Message(Chat::White, "You cannot summon bots while you are engaged.");
-				return;
-			}
-		}
-	} else if (c->GetAggroCount()) {
-		c->Message(Chat::White, "You cannot spawn bots while you are engaged.");
-		return;
-	}
-
 	auto my_bot = Bot::LoadBot(bot_id);
 	if (!my_bot) {
 		c->Message(
@@ -6745,7 +6671,7 @@ void bot_subcommand_bot_stance(Client *c, const Seperator *sep)
 	if (!strcasecmp(sep->arg[1], "current"))
 		current_flag = true;
 	else if (sep->IsNumber(1)) {
-		bst = (EQ::constants::StanceType)atoi(sep->arg[1]);
+		bst = (EQ::constants::StanceType)Strings::ToInt(sep->arg[1]);
 		if (bst < EQ::constants::stanceUnknown || bst > EQ::constants::stanceBurnAE)
 			bst = EQ::constants::stanceUnknown;
 	}
@@ -6804,7 +6730,7 @@ void bot_subcommand_bot_stop_melee_level(Client *c, const Seperator *sep)
 	uint8 sml = RuleI(Bots, CasterStopMeleeLevel);
 
 	if (sep->IsNumber(1)) {
-		sml = atoi(sep->arg[1]);
+		sml = Strings::ToInt(sep->arg[1]);
 	}
 	else if (!strcasecmp(sep->arg[1], "sync")) {
 		sml = my_bot->GetLevel();
@@ -6910,7 +6836,7 @@ void bot_subcommand_bot_tattoo(Client *c, const Seperator *sep)
 		return;
 	}
 
-	uint32 uvalue = atoi(sep->arg[1]);
+	uint32 uvalue = Strings::ToInt(sep->arg[1]);
 
 	auto fail_type = BCEnum::AFT_None;
 	if (my_bot->GetRace() != DRAKKIN)
@@ -7037,7 +6963,6 @@ void bot_subcommand_bot_toggle_helm(Client *c, const Seperator *sep)
 	}
 
 	if (ab_type == ActionableBots::ABT_All) {
-		std::string query;
 		if (toggle_helm) {
 			if (!database.botdb.ToggleAllHelmAppearances(c->CharacterID()))
 				c->Message(Chat::White, "%s", BotDatabase::fail::ToggleAllHelmAppearances());
@@ -7154,7 +7079,7 @@ void bot_subcommand_bot_woad(Client *c, const Seperator *sep)
 		return;
 	}
 
-	uint8 uvalue = atoi(sep->arg[1]);
+	uint8 uvalue = Strings::ToInt(sep->arg[1]);
 
 	auto fail_type = BCEnum::AFT_None;
 	if (my_bot->GetRace() != BARBARIAN) {
@@ -7172,812 +7097,6 @@ void bot_subcommand_bot_woad(Client *c, const Seperator *sep)
 		return;
 
 	helper_bot_appearance_form_final(c, my_bot);
-}
-
-void bot_subcommand_botgroup_add_member(Client *c, const Seperator *sep)
-{
-	if (helper_command_alias_fail(c, "bot_subcommand_botgroup_add_member", sep->arg[0], "botgroupaddmember")) {
-		return;
-	}
-
-	if (helper_is_help_or_usage(sep->arg[1])) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Usage: (<target_leader>) {} [member_name] ([leader_name])",
-				sep->arg[0]
-			).c_str()
-		);
-		return;
-	}
-
-	std::list<Bot*> sbl;
-	MyBots::PopulateSBL_ByNamedBot(c, sbl, sep->arg[1]);
-	if (sbl.empty()) {
-		c->Message(Chat::White, "You must name a new member as a bot that you own to use this command.");
-		return;
-	}
-
-	auto new_member = sbl.front();
-	if (!new_member) {
-		c->Message(Chat::White, "Error: New member bot dereferenced to nullptr");
-		return;
-	}
-
-	if (new_member->HasGroup()) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"{} is already member of a group.",
-				new_member->GetCleanName()
-			).c_str()
-		);
-		return;
-	}
-
-	uint32 botgroup_id = 0;
-	if (!database.botdb.LoadBotGroupIDByMemberID(new_member->GetBotID(), botgroup_id)) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Failed to load bot-group id by member ID for '{}'.",
-				new_member->GetCleanName()
-			).c_str()
-		);
-		return;
-	}
-
-	if (botgroup_id) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"{} is already a member of a bot-group.",
-				new_member->GetCleanName()
-			).c_str()
-		);
-		return;
-	}
-
-	MyBots::PopulateSBL_ByNamedBot(c, sbl, sep->arg[2]);
-
-	if (sbl.empty()) {
-		MyBots::PopulateSBL_ByTargetedBot(c, sbl);
-	}
-
-	if (sbl.empty()) {
-		c->Message(Chat::White, "You must target or name a group leader as a bot that you own to use this command.");
-		return;
-	}
-
-	auto leader = sbl.front();
-	if (!leader) {
-		c->Message(Chat::White, "Error: Group leader bot dereferenced to nullptr.");
-		return;
-	}
-
-	auto* g = leader->GetGroup();
-	if (!g || g->GetLeader() != leader) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"{} is not the leader of a group.",
-				leader->GetCleanName()
-			).c_str()
-		);
-		return;
-	}
-
-	botgroup_id = 0;
-	if (!database.botdb.LoadBotGroupIDByLeaderID(leader->GetBotID(), botgroup_id)) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Failed to load bot-group ID by leader ID for '{}'.",
-				leader->GetCleanName()
-			).c_str()
-		);
-		return;
-	}
-
-	if (!botgroup_id) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"{} is not the leader of a bot-group.",
-				leader->GetCleanName()
-			).c_str()
-		);
-		return;
-	}
-
-	if (!Bot::AddBotToGroup(new_member, g)) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Could not add {} as a new member to a group with {}.",
-				new_member->GetCleanName(),
-				leader->GetCleanName()
-			).c_str()
-		);
-		return;
-	}
-
-	database.SetGroupID(new_member->GetName(), g->GetID(), new_member->GetBotID());
-
-	if (!database.botdb.AddMemberToBotGroup(leader->GetBotID(), new_member->GetBotID())) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Failed to add member to bot-group, {} could not be added to a group with {}.",
-				new_member->GetCleanName(),
-				leader->GetCleanName()
-			).c_str()
-		);
-		Bot::RemoveBotFromGroup(new_member, leader->GetGroup());
-		return;
-	}
-
-	std::string botgroup_name;
-	if (!database.botdb.LoadBotGroupNameByLeaderID(leader->GetBotID(), botgroup_name)) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Failed to load bot-group name by leader ID for bot ID {}.",
-				leader->GetBotID()
-			).c_str()
-		);
-	}
-
-	c->Message(
-		Chat::White,
-		fmt::format(
-			"Successfully added {} to bot-group {}.",
-			new_member->GetCleanName(),
-			botgroup_name
-		).c_str()
-	);
-}
-
-void bot_subcommand_botgroup_auto_spawn(Client *c, const Seperator *sep)
-{
-	if (helper_command_alias_fail(c, "bot_subcommand_botgroup_auto_spawn", sep->arg[0], "botgroupautospawn")) {
-		return;
-	}
-
-	if (helper_is_help_or_usage(sep->arg[1])) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Usage: (<target_leader>) {} ([leader_name])",
-				sep->arg[0]
-			).c_str()
-		);
-		return;
-	}
-
-	std::list<Bot*> sbl;
-
-	if (sbl.empty()) {
-		MyBots::PopulateSBL_ByTargetedBot(c, sbl);
-	}
-
-	if (sbl.empty()) {
-		c->Message(Chat::White, "You must target or name a group leader as a bot that you own to use this command.");
-		return;
-	}
-
-	auto leader = sbl.front();
-	if (!leader) {
-		c->Message(Chat::White, "Error: Group leader bot dereferenced to nullptr.");
-		return;
-	}
-
-	auto* g = leader->GetGroup();
-	if (!g || g->GetLeader() != leader) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"{} is not the leader of a group.",
-				leader->GetCleanName()
-			).c_str()
-		);
-		return;
-	}
-
-	uint32 botgroup_id = 0;
-	if (!database.botdb.LoadBotGroupIDByLeaderID(leader->GetBotID(), botgroup_id)) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Failed to load bot-group ID by leader ID for '{}'.",
-				leader->GetCleanName()
-			).c_str()
-		);
-		return;
-	}
-
-	if (!botgroup_id) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"{} is not the leader of a bot-group.",
-				leader->GetCleanName()
-			).c_str()
-		);
-		return;
-	}
-
-	std::string botgroup_name;
-	if (!database.botdb.LoadBotGroupNameByLeaderID(leader->GetBotID(), botgroup_name)) {
-		c->Message(Chat::White, "Failed to load bot-group name by leader ID.");
-		return;
-	}
-
-	if (!database.botdb.ToggleBotGroupAutoSpawn(botgroup_id)) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Failed to toggle auto spawn for bot-group '{}'.",
-				botgroup_name
-			).c_str()
-		);
-		return;
-	}
-
-	bool auto_spawn = database.botdb.IsBotGroupAutoSpawn(botgroup_name);
-
-	c->Message(
-		Chat::White,
-		fmt::format(
-			"Auto spawn is now {}active bot-group '{}'.",
-			!auto_spawn ? "in" : "",
-			botgroup_name
-		).c_str()
-	);
-}
-
-void bot_subcommand_botgroup_create(Client *c, const Seperator *sep)
-{
-	if (helper_command_alias_fail(c, "bot_subcommand_botgroup_create", sep->arg[0], "botgroupcreate")) {
-		return;
-	}
-
-	if (helper_is_help_or_usage(sep->arg[1])) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Usage: (<target_leader>) {} [group_name] ([leader_name])",
-				sep->arg[0]
-			).c_str()
-		);
-		return;
-	}
-
-	std::string botgroup_name = sep->argplus[1];
-	if (botgroup_name.empty()) {
-		c->Message(Chat::White, "You must specify a name for this bot-group to use this command.");
-		return;
-	}
-
-	if (database.botdb.QueryBotGroupExistence(botgroup_name)) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"The name '{}' already exists for a bot-group. Please choose another.",
-				botgroup_name
-			).c_str()
-		);
-		return;
-	}
-
-	std::list<Bot*> sbl;
-	MyBots::PopulateSBL_ByNamedBot(c, sbl, sep->arg[2]);
-
-	if (sbl.empty()) {
-		MyBots::PopulateSBL_ByTargetedBot(c, sbl);
-	}
-
-	if (sbl.empty()) {
-		c->Message(Chat::White, "You must target or name a group leader as a bot that you own to use this command.");
-		return;
-	}
-
-	auto leader = sbl.front();
-	if (!leader) {
-		c->Message(Chat::White, "Error: Group leader bot dereferenced to nullptr.");
-		return;
-	}
-
-	if (leader->HasGroup()) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"{} is already a current member of a group.",
-				leader->GetCleanName()
-			).c_str()
-		);
-		return;
-	}
-
-	uint32 botgroup_id = 0;
-	if (!database.botdb.LoadBotGroupIDByLeaderID(leader->GetBotID(), botgroup_id)) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Failed to load bot-group ID by leader ID for '{}'.",
-				leader->GetCleanName()
-			).c_str()
-		);
-		return;
-	}
-
-	if (botgroup_id) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"{} is already the current leader of a bot-group.",
-				leader->GetCleanName()
-			).c_str()
-		);
-		return;
-	}
-
-	botgroup_id = 0;
-	if (!database.botdb.LoadBotGroupIDByMemberID(leader->GetBotID(), botgroup_id)) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Failed to load bot-group id by member ID for '{}'.",
-				leader->GetCleanName()
-			).c_str()
-		);
-		return;
-	}
-
-	if (botgroup_id) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"{} is already a current member of a bot-group.",
-				leader->GetCleanName()
-			).c_str()
-		);
-		return;
-	}
-
-	auto* g = new Group(leader);
-	if (!g) {
-		c->Message(Chat::White, "Could not create a new group instance.");
-		return;
-	}
-
-	if (!database.botdb.CreateBotGroup(botgroup_name, leader->GetBotID())) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Failed to create bot-group '{}'.",
-				botgroup_name
-			).c_str()
-		);
-		safe_delete(g);
-		return;
-	}
-
-	entity_list.AddGroup(g);
-	database.SetGroupID(leader->GetCleanName(), g->GetID(), leader->GetBotID());
-	database.SetGroupLeaderName(g->GetID(), leader->GetCleanName());
-	leader->SetFollowID(c->GetID());
-
-	c->Message(
-		Chat::White,
-		fmt::format(
-			"Successfully created bot-group '{}' with '{}' as its leader.",
-			botgroup_name,
-			leader->GetCleanName()
-		).c_str()
-	);
-}
-
-void bot_subcommand_botgroup_delete(Client *c, const Seperator *sep)
-{
-	if (helper_command_alias_fail(c, "bot_subcommand_botgroup_delete", sep->arg[0], "botgroupdelete")) {
-		return;
-	}
-
-	if (helper_is_help_or_usage(sep->arg[1])) {
-		c->Message(Chat::White, "usage: %s [botgroup_name]", sep->arg[0]);
-		return;
-	}
-
-	std::string botgroup_name = sep->argplus[1];
-	if (botgroup_name.empty()) {
-		c->Message(Chat::White, "You must specify a [name] for this bot-group to use this command");
-		return;
-	}
-
-	uint32 botgroup_id = 0;
-	if (!database.botdb.LoadBotGroupIDForLoadBotGroup(c->CharacterID(), botgroup_name, botgroup_id)) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Failed to load bot-group ID for load bot-group for '{}'.",
-				botgroup_name
-			).c_str()
-		);
-		return;
-	}
-
-	if (!botgroup_id) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Could not locate group ID for '{}'.",
-				botgroup_name
-			).c_str()
-		);
-		return;
-	}
-
-	uint32 leader_id = 0;
-	if (!database.botdb.LoadLeaderIDByBotGroupID(botgroup_id, leader_id)) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Failed to load leader ID by bot-group ID for '{}'.",
-				botgroup_name
-			).c_str()
-		);
-		return;
-	}
-
-	if (!leader_id) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Could not locate leader ID for '{}'.",
-				botgroup_name
-			).c_str()
-		);
-		return;
-	}
-
-	std::list<Bot*> gbl;
-	std::list<Bot*> sbl;
-	MyBots::PopulateSBL_BySpawnedBots(c, sbl);
-
-	std::map<uint32, std::list<uint32>> member_list;
-	if (!database.botdb.LoadBotGroup(botgroup_name, member_list)) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Failed to load bot-group '{}'.",
-				botgroup_name
-			).c_str()
-		);
-		return;
-	}
-
-	if (member_list.find(botgroup_id) == member_list.end() || member_list[botgroup_id].empty()) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Could not locate member list for bot-group '{}'.",
-				botgroup_name
-			).c_str()
-		);
-		return;
-	}
-
-	for (auto bot_iter : sbl) {
-		for (auto group_iter : member_list[botgroup_id]) {
-			if (bot_iter->GetBotID() == group_iter) {
-				gbl.push_back(bot_iter);
-				break;
-			}
-		}
-	}
-
-	gbl.unique();
-
-	for (auto group_member : gbl) {
-		if (group_member->HasGroup()) {
-			Bot::RemoveBotFromGroup(group_member, group_member->GetGroup());
-		}
-	}
-
-	if (!database.botdb.DeleteBotGroup(leader_id)) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Failed to delete bot-group '{}'.",
-				botgroup_name
-			).c_str()
-		);
-		return;
-	}
-
-	c->Message(
-		Chat::White,
-		fmt::format(
-			"Successfully deleted bot-group '{}'.",
-			botgroup_name
-		).c_str()
-	);
-}
-
-void bot_subcommand_botgroup_list(Client *c, const Seperator *sep)
-{
-	if (helper_command_alias_fail(c, "bot_subcommand_botgroup_list", sep->arg[0], "botgrouplist")) {
-		return;
-	}
-
-	if (helper_is_help_or_usage(sep->arg[1])) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Usage: {}",
-				sep->arg[0]
-			).c_str()
-		);
-		return;
-	}
-
-	std::list<std::pair<std::string, std::string>> botgroups_list;
-	if (!database.botdb.LoadBotGroupsListByOwnerID(c->CharacterID(), botgroups_list)) {
-		c->Message(Chat::White, "Failed to load bot-group.");
-		return;
-	}
-
-	if (botgroups_list.empty()) {
-		c->Message(Chat::White, "You have no saved bot-groups.");
-		return;
-	}
-
-	uint32 botgroup_count = 0;
-
-	for (auto botgroups_iter : botgroups_list) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Bot-group {} | Name: {} | Leader: {}{} | {}",
-				(botgroup_count + 1),
-				botgroups_iter.first,
-				botgroups_iter.second,
-				database.botdb.IsBotGroupAutoSpawn(botgroups_iter.first) ? " (Auto Spawn)" : "",
-				Saylink::Silent(
-					fmt::format("^botgroupload {}", botgroups_iter.first),
-					"Load"
-				)
-			).c_str()
-		);
-
-		botgroup_count++;
-	}
-
-	c->Message(
-		Chat::White,
-		fmt::format(
-			"{} Bot-group{} listed.",
-			botgroup_count,
-			botgroup_count != 1 ? "s" : ""
-		).c_str()
-	);
-}
-
-void bot_subcommand_botgroup_load(Client *c, const Seperator *sep)
-{
-	if (helper_command_alias_fail(c, "bot_subcommand_botgroup_load", sep->arg[0], "botgroupload")) {
-		return;
-	}
-
-	if (helper_is_help_or_usage(sep->arg[1])) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Usage: {} [botgroup_name]",
-				sep->arg[0]
-			).c_str()
-		);
-		return;
-	}
-
-	std::string botgroup_name = sep->argplus[1];
-	if (botgroup_name.empty()) {
-		c->Message(Chat::White, "You must specify the name of a bot-group to load to use this command.");
-		return;
-	}
-
-	if (!database.botdb.QueryBotGroupExistence(botgroup_name)) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Failed to query bot-group existence for '{}'.",
-				botgroup_name
-			).c_str()
-		);
-		return;
-	}
-
-	auto* owner_group = c->GetGroup();
-	if (owner_group) {
-		std::list<Client*> member_list;
-		owner_group->GetClientList(member_list);
-		member_list.remove(nullptr);
-
-		for (auto member_iter : member_list) {
-			if (member_iter->IsEngaged() || member_iter->GetAggroCount() > 0) {
-				c->Message(Chat::White, "You cannot spawn bots while your group is engaged,");
-				return;
-			}
-		}
-	} else {
-		if (c->GetAggroCount() > 0) {
-			c->Message(Chat::White, "You cannot spawn bots while you are engaged,");
-			return;
-		}
-	}
-
-	uint32 botgroup_id = 0;
-	if (!database.botdb.LoadBotGroupIDForLoadBotGroup(c->CharacterID(), botgroup_name, botgroup_id) || !botgroup_id) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Failed to load bot-group ID for load bot-group for '{}'.",
-				botgroup_name
-			).c_str()
-		);
-		return;
-	}
-
-	std::map<uint32, std::list<uint32>> member_list;
-	if (!database.botdb.LoadBotGroup(botgroup_name, member_list)) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Failed to load bot-group for '{}'.",
-				botgroup_name
-			).c_str()
-		);
-		return;
-	}
-
-	if (member_list.find(botgroup_id) == member_list.end() || member_list[botgroup_id].empty()) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Database returned an empty list for bot-group '{}'.",
-				botgroup_name
-			).c_str()
-		);
-		return;
-	}
-
-	auto spawned_bot_count = Bot::SpawnedBotCount(c->CharacterID());
-
-	auto bot_spawn_limit = c->GetBotSpawnLimit();
-	if (
-		bot_spawn_limit >= 0 &&
-		(
-			spawned_bot_count >= bot_spawn_limit ||
-			(spawned_bot_count + member_list.begin()->second.size()) > bot_spawn_limit
-		)
-	) {
-		std::string message;
-		if (bot_spawn_limit) {
-			message = fmt::format(
-				"You cannot have more than {} spawned bot{}.",
-				bot_spawn_limit,
-				bot_spawn_limit != 1 ? "s" : ""
-			);
-		} else {
-			message = "You are not currently allowed to spawn any bots.";
-		}
-
-		c->Message(Chat::White, message.c_str());
-		return;
-	}
-
-	uint32 leader_id = 0;
-	if (!database.botdb.LoadLeaderIDByBotGroupName(botgroup_name, leader_id)) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Failed to load leader ID by bot-group name for '{}'.",
-				botgroup_name
-			).c_str()
-		);
-		return;
-	}
-
-	if (!leader_id) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Cannot locate bot-group leader ID for '{}'.",
-				botgroup_name
-			).c_str()
-		);
-		return;
-	}
-
-	Bot::SpawnBotGroupByName(c, botgroup_name, leader_id);
-}
-
-void bot_subcommand_botgroup_remove_member(Client *c, const Seperator *sep)
-{
-	if (helper_command_alias_fail(c, "bot_subcommand_botgroup_remove_member", sep->arg[0], "botgroupremovemember")) {
-		return;
-	}
-
-	if (helper_is_help_or_usage(sep->arg[1])) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Usage: (<target_member>) {} ([member_name])",
-				sep->arg[0]
-			).c_str()
-		);
-		return;
-	}
-
-	std::list<Bot*> sbl;
-	MyBots::PopulateSBL_ByNamedBot(c, sbl, sep->arg[1]);
-
-	if (sbl.empty()) {
-		MyBots::PopulateSBL_ByTargetedBot(c, sbl);
-	}
-
-	if (sbl.empty()) {
-		c->Message(Chat::White, "You must target or name a group member as a bot that you own to use this command.");
-		return;
-	}
-
-	auto group_member = sbl.front();
-	if (!group_member) {
-		c->Message(Chat::White, "Error: Group member bot dereferenced to nullptr.");
-		return;
-	}
-
-	if (!group_member->HasGroup()) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"{} is not a current member of a group.",
-				group_member->GetCleanName()
-			).c_str()
-		);
-		return;
-	}
-
-	if (!Bot::RemoveBotFromGroup(group_member, group_member->GetGroup())) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Could not remove {} from their group.",
-				group_member->GetCleanName()
-			).c_str()
-		);
-		return;
-	}
-
-	if (!database.botdb.RemoveMemberFromBotGroup(group_member->GetBotID())) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Could not remove {} from their bot-group.",
-				group_member->GetCleanName()
-			).c_str()
-		);
-		return;
-	}
-
-	c->Message(
-		Chat::White,
-		fmt::format(
-			"Successfully removed {} from their bot-group.",
-			group_member->GetCleanName()
-		).c_str()
-	);
 }
 
 void bot_subcommand_circle(Client *c, const Seperator *sep)
@@ -8211,7 +7330,7 @@ void bot_subcommand_heal_rotation_adjust_critical(Client *c, const Seperator *se
 
 	uint8 armor_type_value = 255;
 	if (sep->IsNumber(1))
-		armor_type_value = atoi(armor_type_arg.c_str());
+		armor_type_value = Strings::ToInt(armor_type_arg);
 
 	if (armor_type_value > ARMOR_TYPE_LAST) {
 		c->Message(Chat::White, "You must specify a valid [armor_type: %u-%u] to use this command", ARMOR_TYPE_FIRST, ARMOR_TYPE_LAST);
@@ -8240,7 +7359,7 @@ void bot_subcommand_heal_rotation_adjust_critical(Client *c, const Seperator *se
 
 	float critical_ratio = CRITICAL_HP_RATIO_BASE;
 	if (sep->IsNumber(2))
-		critical_ratio = atof(critical_arg.c_str());
+		critical_ratio = Strings::ToFloat(critical_arg);
 	else if (!critical_arg.compare("+"))
 		critical_ratio = (*current_member->MemberOfHealRotation())->ArmorTypeCriticalHPRatio(armor_type_value) + HP_RATIO_DELTA;
 	else if (!critical_arg.compare("-"))
@@ -8277,7 +7396,7 @@ void bot_subcommand_heal_rotation_adjust_safe(Client *c, const Seperator *sep)
 
 	uint8 armor_type_value = 255;
 	if (sep->IsNumber(1))
-		armor_type_value = atoi(armor_type_arg.c_str());
+		armor_type_value = Strings::ToInt(armor_type_arg);
 
 	if (armor_type_value > ARMOR_TYPE_LAST) {
 		c->Message(Chat::White, "You must specify a valid [armor_type: %u-%u] to use this command", ARMOR_TYPE_FIRST, ARMOR_TYPE_LAST);
@@ -8306,7 +7425,7 @@ void bot_subcommand_heal_rotation_adjust_safe(Client *c, const Seperator *sep)
 
 	float safe_ratio = SAFE_HP_RATIO_BASE;
 	if (sep->IsNumber(2))
-		safe_ratio = atof(safe_arg.c_str());
+		safe_ratio = Strings::ToFloat(safe_arg);
 	else if (!safe_arg.compare("+"))
 		safe_ratio = (*current_member->MemberOfHealRotation())->ArmorTypeSafeHPRatio(armor_type_value) + HP_RATIO_DELTA;
 	else if (!safe_arg.compare("-"))
@@ -8420,7 +7539,7 @@ void bot_subcommand_heal_rotation_change_interval(Client *c, const Seperator *se
 	uint32 hr_change_interval_s = CASTING_CYCLE_DEFAULT_INTERVAL_S;
 
 	if (!change_interval_arg.empty()) {
-		hr_change_interval_s = atoi(change_interval_arg.c_str());
+		hr_change_interval_s = Strings::ToInt(change_interval_arg);
 	}
 	else {
 		hr_change_interval_s = (*current_member->MemberOfHealRotation())->IntervalS();
@@ -8568,14 +7687,14 @@ void bot_subcommand_heal_rotation_create(Client *c, const Seperator *sep)
 			hr_adaptive_targeting = true;
 		if (!fast_heals_arg.compare("on"))
 			hr_fast_heals = true;
-		hr_interval_s = atoi(interval_arg.c_str());
+		hr_interval_s = Strings::ToInt(interval_arg);
 	}
 	else if (!casting_override_arg.compare("off")) {
 		if (!adaptive_targeting_arg.compare("on"))
 			hr_adaptive_targeting = true;
 		if (!fast_heals_arg.compare("on"))
 			hr_fast_heals = true;
-		hr_interval_s = atoi(interval_arg.c_str());
+		hr_interval_s = Strings::ToInt(interval_arg);
 	}
 
 	if (hr_interval_s < CASTING_CYCLE_MINIMUM_INTERVAL_S || hr_interval_s > CASTING_CYCLE_MAXIMUM_INTERVAL_S)
@@ -9298,13 +8417,13 @@ void bot_subcommand_inventory_remove(Client *c, const Seperator *sep)
 		return;
 	}
 
-	auto slot_id = static_cast<uint16>(std::stoul(sep->arg[1]));
+	auto slot_id = static_cast<uint16>(Strings::ToUnsignedInt(sep->arg[1]));
 	if (slot_id > EQ::invslot::EQUIPMENT_END || slot_id < EQ::invslot::EQUIPMENT_BEGIN) {
 		c->Message(Chat::White, "Valid slots are 0 to 22.");
 		return;
 	}
 
-	const auto* inst = my_bot->GetBotItem(slot_id);
+	auto* inst = my_bot->GetBotItem(slot_id);
 	if (!inst) {
 		std::string slot_message = "is";
 		switch (slot_id) {
@@ -9388,6 +8507,18 @@ void bot_subcommand_inventory_remove(Client *c, const Seperator *sep)
 				slot_id
 			)
 		);
+
+		if (parse->BotHasQuestSub(EVENT_UNEQUIP_ITEM_BOT)) {
+			const auto& export_string = fmt::format(
+				"{} {}",
+				inst->IsStackable() ? inst->GetCharges() : 1,
+				slot_id
+			);
+
+			std::vector<std::any> args = { inst };
+
+			parse->EventBot(EVENT_UNEQUIP_ITEM_BOT, my_bot, nullptr, export_string, inst->GetID(), &args);
+		}
 	}
 }
 
@@ -9881,7 +9012,7 @@ uint32 helper_bot_create(Client *bot_owner, std::string bot_name, uint8 bot_clas
 	}
 
 
-	auto my_bot = new Bot(Bot::CreateDefaultNPCTypeStructForBot(bot_name.c_str(), "", bot_owner->GetLevel(), bot_race, bot_class, bot_gender), bot_owner);
+	auto my_bot = new Bot(Bot::CreateDefaultNPCTypeStructForBot(bot_name, "", bot_owner->GetLevel(), bot_race, bot_class, bot_gender), bot_owner);
 
 	if (!my_bot->Save()) {
 		bot_owner->Message(
@@ -9907,17 +9038,18 @@ uint32 helper_bot_create(Client *bot_owner, std::string bot_name, uint8 bot_clas
 	);
 
 	bot_id = my_bot->GetBotID();
+	if (parse->PlayerHasQuestSub(EVENT_BOT_CREATE)) {
+		const auto& export_string = fmt::format(
+			"{} {} {} {} {}",
+			bot_name,
+			bot_id,
+			bot_race,
+			bot_class,
+			bot_gender
+		);
 
-	const auto export_string = fmt::format(
-		"{} {} {} {} {}",
-		bot_name,
-		bot_id,
-		bot_race,
-		bot_class,
-		bot_gender
-	);
-
-	parse->EventPlayer(EVENT_BOT_CREATE, bot_owner, export_string, 0);
+		parse->EventPlayer(EVENT_BOT_CREATE, bot_owner, export_string, 0);
+	}
 
 	safe_delete(my_bot);
 
@@ -10049,7 +9181,7 @@ bool helper_cast_standard_spell(Bot* casting_bot, Mob* target_mob, int spell_id,
 
 bool helper_command_disabled(Client* bot_owner, bool rule_value, const char* command)
 {
-	if (rule_value == false) {
+	if (rule_value) {
 		bot_owner->Message(Chat::White, "Bot command %s is not enabled on this server.", command);
 		return true;
 	}
@@ -10113,8 +9245,7 @@ void helper_command_depart_list(Client* bot_owner, Bot* druid_bot, Bot* wizard_b
 			}
 
 			msg = fmt::format(
-				"{}circle {}{}",
-				std::to_string(BOT_COMMAND_CHAR),
+				"^circle {}{}",
 				spells[local_entry->spell_id].teleport_zone,
 				single_flag ? " single" : ""
 			);
@@ -10131,7 +9262,7 @@ void helper_command_depart_list(Client* bot_owner, Bot* druid_bot, Bot* wizard_b
 					destination_number,
 					local_entry->long_name,
 					text_link
-				).c_str()
+				)
 			);
 
 			destination_count++;
@@ -10149,8 +9280,7 @@ void helper_command_depart_list(Client* bot_owner, Bot* druid_bot, Bot* wizard_b
 			}
 
 			msg = fmt::format(
-				"{}portal {}{}",
-				std::to_string(BOT_COMMAND_CHAR),
+				"^portal {}{}",
 				spells[local_entry->spell_id].teleport_zone,
 				single_flag ? " single" : ""
 			);
@@ -10167,7 +9297,7 @@ void helper_command_depart_list(Client* bot_owner, Bot* druid_bot, Bot* wizard_b
 					destination_number,
 					local_entry->long_name,
 					text_link
-				).c_str()
+				)
 			);
 
 			destination_count++;
@@ -10215,7 +9345,15 @@ void helper_send_available_subcommands(Client *bot_owner, const char* command_si
 		if (bot_owner->Admin() < find_iter->second->access)
 			continue;
 
-		bot_owner->Message(Chat::White, "%c%s - %s", BOT_COMMAND_CHAR, subcommand_iter, ((find_iter != bot_command_list.end()) ? (find_iter->second->desc) : ("[no description]")));
+		bot_owner->Message(
+			Chat::White,
+			fmt::format(
+				"^{} - {}",
+				subcommand_iter,
+				find_iter != bot_command_list.end() ? find_iter->second->desc : "No Description"
+			).c_str()
+		);
+
 		++bot_subcommands_shown;
 	}
 
@@ -10277,7 +9415,7 @@ void bot_command_spell_list(Client* c, const Seperator *sep)
 	uint8 min_level = 0;
 
 	if (sep->IsNumber(1)) {
-		min_level = static_cast<uint8>(std::stoul(sep->arg[1]));
+		min_level = static_cast<uint8>(Strings::ToUnsignedInt(sep->arg[1]));
 	}
 
 	my_bot->ListBotSpells(min_level);
@@ -10324,7 +9462,7 @@ void bot_command_spell_settings_add(Client *c, const Seperator *sep)
 		return;
 	}
 
-	auto spell_id = static_cast<uint16>(std::stoul(sep->arg[1]));
+	auto spell_id = static_cast<uint16>(Strings::ToUnsignedInt(sep->arg[1]));
 
 	if (!IsValidSpell(spell_id)) {
 		c->Message(
@@ -10351,9 +9489,9 @@ void bot_command_spell_settings_add(Client *c, const Seperator *sep)
 		return;
 	}
 
-	auto priority = static_cast<int16>(std::stoi(sep->arg[2]));
-	auto min_hp = static_cast<int8>(EQ::Clamp(std::stoi(sep->arg[3]), -1, 99));
-	auto max_hp = static_cast<int8>(EQ::Clamp(std::stoi(sep->arg[4]), -1, 100));
+	auto priority = static_cast<int16>(Strings::ToInt(sep->arg[2]));
+	auto min_hp = static_cast<int8>(EQ::Clamp(Strings::ToInt(sep->arg[3]), -1, 99));
+	auto max_hp = static_cast<int8>(EQ::Clamp(Strings::ToInt(sep->arg[4]), -1, 100));
 
 	BotSpellSetting bs;
 
@@ -10439,7 +9577,7 @@ void bot_command_spell_settings_delete(Client *c, const Seperator *sep)
 		return;
 	}
 
-	auto spell_id = static_cast<uint16>(std::stoul(sep->arg[1]));
+	auto spell_id = static_cast<uint16>(Strings::ToUnsignedInt(sep->arg[1]));
 
 	if (!IsValidSpell(spell_id)) {
 		c->Message(
@@ -10547,7 +9685,7 @@ void bot_command_spell_settings_toggle(Client *c, const Seperator *sep)
 		return;
 	}
 
-	auto spell_id = static_cast<uint16>(std::stoul(sep->arg[1]));
+	auto spell_id = static_cast<uint16>(Strings::ToUnsignedInt(sep->arg[1]));
 	if (!IsValidSpell(spell_id)) {
 		c->Message(
 			Chat::White,
@@ -10561,7 +9699,7 @@ void bot_command_spell_settings_toggle(Client *c, const Seperator *sep)
 
 	bool toggle = (
 		sep->IsNumber(2) ?
-		(std::stoi(sep->arg[2]) ? true : false) :
+		Strings::ToInt(sep->arg[2]) != 0 :
 		atobool(sep->arg[2])
 	);
 
@@ -10652,7 +9790,7 @@ void bot_command_spell_settings_update(Client *c, const Seperator *sep)
 		return;
 	}
 
-	auto spell_id = static_cast<uint16>(std::stoul(sep->arg[1]));
+	auto spell_id = static_cast<uint16>(Strings::ToUnsignedInt(sep->arg[1]));
 
 	if (!IsValidSpell(spell_id)) {
 		c->Message(
@@ -10665,9 +9803,9 @@ void bot_command_spell_settings_update(Client *c, const Seperator *sep)
 		return;
 	}
 
-	auto priority = static_cast<int16>(std::stoi(sep->arg[2]));
-	auto min_hp = static_cast<int8>(EQ::Clamp(std::stoi(sep->arg[3]), -1, 99));
-	auto max_hp = static_cast<int8>(EQ::Clamp(std::stoi(sep->arg[4]), -1, 100));
+	auto priority = static_cast<int16>(Strings::ToInt(sep->arg[2]));
+	auto min_hp = static_cast<int8>(EQ::Clamp(Strings::ToInt(sep->arg[3]), -1, 99));
+	auto max_hp = static_cast<int8>(EQ::Clamp(Strings::ToInt(sep->arg[4]), -1, 100));
 
 	BotSpellSetting bs;
 
@@ -10742,7 +9880,7 @@ void bot_spell_info_dialogue_window(Client* c, const Seperator *sep)
 		return;
 	}
 
-	auto spell_id = static_cast<uint16>(std::stoul(sep->arg[1]));
+	auto spell_id = static_cast<uint16>(Strings::ToUnsignedInt(sep->arg[1]));
 	auto min_level = spells[spell_id].classes;
 	auto class_level = min_level[my_bot->GetBotClass() - 1];
 
@@ -10820,4 +9958,52 @@ void bot_command_enforce_spell_list(Client* c, const Seperator *sep)
 	);
 }
 
-#endif // BOTS
+void bot_command_caster_range(Client* c, const Seperator* sep)
+{
+	if (helper_command_alias_fail(c, "bot_command_caster_range", sep->arg[0], "casterrange")) {
+		return;
+	}
+	if (helper_is_help_or_usage(sep->arg[1])) {
+		c->Message(Chat::White, "usage: <target_bot> %s [current | value: 0 - 300].", sep->arg[0]);
+		c->Message(Chat::White, "note: Can only be used for Casters or Hybrids.");
+		c->Message(Chat::White, "note: Use [current] to check the current setting.");
+		c->Message(Chat::White, "note: Set the value to the minimum distance you want your bot to try to remain from its target.");
+		c->Message(Chat::White, "note: If they are too far for a spell, it will be skipped.");
+		return;
+	}
+
+	auto my_bot = ActionableBots::AsTarget_ByBot(c);
+	if (!my_bot) {
+		c->Message(Chat::White, "You must <target> a bot that you own to use this command.");
+		return;
+	}
+	if (!IsCasterClass(my_bot->GetClass()) && !IsHybridClass(my_bot->GetClass())) {
+		c->Message(Chat::White, "You must <target> a caster or hybrid class to use this command.");
+		return;
+	}
+
+	uint32 crange = 0;
+	if (sep->IsNumber(1)) {
+		crange = atoi(sep->arg[1]);
+		if (crange >= 0 && crange <= 300) {
+			my_bot->SetBotCasterRange(crange);
+			if (!database.botdb.SaveBotCasterRange(c->CharacterID(), my_bot->GetBotID(), crange)) {
+				c->Message(Chat::White, "%s for '%s'", BotDatabase::fail::SaveBotCasterRange(), my_bot->GetCleanName());
+				return;
+			}
+			else {
+				c->Message(Chat::White, "Successfully set Caster Range for %s to %u.", my_bot->GetCleanName(), crange);
+			}
+		}
+		else {
+			c->Message(Chat::White, "You must enter a value within the range of 0 - 300.");
+			return;
+		}
+	}
+	else if (!strcasecmp(sep->arg[1], "current")) {
+		c->Message(Chat::White, "My current range is %u.", my_bot->GetBotCasterRange());
+	}
+	else {
+		c->Message(Chat::White, "Incorrect argument, use help for a list of options.");
+	}
+}

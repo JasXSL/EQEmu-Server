@@ -23,11 +23,8 @@
 #include "quest_parser_collection.h"
 #include "worldserver.h"
 #include "zonedb.h"
-#include "../common/zone_store.h"
-
-#ifdef BOTS
+#include "../common/events/player_event_logs.h"
 #include "bot.h"
-#endif
 
 extern WorldServer worldserver;
 
@@ -716,6 +713,18 @@ bool Client::SummonItem(uint32 item_id, int16 charges, uint32 aug1, uint32 aug2,
 	// in any other situation just use charges as passed
 
 	EQ::ItemInstance* inst = database.CreateItem(item, charges);
+	auto timestamps = database.GetItemRecastTimestamps(CharacterID());
+	if (inst) {
+		const auto* d = inst->GetItem();
+		if (d->RecastDelay) {
+			if (d->RecastType != RECAST_TYPE_UNLINKED_ITEM) {
+				inst->SetRecastTimestamp(timestamps.count(d->RecastType) ? timestamps.at(d->RecastType) : 0);
+			}
+			else {
+				inst->SetRecastTimestamp(timestamps.count(d->ID) ? timestamps.at(d->ID) : 0);
+			}
+		}
+	}
 
 	if(inst == nullptr) {
 		Message(Chat::Red, "An unknown server error has occurred and your item was not created.");
@@ -785,6 +794,23 @@ bool Client::SummonItem(uint32 item_id, int16 charges, uint32 aug1, uint32 aug2,
 		}
 	}
 
+	if (player_event_logs.IsEventEnabled(PlayerEvent::ITEM_CREATION)) {
+		auto e = PlayerEvent::ItemCreationEvent{};
+		e.item_id   = item->ID;
+		e.item_name = item->Name;
+		e.to_slot   = to_slot;
+		e.charges   = charges;
+		e.aug1      = aug1;
+		e.aug2      = aug2;
+		e.aug3      = aug3;
+		e.aug4      = aug4;
+		e.aug5      = aug5;
+		e.aug6      = aug6;
+		e.attuned   = attuned;
+
+		RecordPlayerEventLog(PlayerEvent::ITEM_CREATION, e);
+	}
+
 	// put item into inventory
 	if (to_slot == EQ::invslot::slotCursor) {
 		PushItemOnCursor(*inst);
@@ -796,17 +822,12 @@ bool Client::SummonItem(uint32 item_id, int16 charges, uint32 aug1, uint32 aug2,
 	safe_delete(inst);
 
 	// discover item and any augments
-	if((RuleB(Character, EnableDiscoveredItems)) && !GetGM()) {
-		if(!IsDiscovered(item_id)) {
-			DiscoverItem(item_id);
-		}
-		/*
-		// Augments should have been discovered prior to being placed on an item.
-		for (int iter = AUG_BEGIN; iter < EQ::constants::ITEM_COMMON_SIZE; ++iter) {
-			if(augments[iter] && !IsDiscovered(augments[iter]))
-				DiscoverItem(augments[iter]);
-		}
-		*/
+	if (
+		RuleB(Character, EnableDiscoveredItems) &&
+		!GetGM() &&
+		!IsDiscovered(item_id)
+	) {
+		DiscoverItem(item_id);
 	}
 
 	return true;
@@ -815,11 +836,14 @@ bool Client::SummonItem(uint32 item_id, int16 charges, uint32 aug1, uint32 aug2,
 // Drop item from inventory to ground (generally only dropped from SLOT_CURSOR)
 void Client::DropItem(int16 slot_id, bool recurse)
 {
-	LogInventory("[{}] (char_id: [{}]) Attempting to drop item from slot [{}] on the ground",
-		GetCleanName(), CharacterID(), slot_id);
+	LogInventory(
+		"[{}] (char_id: [{}]) Attempting to drop item from slot [{}] on the ground",
+		GetCleanName(),
+		CharacterID(),
+		slot_id
+	);
 
-	if(GetInv().CheckNoDrop(slot_id, recurse) && !CanTradeFVNoDropItem())
-	{
+	if (GetInv().CheckNoDrop(slot_id, recurse) && !CanTradeFVNoDropItem()) {
 		auto invalid_drop = m_inv.GetItem(slot_id);
 		if (!invalid_drop) {
 			LogInventory("Error in InventoryProfile::CheckNoDrop() - returned 'true' for empty slot");
@@ -841,50 +865,102 @@ void Client::DropItem(int16 slot_id, bool recurse)
 				}
 			}
 		}
-		invalid_drop = nullptr;
 
-		database.SetHackerFlag(AccountName(), GetCleanName(), "Tried to drop an item on the ground that was nodrop!");
+		std::string message = fmt::format(
+			"Tried to drop an item on the ground that was no-drop! item_name [{}] item_id ({})",
+			invalid_drop->GetItem()->Name,
+			invalid_drop->GetItem()->ID
+		);
+
+		invalid_drop = nullptr;
+		RecordPlayerEventLog(PlayerEvent::POSSIBLE_HACK, PlayerEvent::PossibleHackEvent{.message = message});
 		GetInv().DeleteItem(slot_id);
 		return;
 	}
 
 	// Take control of item in client inventory
-	EQ::ItemInstance *inst = m_inv.PopItem(slot_id);
-	if(inst) {
+	auto* inst = m_inv.PopItem(slot_id);
+	if (inst) {
 		if (LogSys.log_settings[Logs::Inventory].is_category_enabled) {
 			LogInventory("DropItem() Processing - full item parse:");
-			LogInventory("depth: 0, Item: [{}] (id: [{}]), IsDroppable: [{}]",
-				(inst->GetItem() ? inst->GetItem()->Name : "null data"), inst->GetID(), (inst->IsDroppable(false) ? "true" : "false"));
+			LogInventory(
+				"depth: 0, Item: [{}] (id: [{}]), IsDroppable: [{}]",
+				(inst->GetItem() ? inst->GetItem()->Name : "null data"),
+				inst->GetID(),
+				(inst->IsDroppable(false) ? "true" : "false")
+			);
 
-			if (!inst->IsDroppable(false))
+			if (!inst->IsDroppable(false)) {
 				LogError("Non-droppable item being processed for drop by [{}]", GetCleanName());
+			}
 
 			for (auto iter1 : *inst->GetContents()) { // depth 1
-				LogInventory("-depth: 1, Item: [{}] (id: [{}]), IsDroppable: [{}]",
-					(iter1.second->GetItem() ? iter1.second->GetItem()->Name : "null data"), iter1.second->GetID(), (iter1.second->IsDroppable(false) ? "true" : "false"));
+				LogInventory(
+					"-depth: 1, Item: [{}] (id: [{}]), IsDroppable: [{}]",
+					(iter1.second->GetItem() ? iter1.second->GetItem()->Name : "null data"),
+					iter1.second->GetID(),
+					(iter1.second->IsDroppable(false) ? "true" : "false")
+				);
 
-				if (!iter1.second->IsDroppable(false))
+				if (!iter1.second->IsDroppable(false)) {
 					LogError("Non-droppable item being processed for drop by [{}]", GetCleanName());
+				}
 
 				for (auto iter2 : *iter1.second->GetContents()) { // depth 2
-					LogInventory("--depth: 2, Item: [{}] (id: [{}]), IsDroppable: [{}]",
-						(iter2.second->GetItem() ? iter2.second->GetItem()->Name : "null data"), iter2.second->GetID(), (iter2.second->IsDroppable(false) ? "true" : "false"));
+					LogInventory(
+						"--depth: 2, Item: [{}] (id: [{}]), IsDroppable: [{}]",
+						(iter2.second->GetItem() ? iter2.second->GetItem()->Name : "null data"),
+						iter2.second->GetID(),
+						(iter2.second->IsDroppable(false) ? "true" : "false")
+					);
 
-					if (!iter2.second->IsDroppable(false))
+					if (!iter2.second->IsDroppable(false)) {
 						LogError("Non-droppable item being processed for drop by [{}]", GetCleanName());
+					}
 				}
 			}
 		}
 
-		int i = parse->EventItem(EVENT_DROP_ITEM, this, inst, nullptr, "", slot_id);
-		if(i != 0) {
-			LogInventory("Item drop handled by [EVENT_DROP_ITEM]");
-			safe_delete(inst);
+
+		int i = 0;
+
+		if (player_event_logs.IsEventEnabled(PlayerEvent::DROPPED_ITEM)) {
+			auto e = PlayerEvent::DroppedItemEvent{
+				.item_id = inst->GetID(),
+				.item_name = inst->GetItem()->Name,
+				.slot_id = slot_id,
+				.charges = (uint32) inst->GetCharges()
+			};
+			RecordPlayerEventLog(PlayerEvent::DROPPED_ITEM, e);
+		}
+
+		if (parse->ItemHasQuestSub(inst, EVENT_DROP_ITEM)) {
+			parse->EventItem(EVENT_DROP_ITEM, this, inst, nullptr, "", slot_id);
+			if (i != 0) {
+				LogInventory("Item drop handled by [EVENT_DROP_ITEM]");
+				safe_delete(inst);
+			}
+		}
+
+		if (parse->PlayerHasQuestSub(EVENT_DROP_ITEM_CLIENT)) {
+			std::vector<std::any> args = { inst };
+
+			i = parse->EventPlayer(EVENT_DROP_ITEM_CLIENT, this, "", slot_id, &args);
+			if (i != 0) {
+				LogInventory("Item drop handled by [EVENT_DROP_ITEM_CLIENT]");
+				safe_delete(inst);
+			}
 		}
 	} else {
 		// Item doesn't exist in inventory!
 		LogInventory("DropItem() - No item found in slot [{}]", slot_id);
-		Message(Chat::Red, "Error: Item not found in slot %i", slot_id);
+		Message(
+			Chat::Red,
+			fmt::format(
+				"Error: Item not found in slot {}.",
+				slot_id
+			).c_str()
+		);
 		return;
 	}
 
@@ -897,15 +973,16 @@ void Client::DropItem(int16 slot_id, bool recurse)
 		database.SaveInventory(CharacterID(), nullptr, slot_id);
 	}
 
-	if(!inst)
+	if (!inst) {
 		return;
+	}
 
 	// Package as zone object
 	auto object = new Object(this, inst);
 	entity_list.AddObject(object, true);
 	object->StartDecay();
 
-	LogInventory("Item drop handled ut assolet");
+	LogInventory("[{}] dropped [{}] from slot [{}]", GetCleanName(), inst->GetItem()->Name, slot_id);
 	DropItemQS(inst, false);
 
 	safe_delete(inst);
@@ -1086,7 +1163,16 @@ void Client::SendCursorBuffer()
 		LogInventory("([{}]) Duplicate lore items are not allowed - destroying item [{}](id:[{}]) on cursor",
 			GetName(), test_item->Name, test_item->ID);
 		MessageString(Chat::Loot, 290);
-		parse->EventItem(EVENT_DESTROY_ITEM, this, test_inst, nullptr, "", 0);
+
+		if (parse->ItemHasQuestSub(test_inst, EVENT_DESTROY_ITEM)) {
+			parse->EventItem(EVENT_DESTROY_ITEM, this, test_inst, nullptr, "", 0);
+		}
+
+		if (parse->PlayerHasQuestSub(EVENT_DESTROY_ITEM_CLIENT)) {
+			std::vector<std::any> args = { test_inst };
+			parse->EventPlayer(EVENT_DESTROY_ITEM_CLIENT, this, "", 0, &args);
+		}
+
 		DeleteItemInInventory(EQ::invslot::slotCursor);
 		SendCursorBuffer();
 	}
@@ -1301,7 +1387,11 @@ void Client::PutLootInInventory(int16 slot_id, const EQ::ItemInstance &inst, Ser
 				bag_item_data[index]->aug_4,
 				bag_item_data[index]->aug_5,
 				bag_item_data[index]->aug_6,
-				bag_item_data[index]->attuned
+				bag_item_data[index]->attuned,
+				bag_item_data[index]->custom_data,
+				bag_item_data[index]->ornamenticon,
+				bag_item_data[index]->ornamentidfile,
+				bag_item_data[index]->ornament_hero_model
 				);
 
 			// Dump bag contents to cursor in the event that owning bag is not the first cursor item
@@ -1425,7 +1515,11 @@ bool Client::AutoPutLootInInventory(EQ::ItemInstance& inst, bool try_worn, bool 
 					if (worn_slot_material != EQ::textures::materialInvalid) {
 						SendWearChange(worn_slot_material);
 					}
-					parse->EventItem(EVENT_EQUIP_ITEM, this, &inst, nullptr, "", i);
+
+					if (parse->ItemHasQuestSub(&inst, EVENT_EQUIP_ITEM)) {
+						parse->EventItem(EVENT_EQUIP_ITEM, this, &inst, nullptr, "", i);
+					}
+
 					return true;
 				}
 			}
@@ -1813,8 +1907,29 @@ bool Client::SwapItem(MoveItem_Struct* move_in) {
 				LogInventory("([{}]) Duplicate lore items are not allowed - destroying item [{}](id:[{}]) on cursor",
 					GetName(), test_item->Name, test_item->ID);
 				MessageString(Chat::Loot, 290);
-				parse->EventItem(EVENT_DESTROY_ITEM, this, test_inst, nullptr, "", 0);
+
+				if (parse->ItemHasQuestSub(test_inst, EVENT_DESTROY_ITEM)) {
+					parse->EventItem(EVENT_DESTROY_ITEM, this, test_inst, nullptr, "", 0);
+				}
+
+				if (parse->PlayerHasQuestSub(EVENT_DESTROY_ITEM_CLIENT)) {
+					std::vector<std::any> args = { test_inst };
+					parse->EventPlayer(EVENT_DESTROY_ITEM_CLIENT, this, "", 0, &args);
+				}
+
 				DeleteItemInInventory(EQ::invslot::slotCursor, 0, true);
+
+				if (player_event_logs.IsEventEnabled(PlayerEvent::ITEM_DESTROY)) {
+					auto e = PlayerEvent::DestroyItemEvent{
+						.item_id = test_inst->GetItem()->ID,
+						.item_name = test_inst->GetItem()->Name,
+						.charges = test_inst->GetCharges(),
+						.reason = "Duplicate lore item",
+					};
+
+					RecordPlayerEventLog(PlayerEvent::ITEM_DESTROY, e);
+				}
+
 			}
 		}
 		return true;
@@ -1826,8 +1941,27 @@ bool Client::SwapItem(MoveItem_Struct* move_in) {
 			if(RuleB(QueryServ, PlayerLogMoves)) { QSSwapItemAuditor(move_in); } // QS Audit
 
 			EQ::ItemInstance *inst = m_inv.GetItem(EQ::invslot::slotCursor);
-			if(inst) {
-				parse->EventItem(EVENT_DESTROY_ITEM, this, inst, nullptr, "", 0);
+
+			if (inst) {
+				if (player_event_logs.IsEventEnabled(PlayerEvent::ITEM_DESTROY)) {
+					auto e = PlayerEvent::DestroyItemEvent{
+						.item_id = inst->GetItem()->ID,
+						.item_name = inst->GetItem()->Name,
+						.charges = inst->GetCharges(),
+						.reason = "Client destroy cursor",
+					};
+
+					RecordPlayerEventLog(PlayerEvent::ITEM_DESTROY, e);
+				}
+
+				if (parse->ItemHasQuestSub(inst, EVENT_DESTROY_ITEM)) {
+					parse->EventItem(EVENT_DESTROY_ITEM, this, inst, nullptr, "", 0);
+				}
+
+				if (parse->PlayerHasQuestSub(EVENT_DESTROY_ITEM_CLIENT)) {
+					std::vector<std::any> args = { inst };
+					parse->EventPlayer(EVENT_DESTROY_ITEM_CLIENT, this, "", 0, &args);
+				}
 			}
 
 			DeleteItemInInventory(move_in->from_slot);
@@ -1860,10 +1994,13 @@ bool Client::SwapItem(MoveItem_Struct* move_in) {
 
 		if(!banker || distance > USE_NPC_RANGE2)
 		{
-			auto hacked_string = fmt::format("Player tried to make use of a banker(items) but {} is "
-							 "non-existant or too far away ({} units).",
-							 banker ? banker->GetName() : "UNKNOWN NPC", distance);
-			database.SetMQDetectionFlag(AccountName(), GetName(), hacked_string, zone->GetShortName());
+			auto message = fmt::format(
+				"Player tried to make use of a banker (items) but banker [{}] is "
+				"non-existent or too far away [{}] units",
+				banker ? banker->GetName() : "UNKNOWN NPC", distance
+			);
+			RecordPlayerEventLog(PlayerEvent::POSSIBLE_HACK, PlayerEvent::PossibleHackEvent{.message = message});
+
 			Kick("Inventory desync");	// Kicking player to avoid item loss do to client and server inventories not being sync'd
 			return false;
 		}
@@ -1906,8 +2043,8 @@ bool Client::SwapItem(MoveItem_Struct* move_in) {
 		}
 		if ((srcbagid && srcbag->GetItem()->BagType == EQ::item::BagTypeTradersSatchel) ||
 		    (dstbagid && dstbag->GetItem()->BagType == EQ::item::BagTypeTradersSatchel) ||
-		    (srcitemid && src_inst->GetItem()->BagType == EQ::item::BagTypeTradersSatchel) ||
-		    (dstitemid && dst_inst->GetItem()->BagType == EQ::item::BagTypeTradersSatchel)) {
+		    (srcitemid && src_inst && src_inst->GetItem()->BagType == EQ::item::BagTypeTradersSatchel) ||
+		    (dstitemid && dst_inst && dst_inst->GetItem()->BagType == EQ::item::BagTypeTradersSatchel)) {
 			Trader_EndTrader();
 			Message(Chat::Red,"You cannot move your Trader Satchels, or items inside them, while Trading.");
 		}
@@ -2207,53 +2344,73 @@ bool Client::SwapItem(MoveItem_Struct* move_in) {
 
 		if (src_slot_id <= EQ::invslot::EQUIPMENT_END) {
 			if(src_inst) {
-				parse->EventItem(EVENT_UNEQUIP_ITEM, this, src_inst, nullptr, "", src_slot_id);
+				if (parse->ItemHasQuestSub(src_inst, EVENT_UNEQUIP_ITEM)) {
+					parse->EventItem(EVENT_UNEQUIP_ITEM, this, src_inst, nullptr, "", src_slot_id);
+				}
 
-				std::string export_string = fmt::format(
-					"{} {}",
-					src_inst->IsStackable() ? src_inst->GetCharges() : 1,
-					src_slot_id
-				);
+				if (parse->PlayerHasQuestSub(EVENT_UNEQUIP_ITEM_CLIENT)) {
+					const auto& export_string = fmt::format(
+						"{} {}",
+						src_inst->IsStackable() ? src_inst->GetCharges() : 1,
+						src_slot_id
+					);
 
-				parse->EventPlayer(EVENT_UNEQUIP_ITEM_CLIENT, this, export_string, src_inst->GetItem()->ID);
+					parse->EventPlayer(EVENT_UNEQUIP_ITEM_CLIENT, this, export_string, src_inst->GetItem()->ID);
+				}
 			}
 
-			if(dst_inst) {
-				parse->EventItem(EVENT_EQUIP_ITEM, this, dst_inst, nullptr, "", src_slot_id);
+			if (dst_inst) {
+				if (parse->ItemHasQuestSub(dst_inst, EVENT_EQUIP_ITEM)) {
+					parse->EventItem(EVENT_EQUIP_ITEM, this, dst_inst, nullptr, "", src_slot_id);
+				}
 
-				std::string export_string = fmt::format(
-					"{} {}",
-					dst_inst->IsStackable() ? dst_inst->GetCharges() : 1,
-					src_slot_id
-				);
+				if (parse->PlayerHasQuestSub(EVENT_EQUIP_ITEM_CLIENT)) {
+					const auto& export_string = fmt::format(
+						"{} {}",
+						dst_inst->IsStackable() ? dst_inst->GetCharges() : 1,
+						src_slot_id
+					);
 
-				parse->EventPlayer(EVENT_EQUIP_ITEM_CLIENT, this, export_string, dst_inst->GetItem()->ID);
+					parse->EventPlayer(EVENT_EQUIP_ITEM_CLIENT, this, export_string, dst_inst->GetItem()->ID);
+				}
 			}
 		}
 
 		if (dst_slot_id <= EQ::invslot::EQUIPMENT_END) {
-			if(dst_inst) {
-				parse->EventItem(EVENT_UNEQUIP_ITEM, this, dst_inst, nullptr, "", dst_slot_id);
+			if (dst_inst) {
+				if (parse->ItemHasQuestSub(dst_inst, EVENT_UNEQUIP_ITEM)) {
+					parse->EventItem(EVENT_UNEQUIP_ITEM, this, dst_inst, nullptr, "", dst_slot_id);
+				}
 
-				std::string export_string = fmt::format(
-					"{} {}",
-					dst_inst->IsStackable() ? dst_inst->GetCharges() : 1,
-					dst_slot_id
-				);
+				if (parse->PlayerHasQuestSub(EVENT_UNEQUIP_ITEM_CLIENT)) {
+					const auto& export_string = fmt::format(
+						"{} {}",
+						dst_inst->IsStackable() ? dst_inst->GetCharges() : 1,
+						dst_slot_id
+					);
 
-				parse->EventPlayer(EVENT_UNEQUIP_ITEM_CLIENT, this, export_string, dst_inst->GetItem()->ID);
+					std::vector<std::any> args = { dst_inst };
+
+					parse->EventPlayer(EVENT_UNEQUIP_ITEM_CLIENT, this, export_string, dst_inst->GetItem()->ID, &args);
+				}
 			}
 
-			if(src_inst) {
-				parse->EventItem(EVENT_EQUIP_ITEM, this, src_inst, nullptr, "", dst_slot_id);
+			if (src_inst) {
+				if (parse->ItemHasQuestSub(src_inst, EVENT_EQUIP_ITEM)) {
+					parse->EventItem(EVENT_EQUIP_ITEM, this, src_inst, nullptr, "", dst_slot_id);
+				}
 
-				std::string export_string = fmt::format(
-					"{} {}",
-					src_inst->IsStackable() ? src_inst->GetCharges() : 1,
-					dst_slot_id
-				);
+				if (parse->PlayerHasQuestSub(EVENT_EQUIP_ITEM_CLIENT)) {
+					const auto& export_string = fmt::format(
+						"{} {}",
+						src_inst->IsStackable() ? src_inst->GetCharges() : 1,
+						dst_slot_id
+					);
 
-				parse->EventPlayer(EVENT_EQUIP_ITEM_CLIENT, this, export_string, src_inst->GetItem()->ID);
+					std::vector<std::any> args = { src_inst };
+
+					parse->EventPlayer(EVENT_EQUIP_ITEM_CLIENT, this, export_string, src_inst->GetItem()->ID, &args);
+				}
 			}
 		}
 	}
@@ -3223,31 +3380,6 @@ void Client::SendItemPacket(int16 slot_id, const EQ::ItemInstance* inst, ItemPac
 	FastQueuePacket(&outapp);
 }
 
-EQApplicationPacket* Client::ReturnItemPacket(int16 slot_id, const EQ::ItemInstance* inst, ItemPacketType packet_type)
-{
-	if (!inst)
-		return nullptr;
-
-	// Serialize item into |-delimited string
-	std::string packet = inst->Serialize(slot_id);
-
-	EmuOpcode opcode = OP_Unknown;
-	EQApplicationPacket* outapp = nullptr;
-	BulkItemPacket_Struct* itempacket = nullptr;
-
-	// Construct packet
-	opcode = OP_ItemPacket;
-	outapp = new EQApplicationPacket(opcode, packet.length()+1);
-	itempacket = (BulkItemPacket_Struct*)outapp->pBuffer;
-	memcpy(itempacket->SerializedItem, packet.c_str(), packet.length());
-
-#if EQDEBUG >= 9
-		DumpPacket(outapp);
-#endif
-
-	return outapp;
-}
-
 static int16 BandolierSlotToWeaponSlot(int BandolierSlot)
 {
 	switch (BandolierSlot)
@@ -3688,7 +3820,6 @@ bool Client::InterrogateInventory(Client* requester, bool log, bool silent, bool
 
 	if (log) {
 		LogError("Target interrogate inventory flag: [{}]", (GetInterrogateInvState() ? "TRUE" : "FALSE"));
-		LogDebug("[CLIENT] Client::InterrogateInventory() -- End");
 	}
 	if (!silent) {
 		requester->Message(Chat::Default, "Target interrogation flag: %s", (GetInterrogateInvState() ? "TRUE" : "FALSE"));
@@ -3831,7 +3962,7 @@ bool Client::InterrogateInventory_error(int16 head, int16 index, const EQ::ItemI
 	return false;
 }
 
-void EQ::InventoryProfile::SetCustomItemData(uint32 character_id, int16 slot_id, std::string identifier, std::string value) {
+void EQ::InventoryProfile::SetCustomItemData(uint32 character_id, int16 slot_id, const std::string &identifier, const std::string &value) {
 	EQ::ItemInstance *inst = GetItem(slot_id);
 	if(inst) {
 		inst->SetCustomData(identifier, value);
@@ -3839,7 +3970,7 @@ void EQ::InventoryProfile::SetCustomItemData(uint32 character_id, int16 slot_id,
 	}
 }
 
-void EQ::InventoryProfile::SetCustomItemData(uint32 character_id, int16 slot_id, std::string identifier, int value) {
+void EQ::InventoryProfile::SetCustomItemData(uint32 character_id, int16 slot_id, const std::string &identifier, int value) {
 	EQ::ItemInstance *inst = GetItem(slot_id);
 	if(inst) {
 		inst->SetCustomData(identifier, value);
@@ -3847,7 +3978,7 @@ void EQ::InventoryProfile::SetCustomItemData(uint32 character_id, int16 slot_id,
 	}
 }
 
-void EQ::InventoryProfile::SetCustomItemData(uint32 character_id, int16 slot_id, std::string identifier, float value) {
+void EQ::InventoryProfile::SetCustomItemData(uint32 character_id, int16 slot_id, const std::string &identifier, float value) {
 	EQ::ItemInstance *inst = GetItem(slot_id);
 	if(inst) {
 		inst->SetCustomData(identifier, value);
@@ -3855,7 +3986,7 @@ void EQ::InventoryProfile::SetCustomItemData(uint32 character_id, int16 slot_id,
 	}
 }
 
-void EQ::InventoryProfile::SetCustomItemData(uint32 character_id, int16 slot_id, std::string identifier, bool value) {
+void EQ::InventoryProfile::SetCustomItemData(uint32 character_id, int16 slot_id, const std::string &identifier, bool value) {
 	EQ::ItemInstance *inst = GetItem(slot_id);
 	if(inst) {
 		inst->SetCustomData(identifier, value);
@@ -3863,7 +3994,7 @@ void EQ::InventoryProfile::SetCustomItemData(uint32 character_id, int16 slot_id,
 	}
 }
 
-std::string EQ::InventoryProfile::GetCustomItemData(int16 slot_id, std::string identifier) {
+std::string EQ::InventoryProfile::GetCustomItemData(int16 slot_id, const std::string &identifier) {
 	EQ::ItemInstance *inst = GetItem(slot_id);
 	if(inst) {
 		return inst->GetCustomData(identifier);
@@ -3871,7 +4002,7 @@ std::string EQ::InventoryProfile::GetCustomItemData(int16 slot_id, std::string i
 	return "";
 }
 
-const int EQ::InventoryProfile::GetItemStatValue(uint32 item_id, std::string identifier) {
+const int EQ::InventoryProfile::GetItemStatValue(uint32 item_id, const std::string &identifier) {
 	if (identifier.empty()) {
 		return 0;
 	}
@@ -3897,7 +4028,7 @@ const int EQ::InventoryProfile::GetItemStatValue(uint32 item_id, std::string ide
 	}
 
 	if (Strings::EqualFold(identifier, "idfile")) {
-		stat = Strings::IsNumber(&item->IDFile[2]) ? std::stoi(&item->IDFile[2]) : 0;
+		stat = Strings::IsNumber(&item->IDFile[2]) ? Strings::ToInt(&item->IDFile[2]) : 0;
 	}
 
 	if (Strings::EqualFold(identifier, "weight")) {
@@ -4568,7 +4699,6 @@ const int EQ::InventoryProfile::GetItemStatValue(uint32 item_id, std::string ide
 	return stat;
 }
 
-#ifdef BOTS
 // Returns a slot's item ID (returns INVALID_ID if not found)
 int32 Bot::GetItemIDAt(int16 slot_id) {
 	if (slot_id <= EQ::invslot::POSSESSIONS_END && slot_id >= EQ::invslot::POSSESSIONS_BEGIN) {
@@ -4636,5 +4766,3 @@ int32 Bot::GetAugmentIDAt(int16 slot_id, uint8 augslot) {
 	// None found
 	return INVALID_ID;
 }
-
-#endif

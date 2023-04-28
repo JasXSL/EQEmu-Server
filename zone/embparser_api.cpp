@@ -24,11 +24,9 @@
 
 #include "../common/global_define.h"
 #include "../common/misc_functions.h"
-#include "../common/eqemu_logsys.h"
 
 #include "dialogue_window.h"
 #include "embperl.h"
-#include "embxs.h"
 #include "entity.h"
 #include "expedition.h"
 #include "queryserv.h"
@@ -359,6 +357,11 @@ bool Perl__hastimer(const char* timer_name)
 	return quest_manager.hastimer(timer_name);
 }
 
+bool Perl__ispausedtimer(const char* timer_name)
+{
+	return quest_manager.ispausedtimer(timer_name);
+}
+
 uint32_t Perl__getremainingtimeMS(const char* timer_name)
 {
 	return quest_manager.getremainingtimeMS(timer_name);
@@ -377,6 +380,16 @@ void Perl__settimer(const char* timer_name, int seconds)
 void Perl__settimerMS(const char* timer_name, int milliseconds)
 {
 	quest_manager.settimerMS(timer_name, milliseconds);
+}
+
+void Perl__pausetimer(const char* timer_name)
+{
+	quest_manager.pausetimer(timer_name);
+}
+
+void Perl__resumetimer(const char* timer_name)
+{
+	quest_manager.resumetimer(timer_name);
 }
 
 void Perl__stoptimer(const char* timer_name)
@@ -835,9 +848,19 @@ void Perl__addldonwin(uint32 theme_id)
 	quest_manager.addldonwin(theme_id);
 }
 
+void Perl__removeldonwin(uint32 theme_id)
+{
+	quest_manager.removeldonwin(theme_id);
+}
+
 void Perl__addldonloss(uint32 theme_id)
 {
 	quest_manager.addldonloss(theme_id);
+}
+
+void Perl__removeldonloss(uint32 theme_id)
+{
+	quest_manager.removeldonloss(theme_id);
 }
 
 void Perl__setnexthpevent(int at_mob_percentage)
@@ -1063,17 +1086,15 @@ void Perl__playertexture(int texture_id)
 	quest_manager.playertexture(texture_id);
 }
 
-void Perl__playerfeature(char* feature, int value)
+void Perl__playerfeature(const char* feature, int value)
 {
 	quest_manager.playerfeature(feature, value);
 }
 
-void Perl__npcfeature(char* feature, int value)
+void Perl__npcfeature(const char* feature, int value)
 {
 	quest_manager.npcfeature(feature, value);
 }
-
-#ifdef BOTS
 
 int Perl__createbotcount()
 {
@@ -1104,8 +1125,6 @@ bool Perl__createBot(const char* firstname, const char* lastname, int level, int
 {
 	return quest_manager.createBot(firstname, lastname, level, race_id, class_id, gender_id);
 }
-
-#endif //BOTS
 
 void Perl__taskselector(perl::array task_ids)
 {
@@ -3985,20 +4004,133 @@ int8 Perl__does_augment_fit(EQ::ItemInstance* inst, uint32 augment_id)
 	return quest_manager.DoesAugmentFit(inst, augment_id);
 }
 
+int8 Perl__does_augment_fit_slot(EQ::ItemInstance* inst, uint32 augment_id, uint8 augment_slot)
+{
+	return quest_manager.DoesAugmentFit(inst, augment_id, augment_slot);
+}
+
+perl::array Perl__GetRecipeComponentItemIDs(uint32 recipe_id)
+{
+	perl::array result;
+
+	const auto& l = content_db.GetRecipeComponentItemIDs(RecipeCountType::Component, recipe_id);
+
+	if (!l.empty()) {
+		result.reserve(l.size());
+
+		for (int i = 0; i < l.size(); i++) {
+			result.push_back(l[i]);
+		}
+	}
+
+	return result;
+}
+
+perl::array Perl__GetRecipeContainerItemIDs(uint32 recipe_id)
+{
+	perl::array result;
+
+	const auto& l = content_db.GetRecipeComponentItemIDs(RecipeCountType::Container, recipe_id);
+
+	if (!l.empty()) {
+		result.reserve(l.size());
+
+		for (int i = 0; i < l.size(); i++) {
+			result.push_back(l[i]);
+		}
+	}
+
+	return result;
+}
+
+perl::array Perl__GetRecipeFailItemIDs(uint32 recipe_id)
+{
+	perl::array result;
+
+	const auto &l = content_db.GetRecipeComponentItemIDs(RecipeCountType::Fail, recipe_id);
+
+	if (!l.empty()) {
+		result.reserve(l.size());
+
+		for (int i = 0; i < l.size(); i++) {
+			result.push_back(l[i]);
+		}
+	}
+
+	return result;
+}
+
+perl::array Perl__GetRecipeSalvageItemIDs(uint32 recipe_id)
+{
+	perl::array result;
+
+	const auto& l = content_db.GetRecipeComponentItemIDs(RecipeCountType::Salvage, recipe_id);
+
+	if (!l.empty()) {
+		result.reserve(l.size());
+
+		for (int i = 0; i < l.size(); i++) {
+			result.push_back(l[i]);
+		}
+	}
+
+	return result;
+}
+
+perl::array Perl__GetRecipeSuccessItemIDs(uint32 recipe_id)
+{
+	perl::array result;
+
+	const auto& l = content_db.GetRecipeComponentItemIDs(RecipeCountType::Success, recipe_id);
+
+	if (!l.empty()) {
+		result.reserve(l.size());
+
+		for (int i = 0; i < l.size(); i++) {
+			result.push_back(l[i]);
+		}
+	}
+
+	return result;
+}
+
+int8 Perl__GetRecipeComponentCount(uint32 recipe_id, uint32 item_id)
+{
+	return content_db.GetRecipeComponentCount(RecipeCountType::Component, recipe_id, item_id);
+}
+
+int8 Perl__GetRecipeFailCount(uint32 recipe_id, uint32 item_id)
+{
+	return content_db.GetRecipeComponentCount(RecipeCountType::Fail, recipe_id, item_id);
+}
+
+int8 Perl__GetRecipeSalvageCount(uint32 recipe_id, uint32 item_id)
+{
+	return content_db.GetRecipeComponentCount(RecipeCountType::Salvage, recipe_id, item_id);
+}
+
+int8 Perl__GetRecipeSuccessCount(uint32 recipe_id, uint32 item_id)
+{
+	return content_db.GetRecipeComponentCount(RecipeCountType::Success, recipe_id, item_id);
+}
+
+void Perl__send_player_handin_event()
+{
+	quest_manager.SendPlayerHandinEvent();
+}
+
 void perl_register_quest()
 {
 	perl::interpreter perl(PERL_GET_THX);
 
 	auto package = perl.new_package("quest");
 
-#ifdef BOTS
 	package.add("botquest", &Perl__botquest);
 	package.add("spawnbotcount", (int(*)())&Perl__spawnbotcount);
 	package.add("spawnbotcount", (int(*)(uint8))&Perl__spawnbotcount);
 	package.add("createbotcount", (int(*)())&Perl__createbotcount);
 	package.add("createbotcount", (int(*)(uint8))&Perl__createbotcount);
 	package.add("createBot", &Perl__createBot);
-#endif //BOTS
 
 	package.add("AssignGroupToInstance", &Perl__AssignGroupToInstance);
 	package.add("AssignRaidToInstance", &Perl__AssignRaidToInstance);
@@ -4332,7 +4464,8 @@ void perl_register_quest()
 	package.add("doanim", (void(*)(int, int, bool))&Perl__doanim);
 	package.add("doanim", (void(*)(int, int, bool, int))&Perl__doanim);
 	package.add("do_augment_slots_match", &Perl__do_augment_slots_match);
-	package.add("does_augment_fit", &Perl__does_augment_fit);
+	package.add("does_augment_fit", (int8(*)(EQ::ItemInstance*, uint32))&Perl__does_augment_fit);
+	package.add("does_augment_fit_slot", (int8(*)(EQ::ItemInstance*, uint32, uint8))&Perl__does_augment_fit_slot);
 	package.add("echo", &Perl__echo);
 	package.add("emote", &Perl__emote);
 	package.add("enable_proximity_say", &Perl__enable_proximity_say);
@@ -4379,7 +4512,6 @@ void perl_register_quest()
 	package.add("getfactionname", &Perl__getfactionname);
 	package.add("getinventoryslotid", &Perl__getinventoryslotid);
 	package.add("getitemname", &Perl__getitemname);
-	package.add("getItemName", &Perl__qc_getItemName);
 	package.add("getitemstat", &Perl__getitemstat);
 	package.add("getlanguagename", &Perl__getlanguagename);
 	package.add("getldonthemename", &Perl__getldonthemename);
@@ -4396,6 +4528,15 @@ void perl_register_quest()
 	package.add("getgroupidbycharid", &Perl__getgroupidbycharid);
 	package.add("getinventoryslotname", &Perl__getinventoryslotname);
 	package.add("getraididbycharid", &Perl__getraididbycharid);
+	package.add("get_recipe_component_item_ids", &Perl__GetRecipeComponentItemIDs);
+	package.add("get_recipe_container_item_ids", &Perl__GetRecipeContainerItemIDs);
+	package.add("get_recipe_fail_item_ids", &Perl__GetRecipeFailItemIDs);
+	package.add("get_recipe_salvage_item_ids", &Perl__GetRecipeSalvageItemIDs);
+	package.add("get_recipe_success_item_ids", &Perl__GetRecipeSuccessItemIDs);
+	package.add("get_recipe_component_count", &Perl__GetRecipeComponentCount);
+	package.add("get_recipe_fail_count", &Perl__GetRecipeFailCount);
+	package.add("get_recipe_salvage_count", &Perl__GetRecipeSalvageCount);
+	package.add("get_recipe_success_count", &Perl__GetRecipeSuccessCount);
 	package.add("getracename", &Perl__getracename);
 	package.add("getremainingtimeMS", &Perl__getremainingtimeMS);
 	package.add("getspell", &Perl__getspell);
@@ -4431,6 +4572,7 @@ void perl_register_quest()
 	package.add("isdooropen", &Perl__isdooropen);
 	package.add("ishotzone", &Perl__ishotzone);
 	package.add("isnpcspawned", &Perl__isnpcspawned);
+	package.add("ispausedtimer", &Perl__ispausedtimer);
 	package.add("istaskactive", &Perl__istaskactive);
 	package.add("istaskactivityactive", &Perl__istaskactivityactive);
 	package.add("istaskappropriate", &Perl__istaskappropriate);
@@ -4460,6 +4602,7 @@ void perl_register_quest()
 	package.add("npcsize", &Perl__npcsize);
 	package.add("npctexture", &Perl__npctexture);
 	package.add("pause", &Perl__pause);
+	package.add("pausetimer", &Perl__pausetimer);
 	package.add("permaclass", &Perl__permaclass);
 	package.add("permagender", &Perl__permagender);
 	package.add("permarace", &Perl__permarace);
@@ -4497,12 +4640,15 @@ void perl_register_quest()
 	package.add("remove_expedition_lockout_by_char_id", &Perl__remove_expedition_lockout_by_char_id);
 	package.add("removeitem", (void(*)(uint32_t))&Perl__removeitem);
 	package.add("removeitem", (void(*)(uint32_t, int))&Perl__removeitem);
+	package.add("removeldonloss", &Perl__removeldonloss);
+	package.add("removeldonwin", &Perl__removeldonwin);
 	package.add("removetitle", &Perl__removetitle);
 	package.add("rename", &Perl__rename);
 	package.add("repopzone", &Perl__repopzone);
 	package.add("resettaskactivity", &Perl__resettaskactivity);
 	package.add("respawn", &Perl__respawn);
 	package.add("resume", &Perl__resume);
+	package.add("resumetimer", &Perl__resumetimer);
 	package.add("rewardfaction", &Perl__rewardfaction);
 	package.add("safemove", &Perl__safemove);
 	package.add("save", &Perl__save);
@@ -4518,6 +4664,7 @@ void perl_register_quest()
 	package.add("scribespells", (int(*)(int, int))&Perl__scribespells);
 	package.add("secondstotime", &Perl__secondstotime);
 	package.add("selfcast", &Perl__selfcast);
+	package.add("send_player_handin_event", &Perl__send_player_handin_event);
 	package.add("setaaexpmodifierbycharid", (void(*)(uint32, uint32, double))&Perl__setaaexpmodifierbycharid);
 	package.add("setaaexpmodifierbycharid", (void(*)(uint32, uint32, double, int16))&Perl__setaaexpmodifierbycharid);
 	package.add("set_proximity", (void(*)(float, float, float, float))&Perl__set_proximity);

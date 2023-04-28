@@ -18,6 +18,7 @@
 */
 
 #include "profanity_manager.h"
+#include "eqemu_logsys.h"
 #include "dbcore.h"
 #include "strings.h"
 
@@ -235,6 +236,8 @@ bool EQ::ProfanityManager::load_database_entries(DBcore *db) {
 		}
 	}
 
+	LogInfo("Loaded [{}] profanity entries", Strings::Commify(profanity_list.size()));
+
 	return true;
 }
 
@@ -255,7 +258,7 @@ bool EQ::ProfanityManager::clear_database_entries(DBcore *db) {
 	return true;
 }
 
-bool EQ::ProfanityManager::check_for_existing_entry(std::string profanity) {
+bool EQ::ProfanityManager::check_for_existing_entry(const std::string& profanity) {
 	if (profanity.empty()) {
 		return false;
 	}

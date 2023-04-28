@@ -16,19 +16,17 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 #include "../common/classes.h"
+#include "../common/data_verification.h"
 #include "../common/global_define.h"
 #include "../common/item_instance.h"
 #include "../common/rulesys.h"
-#include "../common/skills.h"
 #include "../common/spdat.h"
 
 #include "client.h"
 #include "entity.h"
 #include "mob.h"
 
-#ifdef BOTS
 #include "bot.h"
-#endif
 
 #include "quest_parser_collection.h"
 
@@ -60,15 +58,9 @@ void Mob::CalcBonuses()
 void NPC::CalcBonuses()
 {
 	memset(&itembonuses, 0, sizeof(StatBonuses));
-	if (RuleB(NPC, UseItemBonusesForNonPets)) {
-		memset(&itembonuses, 0, sizeof(StatBonuses));
+
+	if (GetOwner() || RuleB(NPC, UseItemBonusesForNonPets)) {
 		CalcItemBonuses(&itembonuses);
-	}
-	else {
-		if (GetOwner()) {
-			memset(&itembonuses, 0, sizeof(StatBonuses));
-			CalcItemBonuses(&itembonuses);
-		}
 	}
 
 	// This has to happen last, so we actually take the item bonuses into account.
@@ -79,6 +71,7 @@ void Client::CalcBonuses()
 {
 	memset(&itembonuses, 0, sizeof(StatBonuses));
 	CalcItemBonuses(&itembonuses);
+	CalcHeroicBonuses(&itembonuses);
 	CalcEdibleBonuses(&itembonuses);
 	CalcSpellBonuses(&spellbonuses);
 	CalcAABonuses(&aabonuses);
@@ -130,83 +123,107 @@ void Client::CalcBonuses()
 		consume_food_timer.SetTimer(timer);
 }
 
-int Client::CalcRecommendedLevelBonus(uint8 level, uint8 reclevel, int basestat)
+int Mob::CalcRecommendedLevelBonus(uint8 current_level, uint8 recommended_level, int base_stat)
 {
-	if( (reclevel > 0) && (level < reclevel) )
-	{
-		int32 statmod = (level * 10000 / reclevel) * basestat;
+	if (recommended_level && current_level < recommended_level) {
+		int32 stat_modifier = (current_level * 10000 / recommended_level) * base_stat;
 
-		if( statmod < 0 )
-		{
-			statmod -= 5000;
-			return (statmod/10000);
-		}
-		else
-		{
-			statmod += 5000;
-			return (statmod/10000);
-		}
+		stat_modifier += stat_modifier < 0 ? -5000 : 5000;
+
+		return (stat_modifier / 10000);
 	}
 
 	return 0;
 }
 
-void Client::CalcItemBonuses(StatBonuses* newbon) {
-	//memset assumed to be done by caller.
-
-	// Clear item faction mods
+void Mob::CalcItemBonuses(StatBonuses* b) {
 	ClearItemFactionBonuses();
-	SetShieldEquiped(false);
-	SetTwoHandBluntEquiped(false);
+	SetShieldEquipped(false);
+	SetTwoHandBluntEquipped(false);
 	SetTwoHanderEquipped(false);
-	SetDuelWeaponsEquiped(false);
+	SetDualWeaponsEquipped(false);
 
-	unsigned int i;
-	// Update: MainAmmo should only calc skill mods (TODO: Check for other cases)
+	int16 i;
+
 	for (i = EQ::invslot::BONUS_BEGIN; i <= EQ::invslot::BONUS_SKILL_END; i++) {
-		const EQ::ItemInstance* inst = m_inv[i];
-		if(inst == 0)
+		const EQ::ItemInstance* inst = nullptr;
+		if (IsOfClientBotMerc()) {
+			inst = GetInv().GetItem(i);
+		} else {
+			const auto* item = CastToNPC()->GetItem(i);
+			if (!item) {
+				continue;
+			}
+
+			inst = database.CreateItem(item->item_id);
+		}
+
+		if (!inst) {
 			continue;
-		AddItemBonuses(inst, newbon, false, false, 0, (i == EQ::invslot::slotAmmo));
+		}
+
+		AddItemBonuses(inst, b, false, false, 0, (i == EQ::invslot::slotAmmo));
 
 		//These are given special flags due to how often they are checked for various spell effects.
-		const EQ::ItemData *item = inst->GetItem();
-		if (i == EQ::invslot::slotSecondary && (item && item->ItemType == EQ::item::ItemTypeShield))
-			SetShieldEquiped(true);
-		else if (i == EQ::invslot::slotPrimary && (item && item->ItemType == EQ::item::ItemType2HBlunt)) {
-			SetTwoHandBluntEquiped(true);
+		const auto* item = inst->GetItem();
+		if (
+			item &&
+			item->ItemType == EQ::item::ItemTypeShield &&
+			i == EQ::invslot::slotSecondary
+		) {
+			SetShieldEquipped(true);
+		} else if (
+			item &&
+			item->ItemType == EQ::item::ItemType2HBlunt &&
+			i == EQ::invslot::slotPrimary
+		) {
+			SetTwoHandBluntEquipped(true);
 			SetTwoHanderEquipped(true);
-		}
-		else if (i == EQ::invslot::slotPrimary && (item && (item->ItemType == EQ::item::ItemType2HSlash || item->ItemType == EQ::item::ItemType2HPiercing))) {
+		} else if (
+			item &&
+			(item->ItemType == EQ::item::ItemType2HSlash || item->ItemType == EQ::item::ItemType2HPiercing) &&
+			i == EQ::invslot::slotPrimary
+		) {
 			SetTwoHanderEquipped(true);
 		}
 	}
 
 	if (CanThisClassDualWield()) {
-		SetDuelWeaponsEquiped(true);
+		SetDualWeaponsEquipped(true);
 	}
 
-	//tribute items
-	for (i = EQ::invslot::TRIBUTE_BEGIN; i <= EQ::invslot::TRIBUTE_END; i++) {
-		const EQ::ItemInstance* inst = m_inv[i];
-		if(inst == 0)
-			continue;
-		AddItemBonuses(inst, newbon, false, true);
+	if (IsOfClientBot()) {
+		for (i = EQ::invslot::TRIBUTE_BEGIN; i <= EQ::invslot::TRIBUTE_END; i++) {
+			const EQ::ItemInstance* inst = m_inv[i];
+			if (!inst) {
+				continue;
+			}
+
+			AddItemBonuses(inst, b, false, true);
+		}
 	}
 
-	//Optional ability to have worn effects calculate as an addititive bonus instead of highest value
-	if (RuleI(Spells, AdditiveBonusWornType) && RuleI(Spells, AdditiveBonusWornType) != EQ::item::ItemEffectWorn){
+	if (
+		RuleI(Spells, AdditiveBonusWornType) &&
+		RuleI(Spells, AdditiveBonusWornType) != EQ::item::ItemEffectWorn
+	) {
 		for (i = EQ::invslot::BONUS_BEGIN; i <= EQ::invslot::BONUS_STAT_END; i++) {
 			const EQ::ItemInstance* inst = m_inv[i];
-			if(inst == 0)
+			if (!inst) {
 				continue;
-			AdditiveWornBonuses(inst, newbon);
+			}
+
+			AdditiveWornBonuses(inst, b);
 		}
+	}
+
+	if (IsMerc()) {
+		SetAttackTimer();
 	}
 }
 
 // These item stat caps depend on spells/AAs so we process them after those are processed
-void Client::ProcessItemCaps()
+void Mob::ProcessItemCaps()
 {
 	itembonuses.HPRegen = std::min(itembonuses.HPRegen, CalcHPRegenCap());
 	itembonuses.ManaRegen = std::min(itembonuses.ManaRegen, CalcManaRegenCap());
@@ -221,367 +238,522 @@ void Client::ProcessItemCaps()
 	}
 
 	itembonuses.ATK = std::min(itembonuses.ATK, CalcItemATKCap());
+
+	if (IsOfClientBotMerc() && itembonuses.SpellDmg > RuleI(Character, ItemSpellDmgCap)) {
+		itembonuses.SpellDmg = RuleI(Character, ItemSpellDmgCap);
+	}
+
+	if (IsOfClientBotMerc() && itembonuses.HealAmt > RuleI(Character, ItemHealAmtCap)) {
+		itembonuses.HealAmt = RuleI(Character, ItemHealAmtCap);
+	}
 }
 
-void Client::AddItemBonuses(const EQ::ItemInstance *inst, StatBonuses *newbon, bool isAug, bool isTribute, int rec_override, bool ammo_slot_item)
-{
+void Mob::AddItemBonuses(const EQ::ItemInstance* inst, StatBonuses* b, bool is_augment, bool is_tribute, int recommended_level_override, bool is_ammo_item) {
 	if (!inst || !inst->IsClassCommon()) {
 		return;
 	}
 
-	if (inst->GetAugmentType() == 0 && isAug == true) {
+	if (inst->GetAugmentType() == 0 && is_augment) {
 		return;
 	}
 
-	const EQ::ItemData *item = inst->GetItem();
+	const auto* item = inst->GetItem();
+	if (!item) {
+		return;
+	}
 
-	if (!isTribute && !inst->IsEquipable(GetBaseRace(), GetClass())) {
-		if (item->ItemType != EQ::item::ItemTypeFood && item->ItemType != EQ::item::ItemTypeDrink)
+	if (IsClient() && !is_tribute && !inst->IsEquipable(GetBaseRace(), GetClass())) {
+		if (item->ItemType != EQ::item::ItemTypeFood && item->ItemType != EQ::item::ItemTypeDrink) {
 			return;
+		}
 	}
 
-	if (GetLevel() < inst->GetItemRequiredLevel(true)) {
+	const auto current_level = GetLevel();
+
+	if (IsClient() && current_level < inst->GetItemRequiredLevel(true)) {
 		return;
 	}
 
-	// So there isn't a very nice way to get the real rec level from the aug's inst, so we just pass it in, only
-	// used for augs
-	auto rec_level = isAug ? rec_override : inst->GetItemRecommendedLevel(true);
+	if (!is_ammo_item) {
+		const auto recommended_level = is_augment ? recommended_level_override : inst->GetItemRecommendedLevel(true);
 
-	if (!ammo_slot_item) {
-		if (GetLevel() >= rec_level) {
-			newbon->AC += item->AC;
-			newbon->HP += item->HP;
-			newbon->Mana += item->Mana;
-			newbon->Endurance += item->Endur;
-			newbon->ATK += item->Attack;
-			newbon->STR += (item->AStr + item->HeroicStr);
-			newbon->STA += (item->ASta + item->HeroicSta);
-			newbon->DEX += (item->ADex + item->HeroicDex);
-			newbon->AGI += (item->AAgi + item->HeroicAgi);
-			newbon->INT += (item->AInt + item->HeroicInt);
-			newbon->WIS += (item->AWis + item->HeroicWis);
-			newbon->CHA += (item->ACha + item->HeroicCha);
+		if (IsNPC() || current_level >= recommended_level) {
+			b->HP += item->HP;
+			b->Mana += item->Mana;
+			b->Endurance += item->Endur;
 
-			newbon->MR += (item->MR + item->HeroicMR);
-			newbon->FR += (item->FR + item->HeroicFR);
-			newbon->CR += (item->CR + item->HeroicCR);
-			newbon->PR += (item->PR + item->HeroicPR);
-			newbon->DR += (item->DR + item->HeroicDR);
-			newbon->Corrup += (item->SVCorruption + item->HeroicSVCorrup);
+			b->AC += item->AC;
+			b->ATK += item->Attack;
 
-			newbon->STRCapMod += item->HeroicStr;
-			newbon->STACapMod += item->HeroicSta;
-			newbon->DEXCapMod += item->HeroicDex;
-			newbon->AGICapMod += item->HeroicAgi;
-			newbon->INTCapMod += item->HeroicInt;
-			newbon->WISCapMod += item->HeroicWis;
-			newbon->CHACapMod += item->HeroicCha;
-			newbon->MRCapMod += item->HeroicMR;
-			newbon->CRCapMod += item->HeroicFR;
-			newbon->FRCapMod += item->HeroicCR;
-			newbon->PRCapMod += item->HeroicPR;
-			newbon->DRCapMod += item->HeroicDR;
-			newbon->CorrupCapMod += item->HeroicSVCorrup;
+			b->STR += (item->AStr + item->HeroicStr);
+			b->STA += (item->ASta + item->HeroicSta);
+			b->DEX += (item->ADex + item->HeroicDex);
+			b->AGI += (item->AAgi + item->HeroicAgi);
+			b->INT += (item->AInt + item->HeroicInt);
+			b->WIS += (item->AWis + item->HeroicWis);
+			b->CHA += (item->ACha + item->HeroicCha);
 
-			newbon->HeroicSTR += item->HeroicStr;
-			newbon->HeroicSTA += item->HeroicSta;
-			newbon->HeroicDEX += item->HeroicDex;
-			newbon->HeroicAGI += item->HeroicAgi;
-			newbon->HeroicINT += item->HeroicInt;
-			newbon->HeroicWIS += item->HeroicWis;
-			newbon->HeroicCHA += item->HeroicCha;
-			newbon->HeroicMR += item->HeroicMR;
-			newbon->HeroicFR += item->HeroicFR;
-			newbon->HeroicCR += item->HeroicCR;
-			newbon->HeroicPR += item->HeroicPR;
-			newbon->HeroicDR += item->HeroicDR;
-			newbon->HeroicCorrup += item->HeroicSVCorrup;
+			b->MR += (item->MR + item->HeroicMR);
+			b->FR += (item->FR + item->HeroicFR);
+			b->CR += (item->CR + item->HeroicCR);
+			b->PR += (item->PR + item->HeroicPR);
+			b->DR += (item->DR + item->HeroicDR);
+			b->Corrup += (item->SVCorruption + item->HeroicSVCorrup);
 
-		}
-		else {
-			int lvl = GetLevel();
+			b->STRCapMod += item->HeroicStr;
+			b->STACapMod += item->HeroicSta;
+			b->DEXCapMod += item->HeroicDex;
+			b->AGICapMod += item->HeroicAgi;
+			b->INTCapMod += item->HeroicInt;
+			b->WISCapMod += item->HeroicWis;
+			b->CHACapMod += item->HeroicCha;
 
-			newbon->AC += CalcRecommendedLevelBonus(lvl, rec_level, item->AC);
-			newbon->HP += CalcRecommendedLevelBonus(lvl, rec_level, item->HP);
-			newbon->Mana += CalcRecommendedLevelBonus(lvl, rec_level, item->Mana);
-			newbon->Endurance += CalcRecommendedLevelBonus(lvl, rec_level, item->Endur);
-			newbon->ATK += CalcRecommendedLevelBonus(lvl, rec_level, item->Attack);
-			newbon->STR += CalcRecommendedLevelBonus(lvl, rec_level, (item->AStr + item->HeroicStr));
-			newbon->STA += CalcRecommendedLevelBonus(lvl, rec_level, (item->ASta + item->HeroicSta));
-			newbon->DEX += CalcRecommendedLevelBonus(lvl, rec_level, (item->ADex + item->HeroicDex));
-			newbon->AGI += CalcRecommendedLevelBonus(lvl, rec_level, (item->AAgi + item->HeroicAgi));
-			newbon->INT += CalcRecommendedLevelBonus(lvl, rec_level, (item->AInt + item->HeroicInt));
-			newbon->WIS += CalcRecommendedLevelBonus(lvl, rec_level, (item->AWis + item->HeroicWis));
-			newbon->CHA += CalcRecommendedLevelBonus(lvl, rec_level, (item->ACha + item->HeroicCha));
+			b->MRCapMod += item->HeroicMR;
+			b->CRCapMod += item->HeroicFR;
+			b->FRCapMod += item->HeroicCR;
+			b->PRCapMod += item->HeroicPR;
+			b->DRCapMod += item->HeroicDR;
+			b->CorrupCapMod += item->HeroicSVCorrup;
 
-			newbon->MR += CalcRecommendedLevelBonus(lvl, rec_level, (item->MR + item->HeroicMR));
-			newbon->FR += CalcRecommendedLevelBonus(lvl, rec_level, (item->FR + item->HeroicFR));
-			newbon->CR += CalcRecommendedLevelBonus(lvl, rec_level, (item->CR + item->HeroicCR));
-			newbon->PR += CalcRecommendedLevelBonus(lvl, rec_level, (item->PR + item->HeroicPR));
-			newbon->DR += CalcRecommendedLevelBonus(lvl, rec_level, (item->DR + item->HeroicDR));
-			newbon->Corrup +=
-				CalcRecommendedLevelBonus(lvl, rec_level, (item->SVCorruption + item->HeroicSVCorrup));
+			b->HeroicSTR += item->HeroicStr;
+			b->HeroicSTA += item->HeroicSta;
+			b->HeroicDEX += item->HeroicDex;
+			b->HeroicAGI += item->HeroicAgi;
+			b->HeroicINT += item->HeroicInt;
+			b->HeroicWIS += item->HeroicWis;
+			b->HeroicCHA += item->HeroicCha;
 
-			newbon->STRCapMod += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicStr);
-			newbon->STACapMod += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicSta);
-			newbon->DEXCapMod += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicDex);
-			newbon->AGICapMod += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicAgi);
-			newbon->INTCapMod += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicInt);
-			newbon->WISCapMod += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicWis);
-			newbon->CHACapMod += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicCha);
-			newbon->MRCapMod += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicMR);
-			newbon->CRCapMod += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicFR);
-			newbon->FRCapMod += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicCR);
-			newbon->PRCapMod += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicPR);
-			newbon->DRCapMod += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicDR);
-			newbon->CorrupCapMod += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicSVCorrup);
+			b->HeroicMR += item->HeroicMR;
+			b->HeroicFR += item->HeroicFR;
+			b->HeroicCR += item->HeroicCR;
+			b->HeroicPR += item->HeroicPR;
+			b->HeroicDR += item->HeroicDR;
+			b->HeroicCorrup += item->HeroicSVCorrup;
+		} else {
+			b->HP += CalcRecommendedLevelBonus(current_level, recommended_level, item->HP);
+			b->Mana += CalcRecommendedLevelBonus(current_level, recommended_level, item->Mana);
+			b->Endurance += CalcRecommendedLevelBonus(current_level, recommended_level, item->Endur);
 
-			newbon->HeroicSTR += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicStr);
-			newbon->HeroicSTA += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicSta);
-			newbon->HeroicDEX += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicDex);
-			newbon->HeroicAGI += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicAgi);
-			newbon->HeroicINT += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicInt);
-			newbon->HeroicWIS += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicWis);
-			newbon->HeroicCHA += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicCha);
-			newbon->HeroicMR += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicMR);
-			newbon->HeroicFR += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicFR);
-			newbon->HeroicCR += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicCR);
-			newbon->HeroicPR += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicPR);
-			newbon->HeroicDR += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicDR);
-			newbon->HeroicCorrup += CalcRecommendedLevelBonus(lvl, rec_level, item->HeroicSVCorrup);
-		}
+			b->AC += CalcRecommendedLevelBonus(current_level, recommended_level, item->AC);
+			b->ATK += CalcRecommendedLevelBonus(current_level, recommended_level, item->Attack);
 
-		// FatherNitwit: New style haste, shields, and regens
-		if (newbon->haste < item->Haste) {
-			newbon->haste = item->Haste;
-		}
-		if (item->Regen > 0)
-			newbon->HPRegen += item->Regen;
+			b->STR += CalcRecommendedLevelBonus(current_level, recommended_level, (item->AStr + item->HeroicStr));
+			b->STA += CalcRecommendedLevelBonus(current_level, recommended_level, (item->ASta + item->HeroicSta));
+			b->DEX += CalcRecommendedLevelBonus(current_level, recommended_level, (item->ADex + item->HeroicDex));
+			b->AGI += CalcRecommendedLevelBonus(current_level, recommended_level, (item->AAgi + item->HeroicAgi));
+			b->INT += CalcRecommendedLevelBonus(current_level, recommended_level, (item->AInt + item->HeroicInt));
+			b->WIS += CalcRecommendedLevelBonus(current_level, recommended_level, (item->AWis + item->HeroicWis));
+			b->CHA += CalcRecommendedLevelBonus(current_level, recommended_level, (item->ACha + item->HeroicCha));
 
-		if (item->ManaRegen > 0)
-			newbon->ManaRegen += item->ManaRegen;
+			b->MR += CalcRecommendedLevelBonus(current_level, recommended_level, (item->MR + item->HeroicMR));
+			b->FR += CalcRecommendedLevelBonus(current_level, recommended_level, (item->FR + item->HeroicFR));
+			b->CR += CalcRecommendedLevelBonus(current_level, recommended_level, (item->CR + item->HeroicCR));
+			b->PR += CalcRecommendedLevelBonus(current_level, recommended_level, (item->PR + item->HeroicPR));
+			b->DR += CalcRecommendedLevelBonus(current_level, recommended_level, (item->DR + item->HeroicDR));
+			b->Corrup += CalcRecommendedLevelBonus(current_level, recommended_level, (item->SVCorruption + item->HeroicSVCorrup));
 
-		if (item->EnduranceRegen > 0)
-			newbon->EnduranceRegen += item->EnduranceRegen;
+			b->STRCapMod += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicStr);
+			b->STACapMod += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicSta);
+			b->DEXCapMod += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicDex);
+			b->AGICapMod += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicAgi);
+			b->INTCapMod += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicInt);
+			b->WISCapMod += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicWis);
+			b->CHACapMod += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicCha);
 
-		if (item->DamageShield > 0) {
-			if ((newbon->DamageShield + item->DamageShield) > RuleI(Character, ItemDamageShieldCap))
-				newbon->DamageShield = RuleI(Character, ItemDamageShieldCap);
-			else
-				newbon->DamageShield += item->DamageShield;
-		}
-		if (item->SpellShield > 0) {
-			if ((newbon->SpellShield + item->SpellShield) > RuleI(Character, ItemSpellShieldingCap))
-				newbon->SpellShield = RuleI(Character, ItemSpellShieldingCap);
-			else
-				newbon->SpellShield += item->SpellShield;
-		}
-		if (item->Shielding > 0) {
-			if ((newbon->MeleeMitigation + item->Shielding) > RuleI(Character, ItemShieldingCap))
-				newbon->MeleeMitigation = RuleI(Character, ItemShieldingCap);
-			else
-				newbon->MeleeMitigation += item->Shielding;
-		}
-		if (item->StunResist > 0) {
-			if ((newbon->StunResist + item->StunResist) > RuleI(Character, ItemStunResistCap))
-				newbon->StunResist = RuleI(Character, ItemStunResistCap);
-			else
-				newbon->StunResist += item->StunResist;
-		}
-		if (item->StrikeThrough > 0) {
-			if ((newbon->StrikeThrough + item->StrikeThrough) > RuleI(Character, ItemStrikethroughCap))
-				newbon->StrikeThrough = RuleI(Character, ItemStrikethroughCap);
-			else
-				newbon->StrikeThrough += item->StrikeThrough;
-		}
-		if (item->Avoidance > 0) {
-			if ((newbon->AvoidMeleeChance + item->Avoidance) > RuleI(Character, ItemAvoidanceCap))
-				newbon->AvoidMeleeChance = RuleI(Character, ItemAvoidanceCap);
-			else
-				newbon->AvoidMeleeChance += item->Avoidance;
-		}
-		if (item->Accuracy > 0) {
-			if ((newbon->HitChance + item->Accuracy) > RuleI(Character, ItemAccuracyCap))
-				newbon->HitChance = RuleI(Character, ItemAccuracyCap);
-			else
-				newbon->HitChance += item->Accuracy;
-		}
-		if (item->CombatEffects > 0) {
-			if ((newbon->ProcChance + item->CombatEffects) > RuleI(Character, ItemCombatEffectsCap))
-				newbon->ProcChance = RuleI(Character, ItemCombatEffectsCap);
-			else
-				newbon->ProcChance += item->CombatEffects;
-		}
-		if (item->DotShielding > 0) {
-			if ((newbon->DoTShielding + item->DotShielding) > RuleI(Character, ItemDoTShieldingCap))
-				newbon->DoTShielding = RuleI(Character, ItemDoTShieldingCap);
-			else
-				newbon->DoTShielding += item->DotShielding;
+			b->MRCapMod += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicMR);
+			b->CRCapMod += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicFR);
+			b->FRCapMod += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicCR);
+			b->PRCapMod += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicPR);
+			b->DRCapMod += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicDR);
+			b->CorrupCapMod += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicSVCorrup);
+
+			b->HeroicSTR += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicStr);
+			b->HeroicSTA += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicSta);
+			b->HeroicDEX += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicDex);
+			b->HeroicAGI += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicAgi);
+			b->HeroicINT += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicInt);
+			b->HeroicWIS += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicWis);
+			b->HeroicCHA += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicCha);
+
+			b->HeroicMR += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicMR);
+			b->HeroicFR += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicFR);
+			b->HeroicCR += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicCR);
+			b->HeroicPR += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicPR);
+			b->HeroicDR += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicDR);
+			b->HeroicCorrup += CalcRecommendedLevelBonus(current_level, recommended_level, item->HeroicSVCorrup);
 		}
 
-		if (item->HealAmt > 0) {
-			if ((newbon->HealAmt + item->HealAmt) > RuleI(Character, ItemHealAmtCap))
-				newbon->HealAmt = RuleI(Character, ItemHealAmtCap);
-			else
-				newbon->HealAmt += item->HealAmt;
-		}
-		if (item->SpellDmg > 0) {
-			if ((newbon->SpellDmg + item->SpellDmg) > RuleI(Character, ItemSpellDmgCap))
-				newbon->SpellDmg = RuleI(Character, ItemSpellDmgCap);
-			else
-				newbon->SpellDmg += item->SpellDmg;
-		}
-		if (item->Clairvoyance > 0) {
-			if ((newbon->Clairvoyance + item->Clairvoyance) > RuleI(Character, ItemClairvoyanceCap))
-				newbon->Clairvoyance = RuleI(Character, ItemClairvoyanceCap);
-			else
-				newbon->Clairvoyance += item->Clairvoyance;
+		if (b->haste < item->Haste) {
+			b->haste = item->Haste;
 		}
 
-		if (item->DSMitigation > 0) {
-			if ((newbon->DSMitigation + item->DSMitigation) > RuleI(Character, ItemDSMitigationCap))
-				newbon->DSMitigation = RuleI(Character, ItemDSMitigationCap);
-			else
-				newbon->DSMitigation += item->DSMitigation;
-		}
-		if (item->Worn.Effect > 0 && item->Worn.Type == EQ::item::ItemEffectWorn) { // latent effects
-			ApplySpellsBonuses(item->Worn.Effect, item->Worn.Level, newbon, 0, item->Worn.Type);
+		if (item->Regen != 0) {
+			b->HPRegen += item->Regen;
 		}
 
-		if (item->Focus.Effect > 0 && (item->Focus.Type == EQ::item::ItemEffectFocus)) { // focus effects
-			ApplySpellsBonuses(item->Focus.Effect, item->Focus.Level, newbon, 0);
+		if (item->ManaRegen != 0) {
+			b->ManaRegen += item->ManaRegen;
+		}
+
+		if (item->EnduranceRegen != 0) {
+			b->EnduranceRegen += item->EnduranceRegen;
+		}
+
+		if (item->Attack != 0) {
+			unsigned int cap = RuleI(Character, ItemATKCap);
+			cap += itembonuses.ItemATKCap + spellbonuses.ItemATKCap + aabonuses.ItemATKCap;
+
+			if (
+				IsOfClientBotMerc() &&
+				(b->ATK + item->Attack) > cap
+			) {
+				b->ATK = RuleI(Character, ItemATKCap);
+			} else {
+				b->ATK += item->Attack;
+			}
+		}
+
+		if (item->DamageShield != 0) {
+			if (
+				IsOfClientBotMerc() &&
+				(b->DamageShield + item->DamageShield) > RuleI(Character, ItemDamageShieldCap)
+			) {
+				b->DamageShield = RuleI(Character, ItemDamageShieldCap);
+			} else {
+				b->DamageShield += item->DamageShield;
+			}
+		}
+
+		if (item->SpellShield != 0) {
+			if (
+				IsOfClientBotMerc() &&
+				(b->SpellShield + item->SpellShield) > RuleI(Character, ItemSpellShieldingCap)
+			) {
+				b->SpellShield = RuleI(Character, ItemSpellShieldingCap);
+			} else {
+				b->SpellShield += item->SpellShield;
+			}
+		}
+
+		if (item->Shielding != 0) {
+			if (
+				IsOfClientBotMerc() &&
+				(b->MeleeMitigation + item->Shielding) > RuleI(Character, ItemShieldingCap)
+			) {
+				b->MeleeMitigation = RuleI(Character, ItemShieldingCap);
+			} else {
+				b->MeleeMitigation += item->Shielding;
+			}
+		}
+
+		if (item->StunResist != 0) {
+			if (
+				IsOfClientBotMerc() &&
+				(b->StunResist + item->StunResist) > RuleI(Character, ItemStunResistCap)
+			) {
+				b->StunResist = RuleI(Character, ItemStunResistCap);
+			} else {
+				b->StunResist += item->StunResist;
+			}
+		}
+
+		if (item->StrikeThrough != 0) {
+			if (
+				IsOfClientBotMerc() &&
+				(b->StrikeThrough + item->StrikeThrough) > RuleI(Character, ItemStrikethroughCap)
+			) {
+				b->StrikeThrough = RuleI(Character, ItemStrikethroughCap);
+			} else {
+				b->StrikeThrough += item->StrikeThrough;
+			}
+		}
+
+		if (item->Avoidance != 0) {
+			if (
+				IsOfClientBotMerc() &&
+				(b->AvoidMeleeChance + item->Avoidance) > RuleI(Character, ItemAvoidanceCap)
+			) {
+				b->AvoidMeleeChance = RuleI(Character, ItemAvoidanceCap);
+			} else {
+				b->AvoidMeleeChance += item->Avoidance;
+			}
+		}
+
+		if (item->Accuracy != 0) {
+			if (
+				IsOfClientBotMerc() &&
+				(b->HitChance + item->Accuracy) > RuleI(Character, ItemAccuracyCap)
+			) {
+				b->HitChance = RuleI(Character, ItemAccuracyCap);
+			} else {
+				b->HitChance += item->Accuracy;
+			}
+		}
+
+		if (item->CombatEffects != 0) {
+			if (
+				IsOfClientBotMerc() &&
+				(b->ProcChance + item->CombatEffects) > RuleI(Character, ItemCombatEffectsCap)
+			) {
+				b->ProcChance = RuleI(Character, ItemCombatEffectsCap);
+			} else {
+				b->ProcChance += item->CombatEffects;
+			}
+		}
+
+		if (item->DotShielding != 0) {
+			if (
+				IsOfClientBotMerc() &&
+				(b->DoTShielding + item->DotShielding) > RuleI(Character, ItemDoTShieldingCap)
+			) {
+				b->DoTShielding = RuleI(Character, ItemDoTShieldingCap);
+			} else {
+				b->DoTShielding += item->DotShielding;
+			}
+		}
+
+		if (item->HealAmt != 0) {
+			if (
+				IsOfClientBotMerc() &&
+				(b->HealAmt + item->HealAmt) > RuleI(Character, ItemHealAmtCap)
+			) {
+				b->HealAmt = RuleI(Character, ItemHealAmtCap);
+			} else {
+				b->HealAmt += item->HealAmt;
+			}
+		}
+
+		if (item->SpellDmg != 0) {
+			if (
+				IsOfClientBotMerc() &&
+				(b->SpellDmg + item->SpellDmg) > RuleI(Character, ItemSpellDmgCap)
+			) {
+				b->SpellDmg = RuleI(Character, ItemSpellDmgCap);
+			} else {
+				b->SpellDmg += item->SpellDmg;
+			}
+		}
+
+		if (item->Clairvoyance != 0) {
+			if (
+				IsOfClientBotMerc() &&
+				(b->Clairvoyance + item->Clairvoyance) > RuleI(Character, ItemClairvoyanceCap)
+			) {
+				b->Clairvoyance = RuleI(Character, ItemClairvoyanceCap);
+			} else {
+				b->Clairvoyance += item->Clairvoyance;
+			}
+		}
+
+		if (item->DSMitigation != 0) {
+			if (
+				IsOfClientBotMerc() &&
+				(b->DSMitigation + item->DSMitigation) > RuleI(Character, ItemDSMitigationCap)
+			) {
+				b->DSMitigation = RuleI(Character, ItemDSMitigationCap);
+			} else {
+				b->DSMitigation += item->DSMitigation;
+			}
+		}
+
+		if (item->Worn.Effect > 0 && item->Worn.Type == EQ::item::ItemEffectWorn) {
+			ApplySpellsBonuses(item->Worn.Effect, item->Worn.Level, b, 0, item->Worn.Type);
+		}
+
+		if (item->Focus.Effect > 0 && item->Focus.Type == EQ::item::ItemEffectFocus) {
+			if (
+				IsOfClientBotMerc() ||
+				(IsNPC() && RuleB(Spells, NPC_UseFocusFromItems))
+			) {
+				ApplySpellsBonuses(item->Focus.Effect, item->Focus.Level, b, 0);
+			}
 		}
 
 		switch (item->BardType) {
-		case 51: /* All (e.g. Singing Short Sword) */
-			if (item->BardValue > newbon->singingMod)
-				newbon->singingMod = item->BardValue;
-			if (item->BardValue > newbon->brassMod)
-				newbon->brassMod = item->BardValue;
-			if (item->BardValue > newbon->stringedMod)
-				newbon->stringedMod = item->BardValue;
-			if (item->BardValue > newbon->percussionMod)
-				newbon->percussionMod = item->BardValue;
-			if (item->BardValue > newbon->windMod)
-				newbon->windMod = item->BardValue;
-			break;
-		case 50: /* Singing */
-			if (item->BardValue > newbon->singingMod)
-				newbon->singingMod = item->BardValue;
-			break;
-		case 23: /* Wind */
-			if (item->BardValue > newbon->windMod)
-				newbon->windMod = item->BardValue;
-			break;
-		case 24: /* stringed */
-			if (item->BardValue > newbon->stringedMod)
-				newbon->stringedMod = item->BardValue;
-			break;
-		case 25: /* brass */
-			if (item->BardValue > newbon->brassMod)
-				newbon->brassMod = item->BardValue;
-			break;
-		case 26: /* Percussion */
-			if (item->BardValue > newbon->percussionMod)
-				newbon->percussionMod = item->BardValue;
-			break;
+			case EQ::item::ItemTypeAllInstrumentTypes: { // (e.g. Singing Short Sword)
+				if (item->BardValue > b->singingMod) {
+					b->singingMod = item->BardValue;
+				}
+
+				if (item->BardValue > b->brassMod) {
+					b->brassMod = item->BardValue;
+				}
+
+				if (item->BardValue > b->stringedMod) {
+					b->stringedMod = item->BardValue;
+				}
+
+				if (item->BardValue > b->percussionMod) {
+					b->percussionMod = item->BardValue;
+				}
+
+				if (item->BardValue > b->windMod) {
+					b->windMod = item->BardValue;
+				}
+
+				break;
+			}
+			case EQ::item::ItemTypeSinging: {
+				if (item->BardValue > b->singingMod) {
+					b->singingMod = item->BardValue;
+				}
+
+				break;
+			}
+			case EQ::item::ItemTypeWindInstrument: {
+				if (item->BardValue > b->windMod) {
+					b->windMod = item->BardValue;
+				}
+
+				break;
+			}
+			case EQ::item::ItemTypeStringedInstrument: {
+				if (item->BardValue > b->stringedMod) {
+					b->stringedMod = item->BardValue;
+				}
+
+				break;
+			}
+			case EQ::item::ItemTypeBrassInstrument: {
+				if (item->BardValue > b->brassMod) {
+					b->brassMod = item->BardValue;
+				}
+
+				break;
+			}
+			case EQ::item::ItemTypePercussionInstrument: {
+				if (item->BardValue > b->percussionMod) {
+					b->percussionMod = item->BardValue;
+				}
+
+				break;
+			}
 		}
 
-		// Add Item Faction Mods
+		if (item->SkillModValue != 0 && item->SkillModType <= EQ::skills::HIGHEST_SKILL) {
+			if (
+				(item->SkillModValue > 0 && b->skillmod[item->SkillModType] < item->SkillModValue) ||
+				(item->SkillModValue < 0 && b->skillmod[item->SkillModType] > item->SkillModValue)
+				) {
+				b->skillmod[item->SkillModType] = item->SkillModValue;
+			}
+		}
+
 		if (item->FactionMod1) {
 			if (item->FactionAmt1 > 0 && item->FactionAmt1 > GetItemFactionBonus(item->FactionMod1)) {
 				AddItemFactionBonus(item->FactionMod1, item->FactionAmt1);
-			}
-			else if (item->FactionAmt1 < 0 && item->FactionAmt1 < GetItemFactionBonus(item->FactionMod1)) {
+			} else if (item->FactionAmt1 < 0 && item->FactionAmt1 < GetItemFactionBonus(item->FactionMod1)) {
 				AddItemFactionBonus(item->FactionMod1, item->FactionAmt1);
 			}
 		}
+
 		if (item->FactionMod2) {
 			if (item->FactionAmt2 > 0 && item->FactionAmt2 > GetItemFactionBonus(item->FactionMod2)) {
 				AddItemFactionBonus(item->FactionMod2, item->FactionAmt2);
-			}
-			else if (item->FactionAmt2 < 0 && item->FactionAmt2 < GetItemFactionBonus(item->FactionMod2)) {
+			} else if (item->FactionAmt2 < 0 && item->FactionAmt2 < GetItemFactionBonus(item->FactionMod2)) {
 				AddItemFactionBonus(item->FactionMod2, item->FactionAmt2);
 			}
 		}
+
 		if (item->FactionMod3) {
 			if (item->FactionAmt3 > 0 && item->FactionAmt3 > GetItemFactionBonus(item->FactionMod3)) {
 				AddItemFactionBonus(item->FactionMod3, item->FactionAmt3);
-			}
-			else if (item->FactionAmt3 < 0 && item->FactionAmt3 < GetItemFactionBonus(item->FactionMod3)) {
+			} else if (item->FactionAmt3 < 0 && item->FactionAmt3 < GetItemFactionBonus(item->FactionMod3)) {
 				AddItemFactionBonus(item->FactionMod3, item->FactionAmt3);
 			}
 		}
+
 		if (item->FactionMod4) {
 			if (item->FactionAmt4 > 0 && item->FactionAmt4 > GetItemFactionBonus(item->FactionMod4)) {
 				AddItemFactionBonus(item->FactionMod4, item->FactionAmt4);
-			}
-			else if (item->FactionAmt4 < 0 && item->FactionAmt4 < GetItemFactionBonus(item->FactionMod4)) {
+			} else if (item->FactionAmt4 < 0 && item->FactionAmt4 < GetItemFactionBonus(item->FactionMod4)) {
 				AddItemFactionBonus(item->FactionMod4, item->FactionAmt4);
 			}
 		}
 
-		if (item->ExtraDmgSkill != 0 && item->ExtraDmgSkill <= EQ::skills::HIGHEST_SKILL) {
-			if ((newbon->SkillDamageAmount[item->ExtraDmgSkill] + item->ExtraDmgAmt) >
-				RuleI(Character, ItemExtraDmgCap))
-				newbon->SkillDamageAmount[item->ExtraDmgSkill] = RuleI(Character, ItemExtraDmgCap);
-			else
-				newbon->SkillDamageAmount[item->ExtraDmgSkill] += item->ExtraDmgAmt;
+		if (item->ExtraDmgAmt != 0 && item->ExtraDmgSkill <= EQ::skills::HIGHEST_SKILL) {
+			if (item->ExtraDmgSkill == ALL_SKILLS) {
+				for (const auto& skill_id : EQ::skills::GetExtraDamageSkills()) {
+					if (
+						!IsNPC() &&
+						RuleI(Character, ItemExtraDmgCap) >= 0 &&
+						(b->SkillDamageAmount[skill_id] + item->ExtraDmgAmt) > RuleI(Character, ItemExtraDmgCap)
+					) {
+						b->SkillDamageAmount[skill_id] = RuleI(Character, ItemExtraDmgCap);
+					} else {
+						b->SkillDamageAmount[skill_id] += item->ExtraDmgAmt;
+					}
+				}
+			} else {
+				if (
+					!IsNPC() &&
+					RuleI(Character, ItemExtraDmgCap) >= 0 &&
+					(b->SkillDamageAmount[item->ExtraDmgSkill] + item->ExtraDmgAmt) > RuleI(Character, ItemExtraDmgCap)
+				) {
+					b->SkillDamageAmount[item->ExtraDmgSkill] = RuleI(Character, ItemExtraDmgCap);
+				} else {
+					b->SkillDamageAmount[item->ExtraDmgSkill] += item->ExtraDmgAmt;
+				}
+			}
 		}
-	}
 
-	// Process when ammo_slot_item = true or false
-	if (item->SkillModValue != 0 && item->SkillModType <= EQ::skills::HIGHEST_SKILL) {
-		if ((item->SkillModValue > 0 && newbon->skillmod[item->SkillModType] < item->SkillModValue) ||
-			(item->SkillModValue < 0 && newbon->skillmod[item->SkillModType] > item->SkillModValue)) {
+		if (!is_augment) {
+			for (int i = EQ::invaug::SOCKET_BEGIN; i <= EQ::invaug::SOCKET_END; i++) {
+				const auto* augment = inst->GetAugment(i);
+				if (!augment) {
+					continue;
+				}
 
-			newbon->skillmod[item->SkillModType] = item->SkillModValue;
-			newbon->skillmodmax[item->SkillModType] = item->SkillModMax;
+				AddItemBonuses(augment, b, true, false, recommended_level);
+			}
 		}
-	}
-
-	if (!isAug) {
-		for (int i = EQ::invaug::SOCKET_BEGIN; i <= EQ::invaug::SOCKET_END; i++)
-			AddItemBonuses(inst->GetAugment(i), newbon, true, false, rec_level, ammo_slot_item);
 	}
 }
 
-void Client::AdditiveWornBonuses(const EQ::ItemInstance *inst, StatBonuses* newbon, bool isAug) {
 
+void Mob::AdditiveWornBonuses(const EQ::ItemInstance* inst, StatBonuses* b, bool is_augment) {
 	/*
-	Powerful Non-live like option allows developers to add worn effects on items that
-	can stack with other worn effects of the same spell effect type, instead of only taking the highest value.
-	Ie Cleave I = 40 pct cleave - So if you equip 3 cleave I items you will have a 120 pct cleave bonus.
-	To enable use RuleI(Spells, AdditiveBonusWornType)
-	Setting value =  2  Will force all live items to automatically be calculated additivily
-	Setting value to anything else will indicate the item 'worntype' that if set to the same, will cause the bonuses to use this calculation
-	which will also stack with regular (worntype 2) effects. [Ie set rule = 3 and item worntype = 3]
+		Powerful Non-live like option allows developers to add worn effects on items that
+		can stack with other worn effects of the same spell effect type, instead of only taking the highest value.
+		Ie Cleave I = 40 pct cleave - So if you equip 3 cleave I items you will have a 120% cleave bonus.
+		To enable use RuleI(Spells, AdditiveBonusWornType)
+		Setting value =  2  Will force all live items to automatically be calculated additively
+		Setting value to anything else will indicate the item 'worntype' that if set to the same, will cause the bonuses to use this calculation
+		which will also stack with regular (worntype 2) effects. [Ie set rule = 3 and item worntype = 3]
 	*/
 
-	if (!inst || !inst->IsClassCommon())
+	if (!inst || !inst->IsClassCommon()) {
 		return;
+	}
 
-	if(inst->GetAugmentType()==0 && isAug == true)
+	if (inst->GetAugmentType() == 0 && is_augment) {
 		return;
+	}
 
-	const EQ::ItemData *item = inst->GetItem();
+	const auto* item = inst->GetItem();
 
-	if(!inst->IsEquipable(GetBaseRace(),GetClass()))
+	if (!inst->IsEquipable(GetBaseRace(), GetClass())) {
 		return;
+	}
 
-	if(GetLevel() < item->ReqLevel)
+	if (GetLevel() < item->ReqLevel) {
 		return;
+	}
 
-	if (item->Worn.Effect > 0 && item->Worn.Type == RuleI(Spells, AdditiveBonusWornType))
-		ApplySpellsBonuses(item->Worn.Effect, item->Worn.Level, newbon, 0, item->Worn.Type);// Non-live like - Addititive latent effects
+	if (item->Worn.Effect > 0 && item->Worn.Type == RuleI(Spells, AdditiveBonusWornType)) {
+		ApplySpellsBonuses(
+			item->Worn.Effect,
+			item->Worn.Level,
+			b,
+			0,
+			item->Worn.Type
+		);
+	}
 
-
-	if (!isAug)
-	{
+	if (!is_augment) {
 		int i;
 		for (i = EQ::invaug::SOCKET_BEGIN; i <= EQ::invaug::SOCKET_END; i++) {
-			AdditiveWornBonuses(inst->GetAugment(i),newbon,true);
+			AdditiveWornBonuses(inst->GetAugment(i), b, true);
 		}
 	}
 }
@@ -1047,6 +1219,7 @@ void Mob::ApplyAABonuses(const AA::Rank &rank, StatBonuses *newbon)
 				newbon->HitChanceEffect[EQ::skills::HIGHEST_SKILL + 1] += base_value;
 			else
 				newbon->HitChanceEffect[limit_value] += base_value;
+			break;
 		}
 
 		case SE_ProcOnKillShot:
@@ -1221,12 +1394,13 @@ void Mob::ApplyAABonuses(const AA::Rank &rank, StatBonuses *newbon)
 					newbon->SkillAttackProc[i + SBIndex::SKILLATK_PROC_CHANCE] = base_value; // Chance base 1000 = 100% proc rate
 					newbon->SkillAttackProc[i + SBIndex::SKILLATK_PROC_SKILL] = limit_value; // Skill to Proc Offr
 
-					if (limit_value < EQ::skills::HIGHEST_SKILL) {
+					if (limit_value <= EQ::skills::HIGHEST_SKILL) {
 						newbon->HasSkillAttackProc[limit_value] = true; //check first before looking for any effects.
 					}
 					break;
 				}
 			}
+			break;
 		}
 
 		case SE_DamageModifier: {
@@ -1263,9 +1437,10 @@ void Mob::ApplyAABonuses(const AA::Rank &rank, StatBonuses *newbon)
 		}
 
 		case SE_SlayUndead: {
-			if (newbon->SlayUndead[SBIndex::SLAYUNDEAD_DMG_MOD] < base_value)
+			if (newbon->SlayUndead[SBIndex::SLAYUNDEAD_DMG_MOD] < base_value) {
 				newbon->SlayUndead[SBIndex::SLAYUNDEAD_RATE_MOD] = base_value; // Rate
-			newbon->SlayUndead[SBIndex::SLAYUNDEAD_DMG_MOD]      = limit_value;	 // Damage Modifier
+				newbon->SlayUndead[SBIndex::SLAYUNDEAD_DMG_MOD] = limit_value; // Damage Modifier
+			}
 			break;
 		}
 
@@ -1326,12 +1501,14 @@ void Mob::ApplyAABonuses(const AA::Rank &rank, StatBonuses *newbon)
 
 		case SE_SpellEffectResistChance: {
 			for (int e = 0; e < MAX_RESISTABLE_EFFECTS * 2; e += 2) {
-				if (newbon->SEResist[e + 1] && (newbon->SEResist[e] == limit_value) &&
-				    (newbon->SEResist[e + 1] < base_value)) {
-					newbon->SEResist[e] = limit_value; // Spell Effect ID
-					newbon->SEResist[e + 1] = base_value; // Resist Chance
-					break;
-				} else if (!newbon->SEResist[e + 1]) {
+				if (
+					!newbon->SEResist[e + 1] ||
+					(
+						newbon->SEResist[e + 1] &&
+						newbon->SEResist[e] == limit_value &&
+						newbon->SEResist[e + 1] < base_value
+					)
+				) {
 					newbon->SEResist[e] = limit_value; // Spell Effect ID
 					newbon->SEResist[e + 1] = base_value; // Resist Chance
 					break;
@@ -1433,9 +1610,10 @@ void Mob::ApplyAABonuses(const AA::Rank &rank, StatBonuses *newbon)
 		}
 
 		case SE_HeadShotLevel: {
-			if (newbon->HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_MAX] < base_value)
-				newbon->HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_MAX]          = base_value;
+			if (newbon->HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_MAX] < base_value) {
+				newbon->HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_MAX] = base_value;
 				newbon->HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_CHANCE_BONUS] = limit_value;
+			}
 			break;
 		}
 
@@ -1469,7 +1647,7 @@ void Mob::ApplyAABonuses(const AA::Rank &rank, StatBonuses *newbon)
 		}
 
 		case SE_Illusion:
-			newbon->Illusion = true;
+			newbon->Illusion = rank.spell;
 			break;
 
 		case SE_IllusionPersistence:
@@ -1623,8 +1801,9 @@ void Mob::ApplyAABonuses(const AA::Rank &rank, StatBonuses *newbon)
 		case SE_Damage_Taken_Position_Mod:
 		{
 			//Mitigate if damage taken from behind base2 = 0, from front base2 = 1
-			if (limit_value < 0 || limit_value > 2)
+			if (limit_value < 0 || limit_value >= 2) {
 				break;
+			}
 			else if (base_value < 0 && newbon->Damage_Taken_Position_Mod[limit_value] > base_value)
 				newbon->Damage_Taken_Position_Mod[limit_value] = base_value;
 			else if (base_value > 0 && newbon->Damage_Taken_Position_Mod[limit_value] < base_value)
@@ -1634,8 +1813,9 @@ void Mob::ApplyAABonuses(const AA::Rank &rank, StatBonuses *newbon)
 
 		case SE_Melee_Damage_Position_Mod:
 		{
-			if (limit_value < 0 || limit_value > 2)
+			if (limit_value < 0 || limit_value >= 2) {
 				break;
+			}
 			else if (base_value < 0 && newbon->Melee_Damage_Position_Mod[limit_value] > base_value)
 				newbon->Melee_Damage_Position_Mod[limit_value] = base_value;
 			else if (base_value > 0 && newbon->Melee_Damage_Position_Mod[limit_value] < base_value)
@@ -1646,9 +1826,9 @@ void Mob::ApplyAABonuses(const AA::Rank &rank, StatBonuses *newbon)
 		case SE_Damage_Taken_Position_Amt:
 		{
 			//Mitigate if damage taken from behind base2 = 0, from front base2 = 1
-			if (limit_value < 0 || limit_value > 2)
+			if (limit_value < 0 || limit_value >= 2) {
 				break;
-
+			}
 			newbon->Damage_Taken_Position_Amt[limit_value] += base_value;
 			break;
 		}
@@ -1656,8 +1836,9 @@ void Mob::ApplyAABonuses(const AA::Rank &rank, StatBonuses *newbon)
 		case SE_Melee_Damage_Position_Amt:
 		{
 			//Mitigate if damage taken from behind base2 = 0, from front base2 = 1
-			if (limit_value < 0 || limit_value > 2)
+			if (limit_value < 0 || limit_value >= 2) {
 				break;
+			}
 
 			newbon->Melee_Damage_Position_Amt[limit_value] += base_value;
 			break;
@@ -1860,12 +2041,13 @@ void Mob::CalcSpellBonuses(StatBonuses* newbon)
 	newbon->AssistRange = -1;
 
 	int buff_count = GetMaxTotalSlots();
-	for(i = 0; i < buff_count; i++) {
-		if(buffs[i].spellid != SPELL_UNKNOWN){
+	for (i = 0; i < buff_count; i++) {
+		if (IsValidSpell(buffs[i].spellid)) {
 			ApplySpellsBonuses(buffs[i].spellid, buffs[i].casterlevel, newbon, buffs[i].casterid, 0, buffs[i].ticsremaining, i, buffs[i].instrument_mod);
 
-			if (buffs[i].hit_number > 0)
+			if (buffs[i].hit_number > 0) {
 				Numhits(true);
+			}
 		}
 	}
 
@@ -1876,7 +2058,7 @@ void Mob::CalcSpellBonuses(StatBonuses* newbon)
 	//Disables a specific spell effect bonus completely, can also be limited to negate only item, AA or spell bonuses.
 	if (spellbonuses.NegateEffects){
 		for(i = 0; i < buff_count; i++) {
-			if( (buffs[i].spellid != SPELL_UNKNOWN) && (IsEffectInSpell(buffs[i].spellid, SE_NegateSpellEffect)) )
+			if(IsValidSpell(buffs[i].spellid) && (IsEffectInSpell(buffs[i].spellid, SE_NegateSpellEffect)) )
 				NegateSpellEffectBonuses(buffs[i].spellid);
 		}
 	}
@@ -1929,10 +2111,17 @@ void Mob::ApplySpellsBonuses(uint16 spell_id, uint8 casterlevel, StatBonuses *ne
 		//Use AISpellEffects
 		else {
 			spell_effect_id = effect_id;
-			effect_value = se_base;
-			limit_value = se_limit;
-			max_value = se_max;
-			i = (EFFECT_COUNT - 1); // AISpellEffects do a single pass
+			effect_value    = se_base;
+			limit_value     = se_limit;
+			max_value       = se_max;
+
+			//Special custom cases for loading effects on to NPC from 'npc_spels_effects' table
+			//Non-Focused Effect to modify incoming spell damage by resist type.
+			if (spell_effect_id ==  SE_FcSpellVulnerability) {
+				ModVulnerability(limit_value, effect_value);
+			}
+
+			break;
 		}
 
 		switch (spell_effect_id)
@@ -1983,7 +2172,7 @@ void Mob::ApplySpellsBonuses(uint16 spell_id, uint8 casterlevel, StatBonuses *ne
 				}
 				else if ((effect_value - 100) < 0) { // Slow
 					int real_slow_value = (100 - effect_value) * -1;
-					real_slow_value -= ((real_slow_value * GetSlowMitigation()/100));
+					real_slow_value -= (real_slow_value * GetSlowMitigation()/100);
 					if (real_slow_value < new_bonus->haste)
 						new_bonus->haste = real_slow_value;
 				}
@@ -2000,7 +2189,7 @@ void Mob::ApplySpellsBonuses(uint16 spell_id, uint8 casterlevel, StatBonuses *ne
 				}
 				else if ((effect_value - 100) < 0) { // Slow
 					int real_slow_value = (100 - effect_value) * -1;
-					real_slow_value -= ((real_slow_value * GetSlowMitigation()/100));
+					real_slow_value -= (real_slow_value * GetSlowMitigation()/100);
 					if (real_slow_value < new_bonus->hastetype2)
 						new_bonus->hastetype2 = real_slow_value;
 				}
@@ -2010,7 +2199,7 @@ void Mob::ApplySpellsBonuses(uint16 spell_id, uint8 casterlevel, StatBonuses *ne
 			case SE_AttackSpeed3:
 			{
 				if (effect_value < 0){ //Slow
-					effect_value -= ((effect_value * GetSlowMitigation()/100));
+					effect_value -= (effect_value * GetSlowMitigation()/100);
 					if (effect_value < new_bonus->hastetype3)
 						new_bonus->hastetype3 = effect_value;
 				}
@@ -2034,7 +2223,7 @@ void Mob::ApplySpellsBonuses(uint16 spell_id, uint8 casterlevel, StatBonuses *ne
 					effect_value = effect_value * -1;
 
 				if (effect_value > 0 && effect_value > new_bonus->inhibitmelee) {
-					effect_value -= ((effect_value * GetSlowMitigation()/100));
+					effect_value -= (effect_value * GetSlowMitigation()/100);
 					if (effect_value > new_bonus->inhibitmelee)
 						new_bonus->inhibitmelee = effect_value;
 				}
@@ -2995,8 +3184,9 @@ void Mob::ApplySpellsBonuses(uint16 spell_id, uint8 casterlevel, StatBonuses *ne
 			case SE_HPToMana:
 			{
 				//Lower the ratio the more favorable
-				if((!new_bonus->HPToManaConvert) || (new_bonus->HPToManaConvert >= effect_value))
-				new_bonus->HPToManaConvert = spells[spell_id].base_value[i];
+				if ((!new_bonus->HPToManaConvert) || (new_bonus->HPToManaConvert >= effect_value)) {
+					new_bonus->HPToManaConvert = spells[spell_id].base_value[i];
+				}
 				break;
 			}
 
@@ -3014,8 +3204,13 @@ void Mob::ApplySpellsBonuses(uint16 spell_id, uint8 casterlevel, StatBonuses *ne
 
 			case SE_NegateAttacks:
 			{
-				if (!new_bonus->NegateAttacks[SBIndex::NEGATE_ATK_EXISTS] ||
-					((new_bonus->NegateAttacks[SBIndex::NEGATE_ATK_EXISTS] && new_bonus->NegateAttacks[SBIndex::NEGATE_ATK_MAX_DMG_ABSORB_PER_HIT]) && (new_bonus->NegateAttacks[SBIndex::NEGATE_ATK_MAX_DMG_ABSORB_PER_HIT] < max_value))){
+				if (
+					!new_bonus->NegateAttacks[SBIndex::NEGATE_ATK_EXISTS] ||
+					(
+						new_bonus->NegateAttacks[SBIndex::NEGATE_ATK_MAX_DMG_ABSORB_PER_HIT] &&
+						new_bonus->NegateAttacks[SBIndex::NEGATE_ATK_MAX_DMG_ABSORB_PER_HIT] < max_value
+					)
+				) {
 					new_bonus->NegateAttacks[SBIndex::NEGATE_ATK_EXISTS]                 = 1;
 					new_bonus->NegateAttacks[SBIndex::NEGATE_ATK_BUFFSLOT]               = buffslot;
 					new_bonus->NegateAttacks[SBIndex::NEGATE_ATK_MAX_DMG_ABSORB_PER_HIT] = max_value;
@@ -3307,14 +3502,16 @@ void Mob::ApplySpellsBonuses(uint16 spell_id, uint8 casterlevel, StatBonuses *ne
 			{
 				for(int e = 0; e < MAX_RESISTABLE_EFFECTS*2; e+=2)
 				{
-					if(new_bonus->SEResist[e+1] && (new_bonus->SEResist[e] == limit_value) && (new_bonus->SEResist[e+1] < effect_value)){
-						new_bonus->SEResist[e] = limit_value; //Spell Effect ID
-						new_bonus->SEResist[e+1] = effect_value; //Resist Chance
-						break;
-					}
-					else if (!new_bonus->SEResist[e+1]){
-						new_bonus->SEResist[e] = limit_value; //Spell Effect ID
-						new_bonus->SEResist[e+1] = effect_value; //Resist Chance
+					if (
+						!new_bonus->SEResist[e + 1] ||
+						(
+							new_bonus->SEResist[e + 1] &&
+							new_bonus->SEResist[e] == limit_value &&
+							new_bonus->SEResist[e + 1] < effect_value
+						)
+					) {
+						new_bonus->SEResist[e]     = limit_value; //Spell Effect ID
+						new_bonus->SEResist[e + 1] = effect_value; //Resist Chance
 						break;
 					}
 				}
@@ -3331,6 +3528,7 @@ void Mob::ApplySpellsBonuses(uint16 spell_id, uint8 casterlevel, StatBonuses *ne
 			case SE_DoubleRiposte:
 			{
 				new_bonus->DoubleRiposte += effect_value;
+				break;
 			}
 
 			case SE_GiveDoubleRiposte:
@@ -3343,11 +3541,11 @@ void Mob::ApplySpellsBonuses(uint16 spell_id, uint8 casterlevel, StatBonuses *ne
 				break;
 			}
 
-			case SE_SlayUndead:
-			{
-				if(new_bonus->SlayUndead[SBIndex::SLAYUNDEAD_DMG_MOD] < effect_value)
+			case SE_SlayUndead: {
+				if (new_bonus->SlayUndead[SBIndex::SLAYUNDEAD_DMG_MOD] < effect_value) {
 					new_bonus->SlayUndead[SBIndex::SLAYUNDEAD_RATE_MOD] = effect_value; // Rate
-					new_bonus->SlayUndead[SBIndex::SLAYUNDEAD_DMG_MOD]  = limit_value; // Damage Modifier
+					new_bonus->SlayUndead[SBIndex::SLAYUNDEAD_DMG_MOD] = limit_value; // Damage Modifier
+				}
 				break;
 			}
 
@@ -3489,9 +3687,8 @@ void Mob::ApplySpellsBonuses(uint16 spell_id, uint8 casterlevel, StatBonuses *ne
 				break;
 			}
 
-			case SE_HeadShotLevel:
-			{
-				if(new_bonus->HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_MAX] < effect_value) {
+			case SE_HeadShotLevel: {
+				if (new_bonus->HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_MAX] < effect_value) {
 					new_bonus->HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_MAX]          = effect_value;
 					new_bonus->HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_CHANCE_BONUS] = limit_value;
 				}
@@ -3611,12 +3808,13 @@ void Mob::ApplySpellsBonuses(uint16 spell_id, uint8 casterlevel, StatBonuses *ne
 						new_bonus->SkillAttackProc[i + SBIndex::SKILLATK_PROC_CHANCE] = effect_value; // Chance base 1000 = 100% proc rate
 						new_bonus->SkillAttackProc[i + SBIndex::SKILLATK_PROC_SKILL] = limit_value; // Skill to Proc Offr
 
-						if (limit_value < EQ::skills::HIGHEST_SKILL) {
+						if (limit_value <= EQ::skills::HIGHEST_SKILL) {
 							new_bonus->HasSkillAttackProc[limit_value] = true; //check first before looking for any effects.
 						}
 						break;
 					}
 				}
+				break;
 			}
 
 			case SE_PC_Pet_Rampage: {
@@ -3704,8 +3902,9 @@ void Mob::ApplySpellsBonuses(uint16 spell_id, uint8 casterlevel, StatBonuses *ne
 			case SE_Damage_Taken_Position_Mod:
 			{
 				//Mitigate if damage taken from behind base2 = 0, from front base2 = 1
-				if (limit_value < 0 || limit_value > 2)
+				if (limit_value < 0 || limit_value >= 2) {
 					break;
+				}
 				if (AdditiveWornBonus)
 					new_bonus->Damage_Taken_Position_Mod[limit_value] += effect_value;
 				else if (effect_value < 0 && new_bonus->Damage_Taken_Position_Mod[limit_value] > effect_value)
@@ -3718,8 +3917,9 @@ void Mob::ApplySpellsBonuses(uint16 spell_id, uint8 casterlevel, StatBonuses *ne
 			case SE_Melee_Damage_Position_Mod:
 			{
 				//Increase damage by percent from behind base2 = 0, from front base2 = 1
-				if (limit_value < 0 || limit_value > 2)
+				if (limit_value < 0 || limit_value >= 2) {
 					break;
+				}
 				if (AdditiveWornBonus)
 					new_bonus->Melee_Damage_Position_Mod[limit_value] += effect_value;
 				else if (effect_value < 0 && new_bonus->Melee_Damage_Position_Mod[limit_value] > effect_value)
@@ -3732,8 +3932,9 @@ void Mob::ApplySpellsBonuses(uint16 spell_id, uint8 casterlevel, StatBonuses *ne
 			case SE_Damage_Taken_Position_Amt:
 			{
 				//Mitigate if damage taken from behind base2 = 0, from front base2 = 1
-				if (limit_value < 0 || limit_value > 2)
+				if (limit_value < 0 || limit_value >= 2) {
 					break;
+				}
 
 				new_bonus->Damage_Taken_Position_Amt[limit_value] += effect_value;
 				break;
@@ -3742,8 +3943,9 @@ void Mob::ApplySpellsBonuses(uint16 spell_id, uint8 casterlevel, StatBonuses *ne
 			case SE_Melee_Damage_Position_Amt:
 			{
 				//Mitigate if damage taken from behind base2 = 0, from front base2 = 1
-				if (limit_value < 0 || limit_value > 2)
+				if (limit_value < 0 || limit_value >= 2) {
 					break;
+				}
 
 				new_bonus->Melee_Damage_Position_Amt[limit_value] += effect_value;
 				break;
@@ -3871,94 +4073,7 @@ void Mob::ApplySpellsBonuses(uint16 spell_id, uint8 casterlevel, StatBonuses *ne
 			case SE_TrapCircumvention:
 				new_bonus->TrapCircumvention += effect_value;
 				break;
-
-			//Special custom cases for loading effects on to NPC from 'npc_spels_effects' table
-			if (IsAISpellEffect) {
-
-				//Non-Focused Effect to modify incoming spell damage by resist type.
-				case SE_FcSpellVulnerability:
-					ModVulnerability(limit_value, effect_value);
-				break;
-			}
 		}
-	}
-}
-
-void NPC::CalcItemBonuses(StatBonuses *newbon)
-{
-	if(newbon){
-
-		for (int i = EQ::invslot::BONUS_BEGIN; i <= EQ::invslot::BONUS_STAT_END; i++){
-			const EQ::ItemData *cur = database.GetItem(equipment[i]);
-			if(cur){
-				//basic stats
-				newbon->AC += cur->AC;
-				newbon->HP += cur->HP;
-				newbon->Mana += cur->Mana;
-				newbon->Endurance += cur->Endur;
-				newbon->STR += (cur->AStr + cur->HeroicStr);
-				newbon->STA += (cur->ASta + cur->HeroicSta);
-				newbon->DEX += (cur->ADex + cur->HeroicDex);
-				newbon->AGI += (cur->AAgi + cur->HeroicAgi);
-				newbon->INT += (cur->AInt + cur->HeroicInt);
-				newbon->WIS += (cur->AWis + cur->HeroicWis);
-				newbon->CHA += (cur->ACha + cur->HeroicCha);
-				newbon->MR += (cur->MR + cur->HeroicMR);
-				newbon->FR += (cur->FR + cur->HeroicFR);
-				newbon->CR += (cur->CR + cur->HeroicCR);
-				newbon->PR += (cur->PR + cur->HeroicPR);
-				newbon->DR += (cur->DR + cur->HeroicDR);
-				newbon->Corrup += (cur->SVCorruption + cur->HeroicSVCorrup);
-
-				//more complex stats
-				if(cur->Regen > 0) {
-					newbon->HPRegen += cur->Regen;
-				}
-				if(cur->ManaRegen > 0) {
-					newbon->ManaRegen += cur->ManaRegen;
-				}
-				if(cur->Attack > 0) {
-					newbon->ATK += cur->Attack;
-				}
-				if(cur->DamageShield > 0) {
-					newbon->DamageShield += cur->DamageShield;
-				}
-				if(cur->SpellShield > 0) {
-					newbon->SpellShield += cur->SpellShield;
-				}
-				if(cur->Shielding > 0) {
-					newbon->MeleeMitigation += cur->Shielding;
-				}
-				if(cur->StunResist > 0) {
-					newbon->StunResist += cur->StunResist;
-				}
-				if(cur->StrikeThrough > 0) {
-					newbon->StrikeThrough += cur->StrikeThrough;
-				}
-				if(cur->Avoidance > 0) {
-					newbon->AvoidMeleeChance += cur->Avoidance;
-				}
-				if(cur->Accuracy > 0) {
-					newbon->HitChance += cur->Accuracy;
-				}
-				if(cur->CombatEffects > 0) {
-					newbon->ProcChance += cur->CombatEffects;
-				}
-				if (cur->Worn.Effect>0 && (cur->Worn.Type == EQ::item::ItemEffectWorn)) { // latent effects
-					ApplySpellsBonuses(cur->Worn.Effect, cur->Worn.Level, newbon, 0, cur->Worn.Type);
-				}
-
-				if (RuleB(Spells, NPC_UseFocusFromItems)){
-					if (cur->Focus.Effect>0 && (cur->Focus.Type == EQ::item::ItemEffectFocus)){  // focus effects
-						ApplySpellsBonuses(cur->Focus.Effect, cur->Focus.Level, newbon);
-					}
-				}
-
-				if (cur->Haste > newbon->haste)
-					newbon->haste = cur->Haste;
-			}
-		}
-
 	}
 }
 
@@ -4011,7 +4126,10 @@ bool Client::CalcItemScale(uint32 slot_x, uint32 slot_y) {
 		if(inst->IsScaling())
 		{
 			uint16 oldexp = inst->GetExp();
-			parse->EventItem(EVENT_SCALE_CALC, this, inst, nullptr, "", 0);
+
+			if (parse->ItemHasQuestSub(inst, EVENT_SCALE_CALC)) {
+				parse->EventItem(EVENT_SCALE_CALC, this, inst, nullptr, "", 0);
+			}
 
 			if (inst->GetExp() != oldexp) {	// if the scaling factor changed, rescale the item and update the client
 				inst->ScaleItem();
@@ -4030,7 +4148,10 @@ bool Client::CalcItemScale(uint32 slot_x, uint32 slot_y) {
 			if(a_inst->IsScaling())
 			{
 				uint16 oldexp = a_inst->GetExp();
-				parse->EventItem(EVENT_SCALE_CALC, this, a_inst, nullptr, "", 0);
+
+				if (parse->ItemHasQuestSub(a_inst, EVENT_SCALE_CALC)) {
+					parse->EventItem(EVENT_SCALE_CALC, this, a_inst, nullptr, "", 0);
+				}
 
 				if (a_inst->GetExp() != oldexp)
 				{
@@ -4098,9 +4219,14 @@ bool Client::DoItemEnterZone(uint32 slot_x, uint32 slot_y) {
 		{
 			uint16 oldexp = inst->GetExp();
 
-			parse->EventItem(EVENT_ITEM_ENTER_ZONE, this, inst, nullptr, "", 0);
+			if (parse->ItemHasQuestSub(inst, EVENT_ITEM_ENTER_ZONE)) {
+				parse->EventItem(EVENT_ITEM_ENTER_ZONE, this, inst, nullptr, "", 0);
+			}
+
 			if (i <= EQ::invslot::EQUIPMENT_END) {
-				parse->EventItem(EVENT_EQUIP_ITEM, this, inst, nullptr, "", i);
+				if (parse->ItemHasQuestSub(inst, EVENT_EQUIP_ITEM)) {
+					parse->EventItem(EVENT_EQUIP_ITEM, this, inst, nullptr, "", i);
+				}
 			}
 
 			if (inst->GetExp() != oldexp) {	// if the scaling factor changed, rescale the item and update the client
@@ -4110,10 +4236,14 @@ bool Client::DoItemEnterZone(uint32 slot_x, uint32 slot_y) {
 			}
 		} else {
 			if (i <= EQ::invslot::EQUIPMENT_END) {
-				parse->EventItem(EVENT_EQUIP_ITEM, this, inst, nullptr, "", i);
+				if (parse->ItemHasQuestSub(inst, EVENT_EQUIP_ITEM)) {
+					parse->EventItem(EVENT_EQUIP_ITEM, this, inst, nullptr, "", i);
+				}
 			}
 
-			parse->EventItem(EVENT_ITEM_ENTER_ZONE, this, inst, nullptr, "", 0);
+			if (parse->ItemHasQuestSub(inst, EVENT_ITEM_ENTER_ZONE)) {
+				parse->EventItem(EVENT_ITEM_ENTER_ZONE, this, inst, nullptr, "", 0);
+			}
 		}
 
 		//iterate all augments
@@ -4127,7 +4257,9 @@ bool Client::DoItemEnterZone(uint32 slot_x, uint32 slot_y) {
 			{
 				uint16 oldexp = a_inst->GetExp();
 
-				parse->EventItem(EVENT_ITEM_ENTER_ZONE, this, a_inst, nullptr, "", 0);
+				if (parse->ItemHasQuestSub(a_inst, EVENT_ITEM_ENTER_ZONE)) {
+					parse->EventItem(EVENT_ITEM_ENTER_ZONE, this, a_inst, nullptr, "", 0);
+				}
 
 				if (a_inst->GetExp() != oldexp)
 				{
@@ -4136,7 +4268,9 @@ bool Client::DoItemEnterZone(uint32 slot_x, uint32 slot_y) {
 					update_slot = true;
 				}
 			} else {
-				parse->EventItem(EVENT_ITEM_ENTER_ZONE, this, a_inst, nullptr, "", 0);
+				if (parse->ItemHasQuestSub(a_inst, EVENT_ITEM_ENTER_ZONE)) {
+					parse->EventItem(EVENT_ITEM_ENTER_ZONE, this, a_inst, nullptr, "", 0);
+				}
 			}
 		}
 
@@ -4184,11 +4318,11 @@ uint8 Mob::IsFocusEffect(uint16 spell_id,int effect_index, bool AA,uint32 aa_eff
 		case SE_SpellResistReduction:
 			return focusResistRate;
 		case SE_Fc_ResistIncoming:
-			focusFcResistIncoming;
+			return focusFcResistIncoming;
 		case SE_Fc_Amplify_Mod:
-			focusFcAmplifyMod;
+			return focusFcAmplifyMod;
 		case SE_Fc_Amplify_Amt:
-			focusFcAmplifyAmt;
+			return focusFcAmplifyAmt;
 		case SE_SpellHateMod:
 			return focusSpellHateMod;
 		case SE_ReduceReuseTimer:
@@ -4355,12 +4489,9 @@ void Mob::NegateSpellEffectBonuses(uint16 spell_id)
 
 				case SE_AttackSpeed3:
 				{
-					if (effect_value > 0) {
-						if (negate_spellbonus) { spellbonuses.hastetype3 = effect_value; }
-						if (negate_aabonus) { aabonuses.hastetype3 = effect_value; }
-						if (negate_itembonus) { itembonuses.hastetype3 = effect_value; }
-
-					}
+					if (negate_spellbonus) { spellbonuses.hastetype3 = effect_value; }
+					if (negate_aabonus) { aabonuses.hastetype3 = effect_value; }
+					if (negate_itembonus) { itembonuses.hastetype3 = effect_value; }
 					break;
 				}
 
@@ -4452,29 +4583,36 @@ void Mob::NegateSpellEffectBonuses(uint16 spell_id)
 
 				case SE_AllStats:
 				{
-					if (negate_spellbonus) { spellbonuses.STR = effect_value; }
-					if (negate_spellbonus) { spellbonuses.DEX = effect_value; }
-					if (negate_spellbonus) { spellbonuses.AGI = effect_value; }
-					if (negate_spellbonus) { spellbonuses.STA = effect_value; }
-					if (negate_spellbonus) { spellbonuses.INT = effect_value; }
-					if (negate_spellbonus) { spellbonuses.WIS = effect_value; }
-					if (negate_spellbonus) { spellbonuses.CHA = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.STR = effect_value;
+						spellbonuses.DEX = effect_value;
+						spellbonuses.AGI = effect_value;
+						spellbonuses.STA = effect_value;
+						spellbonuses.INT = effect_value;
+						spellbonuses.WIS = effect_value;
+						spellbonuses.CHA = effect_value;
+					}
 
-					if (negate_itembonus) { itembonuses.STR = effect_value; }
-					if (negate_itembonus) { itembonuses.DEX = effect_value; }
-					if (negate_itembonus) { itembonuses.AGI = effect_value; }
-					if (negate_itembonus) { itembonuses.STA = effect_value; }
-					if (negate_itembonus) { itembonuses.INT = effect_value; }
-					if (negate_itembonus) { itembonuses.WIS = effect_value; }
-					if (negate_itembonus) { itembonuses.CHA = effect_value; }
+					if (negate_itembonus) {
+						itembonuses.STR = effect_value;
+						itembonuses.DEX = effect_value;
+						itembonuses.AGI = effect_value;
+						itembonuses.STA = effect_value;
+						itembonuses.INT = effect_value;
+						itembonuses.WIS = effect_value;
+						itembonuses.CHA = effect_value;
+					}
 
-					if (negate_aabonus) { aabonuses.STR = effect_value; }
-					if (negate_aabonus) { aabonuses.DEX = effect_value; }
-					if (negate_aabonus) { aabonuses.AGI = effect_value; }
-					if (negate_aabonus) { aabonuses.STA = effect_value; }
-					if (negate_aabonus) { aabonuses.INT = effect_value; }
-					if (negate_aabonus) { aabonuses.WIS = effect_value; }
-					if (negate_aabonus) { aabonuses.CHA = effect_value; }
+					if (negate_aabonus) {
+						aabonuses.STR = effect_value;
+						aabonuses.DEX = effect_value;
+						aabonuses.AGI = effect_value;
+						aabonuses.STA = effect_value;
+						aabonuses.INT = effect_value;
+						aabonuses.WIS = effect_value;
+						aabonuses.CHA = effect_value;
+					}
+
 					break;
 				}
 
@@ -4510,23 +4648,30 @@ void Mob::NegateSpellEffectBonuses(uint16 spell_id)
 
 				case SE_ResistAll:
 				{
-					if (negate_spellbonus) { spellbonuses.MR = effect_value; }
-					if (negate_spellbonus) { spellbonuses.DR = effect_value; }
-					if (negate_spellbonus) { spellbonuses.PR = effect_value; }
-					if (negate_spellbonus) { spellbonuses.CR = effect_value; }
-					if (negate_spellbonus) { spellbonuses.FR = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.MR = effect_value;
+						spellbonuses.DR = effect_value;
+						spellbonuses.PR = effect_value;
+						spellbonuses.CR = effect_value;
+						spellbonuses.FR = effect_value;
+					}
 
-					if (negate_aabonus) { aabonuses.MR = effect_value; }
-					if (negate_aabonus) { aabonuses.DR = effect_value; }
-					if (negate_aabonus) { aabonuses.PR = effect_value; }
-					if (negate_aabonus) { aabonuses.CR = effect_value; }
-					if (negate_aabonus) { aabonuses.FR = effect_value; }
+					if (negate_aabonus) {
+						aabonuses.MR = effect_value;
+						aabonuses.DR = effect_value;
+						aabonuses.PR = effect_value;
+						aabonuses.CR = effect_value;
+						aabonuses.FR = effect_value;
+					}
 
-					if (negate_itembonus) { itembonuses.MR = effect_value; }
-					if (negate_itembonus) { itembonuses.DR = effect_value; }
-					if (negate_itembonus) { itembonuses.PR = effect_value; }
-					if (negate_itembonus) { itembonuses.CR = effect_value; }
-					if (negate_itembonus) { itembonuses.FR = effect_value; }
+					if (negate_itembonus) {
+						itembonuses.MR = effect_value;
+						itembonuses.DR = effect_value;
+						itembonuses.PR = effect_value;
+						itembonuses.CR = effect_value;
+						itembonuses.FR = effect_value;
+					}
+
 					break;
 				}
 
@@ -4663,23 +4808,29 @@ void Mob::NegateSpellEffectBonuses(uint16 spell_id)
 
 				case SE_AllInstrumentMod:
 				{
-					if (negate_spellbonus) { spellbonuses.singingMod = effect_value; }
-					if (negate_spellbonus) { spellbonuses.brassMod = effect_value; }
-					if (negate_spellbonus) { spellbonuses.percussionMod = effect_value; }
-					if (negate_spellbonus) { spellbonuses.windMod = effect_value; }
-					if (negate_spellbonus) { spellbonuses.stringedMod = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.singingMod    = effect_value;
+						spellbonuses.brassMod      = effect_value;
+						spellbonuses.percussionMod = effect_value;
+						spellbonuses.windMod       = effect_value;
+						spellbonuses.stringedMod   = effect_value;
+					}
 
-					if (negate_itembonus) { itembonuses.singingMod = effect_value; }
-					if (negate_itembonus) { itembonuses.brassMod = effect_value; }
-					if (negate_itembonus) { itembonuses.percussionMod = effect_value; }
-					if (negate_itembonus) { itembonuses.windMod = effect_value; }
-					if (negate_itembonus) { itembonuses.stringedMod = effect_value; }
+					if (negate_itembonus) {
+						itembonuses.singingMod    = effect_value;
+						itembonuses.brassMod      = effect_value;
+						itembonuses.percussionMod = effect_value;
+						itembonuses.windMod       = effect_value;
+						itembonuses.stringedMod   = effect_value;
+					}
 
-					if (negate_aabonus) { aabonuses.singingMod = effect_value; }
-					if (negate_aabonus) { aabonuses.brassMod = effect_value; }
-					if (negate_aabonus) { aabonuses.percussionMod = effect_value; }
-					if (negate_aabonus) { aabonuses.windMod = effect_value; }
-					if (negate_aabonus) { aabonuses.stringedMod = effect_value; }
+					if (negate_aabonus) {
+						aabonuses.singingMod    = effect_value;
+						aabonuses.brassMod      = effect_value;
+						aabonuses.percussionMod = effect_value;
+						aabonuses.windMod       = effect_value;
+						aabonuses.stringedMod   = effect_value;
+					}
 					break;
 				}
 
@@ -4690,8 +4841,11 @@ void Mob::NegateSpellEffectBonuses(uint16 spell_id)
 					break;
 
 				case SE_ResistFearChance:
-					if (negate_spellbonus) { spellbonuses.Fearless = false; }
-					if (negate_spellbonus) { spellbonuses.ResistFearChance = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.Fearless = false;
+						spellbonuses.ResistFearChance = effect_value;
+					}
+
 					if (negate_aabonus) { aabonuses.ResistFearChance = effect_value; }
 					if (negate_itembonus) { itembonuses.ResistFearChance = effect_value; }
 					break;
@@ -4868,12 +5022,21 @@ void Mob::NegateSpellEffectBonuses(uint16 spell_id)
 					break;
 
 				case SE_CriticalSpellChance:
-					if (negate_spellbonus) { spellbonuses.CriticalSpellChance = effect_value; }
-					if (negate_spellbonus) { spellbonuses.SpellCritDmgIncrease = effect_value; }
-					if (negate_aabonus) { aabonuses.CriticalSpellChance = effect_value; }
-					if (negate_aabonus) { aabonuses.SpellCritDmgIncrease = effect_value; }
-					if (negate_itembonus) { itembonuses.CriticalSpellChance = effect_value; }
-					if (negate_itembonus) { itembonuses.SpellCritDmgIncrease = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.CriticalSpellChance  = effect_value;
+						spellbonuses.SpellCritDmgIncrease = effect_value;
+					}
+
+					if (negate_aabonus) {
+						aabonuses.CriticalSpellChance  = effect_value;
+						aabonuses.SpellCritDmgIncrease = effect_value;
+					}
+
+					if (negate_itembonus) {
+						itembonuses.CriticalSpellChance  = effect_value;
+						itembonuses.SpellCritDmgIncrease = effect_value;
+					}
+
 					break;
 
 				case SE_SpellCritDmgIncrease:
@@ -4914,20 +5077,27 @@ void Mob::NegateSpellEffectBonuses(uint16 spell_id)
 
 				case SE_ProcOnKillShot:
 				{
-					for (int e = 0; e < MAX_SPELL_TRIGGER * 3; e = 3)
+					for (int e = 0; e < MAX_SPELL_TRIGGER * 3; e += 3)
 					{
-						if (negate_spellbonus) { spellbonuses.SpellOnKill[e] = effect_value; }
-						if (negate_spellbonus) { spellbonuses.SpellOnKill[e + 1] = effect_value; }
-						if (negate_spellbonus) { spellbonuses.SpellOnKill[e + 2] = effect_value; }
+						if (negate_spellbonus) {
+							spellbonuses.SpellOnKill[e] = effect_value;
+							spellbonuses.SpellOnKill[e + 1] = effect_value;
+							spellbonuses.SpellOnKill[e + 2] = effect_value;
+						}
 
-						if (negate_aabonus) { aabonuses.SpellOnKill[e] = effect_value; }
-						if (negate_aabonus) { aabonuses.SpellOnKill[e + 1] = effect_value; }
-						if (negate_aabonus) { aabonuses.SpellOnKill[e + 2] = effect_value; }
+						if (negate_aabonus) {
+							aabonuses.SpellOnKill[e] = effect_value;
+							aabonuses.SpellOnKill[e + 1] = effect_value;
+							aabonuses.SpellOnKill[e + 2] = effect_value;
+						}
 
-						if (negate_itembonus) { itembonuses.SpellOnKill[e] = effect_value; }
-						if (negate_itembonus) { itembonuses.SpellOnKill[e + 1] = effect_value; }
-						if (negate_itembonus) { itembonuses.SpellOnKill[e + 2] = effect_value; }
+						if (negate_itembonus) {
+							itembonuses.SpellOnKill[e] = effect_value;
+							itembonuses.SpellOnKill[e + 1] = effect_value;
+							itembonuses.SpellOnKill[e + 2] = effect_value;
+						}
 					}
+
 					break;
 				}
 
@@ -5028,35 +5198,53 @@ void Mob::NegateSpellEffectBonuses(uint16 spell_id)
 				}
 
 				case SE_NegateAttacks:
-					if (negate_spellbonus) { spellbonuses.NegateAttacks[SBIndex::NEGATE_ATK_EXISTS] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.NegateAttacks[SBIndex::NEGATE_ATK_BUFFSLOT] = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.NegateAttacks[SBIndex::NEGATE_ATK_EXISTS]   = effect_value;
+						spellbonuses.NegateAttacks[SBIndex::NEGATE_ATK_BUFFSLOT] = effect_value;
+					}
+
 					break;
 
 				case SE_MitigateMeleeDamage:
-					if (negate_spellbonus) { spellbonuses.MitigateMeleeRune[SBIndex::MITIGATION_RUNE_PERCENT] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.MitigateMeleeRune[SBIndex::MITIGATION_RUNE_BUFFSLOT] = -1; }
+					if (negate_spellbonus) {
+						spellbonuses.MitigateMeleeRune[SBIndex::MITIGATION_RUNE_PERCENT]  = effect_value;
+						spellbonuses.MitigateMeleeRune[SBIndex::MITIGATION_RUNE_BUFFSLOT] = -1;
+					}
+
 					break;
 
 				case SE_MeleeThresholdGuard:
-					if (negate_spellbonus) { spellbonuses.MeleeThresholdGuard[SBIndex::THRESHOLDGUARD_MITIGATION_PERCENT] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.MeleeThresholdGuard[SBIndex::THRESHOLDGUARD_BUFFSLOT] = -1; }
-					if (negate_spellbonus) { spellbonuses.MeleeThresholdGuard[SBIndex::THRESHOLDGUARD_BUFFSLOT] = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.MeleeThresholdGuard[SBIndex::THRESHOLDGUARD_MITIGATION_PERCENT] = effect_value;
+						spellbonuses.MeleeThresholdGuard[SBIndex::THRESHOLDGUARD_BUFFSLOT]           = -1;
+						spellbonuses.MeleeThresholdGuard[SBIndex::THRESHOLDGUARD_BUFFSLOT]           = effect_value;
+					}
+
 					break;
 
 				case SE_SpellThresholdGuard:
-					if (negate_spellbonus) { spellbonuses.SpellThresholdGuard[SBIndex::THRESHOLDGUARD_MITIGATION_PERCENT] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.SpellThresholdGuard[SBIndex::THRESHOLDGUARD_BUFFSLOT] = -1; }
-					if (negate_spellbonus) { spellbonuses.SpellThresholdGuard[SBIndex::THRESHOLDGUARD_BUFFSLOT] = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.SpellThresholdGuard[SBIndex::THRESHOLDGUARD_MITIGATION_PERCENT] = effect_value;
+						spellbonuses.SpellThresholdGuard[SBIndex::THRESHOLDGUARD_BUFFSLOT]           = -1;
+						spellbonuses.SpellThresholdGuard[SBIndex::THRESHOLDGUARD_BUFFSLOT]           = effect_value;
+					}
+
 					break;
 
 				case SE_MitigateSpellDamage:
-					if (negate_spellbonus) { spellbonuses.MitigateSpellRune[SBIndex::MITIGATION_RUNE_PERCENT] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.MitigateSpellRune[SBIndex::MITIGATION_RUNE_BUFFSLOT] = -1; }
+					if (negate_spellbonus) {
+						spellbonuses.MitigateSpellRune[SBIndex::MITIGATION_RUNE_PERCENT]  = effect_value;
+						spellbonuses.MitigateSpellRune[SBIndex::MITIGATION_RUNE_BUFFSLOT] = -1;
+					}
+
 					break;
 
 				case SE_MitigateDotDamage:
-					if (negate_spellbonus) { spellbonuses.MitigateDotRune[SBIndex::MITIGATION_RUNE_PERCENT] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.MitigateDotRune[SBIndex::MITIGATION_RUNE_BUFFSLOT] = -1; }
+					if (negate_spellbonus) {
+						spellbonuses.MitigateDotRune[SBIndex::MITIGATION_RUNE_PERCENT]  = effect_value;
+						spellbonuses.MitigateDotRune[SBIndex::MITIGATION_RUNE_BUFFSLOT] = -1;
+					}
+
 					break;
 
 				case SE_ManaAbsorbPercentDamage:
@@ -5064,8 +5252,11 @@ void Mob::NegateSpellEffectBonuses(uint16 spell_id)
 					break;
 
 				case SE_Endurance_Absorb_Pct_Damage:
-					if (negate_spellbonus) { spellbonuses.EnduranceAbsorbPercentDamage[SBIndex::ENDURANCE_ABSORD_MITIGIATION] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.EnduranceAbsorbPercentDamage[SBIndex::ENDURANCE_ABSORD_DRAIN_PER_HP] = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.EnduranceAbsorbPercentDamage[SBIndex::ENDURANCE_ABSORD_MITIGIATION]  = effect_value;
+						spellbonuses.EnduranceAbsorbPercentDamage[SBIndex::ENDURANCE_ABSORD_DRAIN_PER_HP] = effect_value;
+					}
+
 					break;
 
 				case SE_ShieldBlock:
@@ -5176,11 +5367,6 @@ void Mob::NegateSpellEffectBonuses(uint16 spell_id)
 					break;
 
 				case SE_StrikeThrough:
-					if (negate_spellbonus) { spellbonuses.StrikeThrough = effect_value; }
-					if (negate_aabonus) { aabonuses.StrikeThrough = effect_value; }
-					if (negate_itembonus) { itembonuses.StrikeThrough = effect_value; }
-					break;
-
 				case SE_StrikeThrough2:
 					if (negate_spellbonus) { spellbonuses.StrikeThrough = effect_value; }
 					if (negate_aabonus) { aabonuses.StrikeThrough = effect_value; }
@@ -5293,8 +5479,10 @@ void Mob::NegateSpellEffectBonuses(uint16 spell_id)
 				{
 					for (int e = 0; e < MAX_RESISTABLE_EFFECTS * 2; e += 2)
 					{
-						if (negate_spellbonus) { spellbonuses.SEResist[e] = effect_value; }
-						if (negate_spellbonus) { spellbonuses.SEResist[e + 1] = effect_value; }
+						if (negate_spellbonus) {
+							spellbonuses.SEResist[e]     = effect_value;
+							spellbonuses.SEResist[e + 1] = effect_value;
+						}
 					}
 					break;
 				}
@@ -5318,12 +5506,21 @@ void Mob::NegateSpellEffectBonuses(uint16 spell_id)
 					break;
 
 				case SE_SlayUndead:
-					if (negate_spellbonus) { spellbonuses.SlayUndead[SBIndex::SLAYUNDEAD_RATE_MOD] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.SlayUndead[SBIndex::SLAYUNDEAD_DMG_MOD] = effect_value; }
-					if (negate_itembonus) { itembonuses.SlayUndead[SBIndex::SLAYUNDEAD_RATE_MOD] = effect_value; }
-					if (negate_itembonus) { itembonuses.SlayUndead[SBIndex::SLAYUNDEAD_DMG_MOD] = effect_value; }
-					if (negate_aabonus) { aabonuses.SlayUndead[SBIndex::SLAYUNDEAD_RATE_MOD] = effect_value; }
-					if (negate_aabonus) { aabonuses.SlayUndead[SBIndex::SLAYUNDEAD_DMG_MOD] = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.SlayUndead[SBIndex::SLAYUNDEAD_RATE_MOD] = effect_value;
+						spellbonuses.SlayUndead[SBIndex::SLAYUNDEAD_DMG_MOD]  = effect_value;
+					}
+
+					if (negate_itembonus) {
+						itembonuses.SlayUndead[SBIndex::SLAYUNDEAD_RATE_MOD] = effect_value;
+						itembonuses.SlayUndead[SBIndex::SLAYUNDEAD_DMG_MOD]  = effect_value;
+					}
+
+					if (negate_aabonus) {
+						aabonuses.SlayUndead[SBIndex::SLAYUNDEAD_RATE_MOD] = effect_value;
+						aabonuses.SlayUndead[SBIndex::SLAYUNDEAD_DMG_MOD]  = effect_value;
+					}
+
 					break;
 
 				case SE_DoubleRangedAttack:
@@ -5373,9 +5570,12 @@ void Mob::NegateSpellEffectBonuses(uint16 spell_id)
 					break;
 
 				case SE_ImprovedTaunt:
-					if (negate_spellbonus) { spellbonuses.ImprovedTaunt[SBIndex::IMPROVED_TAUNT_MAX_LVL] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.ImprovedTaunt[SBIndex::IMPROVED_TAUNT_AGGRO_MOD] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.ImprovedTaunt[SBIndex::IMPROVED_TAUNT_BUFFSLOT] = -1; }
+					if (negate_spellbonus) {
+						spellbonuses.ImprovedTaunt[SBIndex::IMPROVED_TAUNT_MAX_LVL]   = effect_value;
+						spellbonuses.ImprovedTaunt[SBIndex::IMPROVED_TAUNT_AGGRO_MOD] = effect_value;
+						spellbonuses.ImprovedTaunt[SBIndex::IMPROVED_TAUNT_BUFFSLOT]  = -1;
+					}
+
 					break;
 
 				case SE_FrenziedDevastation:
@@ -5385,18 +5585,27 @@ void Mob::NegateSpellEffectBonuses(uint16 spell_id)
 					break;
 
 				case SE_Root:
-					if (negate_spellbonus) { spellbonuses.Root[SBIndex::ROOT_EXISTS] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.Root[SBIndex::ROOT_BUFFSLOT] = -1; }
+					if (negate_spellbonus) {
+						spellbonuses.Root[SBIndex::ROOT_EXISTS]   = effect_value;
+						spellbonuses.Root[SBIndex::ROOT_BUFFSLOT] = -1;
+					}
+
 					break;
 
 				case SE_Rune:
-					if (negate_spellbonus) { spellbonuses.MeleeRune[SBIndex::RUNE_AMOUNT] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.MeleeRune[SBIndex::RUNE_BUFFSLOT] = -1; }
+					if (negate_spellbonus) {
+						spellbonuses.MeleeRune[SBIndex::RUNE_AMOUNT]   = effect_value;
+						spellbonuses.MeleeRune[SBIndex::RUNE_BUFFSLOT] = -1;
+					}
+
 					break;
 
 				case SE_AbsorbMagicAtt:
-					if (negate_spellbonus) { spellbonuses.AbsorbMagicAtt[SBIndex::RUNE_AMOUNT] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.AbsorbMagicAtt[SBIndex::RUNE_BUFFSLOT] = -1; }
+					if (negate_spellbonus) {
+						spellbonuses.AbsorbMagicAtt[SBIndex::RUNE_AMOUNT]   = effect_value;
+						spellbonuses.AbsorbMagicAtt[SBIndex::RUNE_BUFFSLOT] = -1;
+					}
+
 					break;
 
 				case SE_Berserk:
@@ -5424,57 +5633,111 @@ void Mob::NegateSpellEffectBonuses(uint16 spell_id)
 					break;
 
 				case SE_HeadShot:
-					if (negate_spellbonus) { spellbonuses.HeadShot[SBIndex::FINISHING_EFFECT_PROC_CHANCE] = effect_value; }
-					if (negate_aabonus) { aabonuses.HeadShot[SBIndex::FINISHING_EFFECT_PROC_CHANCE] = effect_value; }
-					if (negate_itembonus) { itembonuses.HeadShot[SBIndex::FINISHING_EFFECT_PROC_CHANCE] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.HeadShot[SBIndex::FINISHING_EFFECT_DMG] = effect_value; }
-					if (negate_aabonus) { aabonuses.HeadShot[SBIndex::FINISHING_EFFECT_DMG] = effect_value; }
-					if (negate_itembonus) { itembonuses.HeadShot[SBIndex::FINISHING_EFFECT_DMG] = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.HeadShot[SBIndex::FINISHING_EFFECT_PROC_CHANCE] = effect_value;
+						spellbonuses.HeadShot[SBIndex::FINISHING_EFFECT_DMG]         = effect_value;
+					}
+
+					if (negate_aabonus) {
+						aabonuses.HeadShot[SBIndex::FINISHING_EFFECT_PROC_CHANCE] = effect_value;
+						aabonuses.HeadShot[SBIndex::FINISHING_EFFECT_DMG]         = effect_value;
+					}
+
+					if (negate_itembonus) {
+						itembonuses.HeadShot[SBIndex::FINISHING_EFFECT_PROC_CHANCE] = effect_value;
+						itembonuses.HeadShot[SBIndex::FINISHING_EFFECT_DMG]         = effect_value;
+					}
+
 					break;
 
 				case SE_HeadShotLevel:
-					if (negate_spellbonus) { spellbonuses.HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_MAX] = effect_value; }
-					if (negate_aabonus) { aabonuses.HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_MAX] = effect_value; }
-					if (negate_itembonus) { itembonuses.HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_MAX] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_CHANCE_BONUS] = effect_value; }
-					if (negate_aabonus) { aabonuses.HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_CHANCE_BONUS] = effect_value; }
-					if (negate_itembonus) { itembonuses.HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_CHANCE_BONUS] = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_MAX]          = effect_value;
+						spellbonuses.HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_CHANCE_BONUS] = effect_value;
+					}
+
+					if (negate_aabonus) {
+						aabonuses.HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_MAX]          = effect_value;
+						aabonuses.HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_CHANCE_BONUS] = effect_value;
+					}
+
+					if (negate_itembonus) {
+						itembonuses.HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_MAX]          = effect_value;
+						itembonuses.HSLevel[SBIndex::FINISHING_EFFECT_LEVEL_CHANCE_BONUS] = effect_value;
+					}
+
 					break;
 
 				case SE_Assassinate:
-					if (negate_spellbonus) { spellbonuses.Assassinate[SBIndex::FINISHING_EFFECT_PROC_CHANCE] = effect_value; }
-					if (negate_aabonus) { aabonuses.Assassinate[SBIndex::FINISHING_EFFECT_PROC_CHANCE] = effect_value; }
-					if (negate_itembonus) { itembonuses.Assassinate[SBIndex::FINISHING_EFFECT_PROC_CHANCE] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.Assassinate[SBIndex::FINISHING_EFFECT_DMG] = effect_value; }
-					if (negate_aabonus) { aabonuses.Assassinate[SBIndex::FINISHING_EFFECT_DMG] = effect_value; }
-					if (negate_itembonus) { itembonuses.Assassinate[SBIndex::FINISHING_EFFECT_DMG] = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.Assassinate[SBIndex::FINISHING_EFFECT_PROC_CHANCE] = effect_value;
+						spellbonuses.Assassinate[SBIndex::FINISHING_EFFECT_DMG]         = effect_value;
+					}
+
+					if (negate_aabonus) {
+						aabonuses.Assassinate[SBIndex::FINISHING_EFFECT_PROC_CHANCE] = effect_value;
+						aabonuses.Assassinate[SBIndex::FINISHING_EFFECT_DMG]         = effect_value;
+					}
+
+					if (negate_itembonus) {
+						itembonuses.Assassinate[SBIndex::FINISHING_EFFECT_PROC_CHANCE] = effect_value;
+						itembonuses.Assassinate[SBIndex::FINISHING_EFFECT_DMG]         = effect_value;
+					}
+
 					break;
 
 				case SE_AssassinateLevel:
-					if (negate_spellbonus) { spellbonuses.AssassinateLevel[SBIndex::FINISHING_EFFECT_LEVEL_MAX] = effect_value; }
-					if (negate_aabonus) { aabonuses.AssassinateLevel[SBIndex::FINISHING_EFFECT_LEVEL_MAX] = effect_value; }
-					if (negate_itembonus) { itembonuses.AssassinateLevel[SBIndex::FINISHING_EFFECT_LEVEL_MAX] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.AssassinateLevel[SBIndex::FINISHING_EFFECT_LEVEL_CHANCE_BONUS] = effect_value; }
-					if (negate_aabonus) { aabonuses.AssassinateLevel[SBIndex::FINISHING_EFFECT_LEVEL_CHANCE_BONUS] = effect_value; }
-					if (negate_itembonus) { itembonuses.AssassinateLevel[SBIndex::FINISHING_EFFECT_LEVEL_CHANCE_BONUS] = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.AssassinateLevel[SBIndex::FINISHING_EFFECT_LEVEL_MAX]          = effect_value;
+						spellbonuses.AssassinateLevel[SBIndex::FINISHING_EFFECT_LEVEL_CHANCE_BONUS] = effect_value;
+					}
+
+					if (negate_aabonus) {
+						aabonuses.AssassinateLevel[SBIndex::FINISHING_EFFECT_LEVEL_MAX]          = effect_value;
+						aabonuses.AssassinateLevel[SBIndex::FINISHING_EFFECT_LEVEL_CHANCE_BONUS] = effect_value;
+					}
+
+					if (negate_itembonus) {
+						itembonuses.AssassinateLevel[SBIndex::FINISHING_EFFECT_LEVEL_MAX]          = effect_value;
+						itembonuses.AssassinateLevel[SBIndex::FINISHING_EFFECT_LEVEL_CHANCE_BONUS] = effect_value;
+					}
+
 					break;
 
 				case SE_FinishingBlow:
-					if (negate_spellbonus) { spellbonuses.FinishingBlow[SBIndex::FINISHING_EFFECT_PROC_CHANCE] = effect_value; }
-					if (negate_aabonus) { aabonuses.FinishingBlow[SBIndex::FINISHING_EFFECT_PROC_CHANCE] = effect_value; }
-					if (negate_itembonus) { itembonuses.FinishingBlow[SBIndex::FINISHING_EFFECT_PROC_CHANCE] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.FinishingBlow[SBIndex::FINISHING_EFFECT_DMG] = effect_value; }
-					if (negate_aabonus) { aabonuses.FinishingBlow[SBIndex::FINISHING_EFFECT_DMG] = effect_value; }
-					if (negate_itembonus) { itembonuses.FinishingBlow[SBIndex::FINISHING_EFFECT_DMG] = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.FinishingBlow[SBIndex::FINISHING_EFFECT_PROC_CHANCE] = effect_value;
+						spellbonuses.FinishingBlow[SBIndex::FINISHING_EFFECT_DMG]         = effect_value;
+					}
+
+					if (negate_aabonus) {
+						aabonuses.FinishingBlow[SBIndex::FINISHING_EFFECT_PROC_CHANCE] = effect_value;
+						aabonuses.FinishingBlow[SBIndex::FINISHING_EFFECT_DMG]         = effect_value;
+					}
+
+					if (negate_itembonus) {
+						itembonuses.FinishingBlow[SBIndex::FINISHING_EFFECT_PROC_CHANCE] = effect_value;
+						itembonuses.FinishingBlow[SBIndex::FINISHING_EFFECT_DMG]         = effect_value;
+					}
+
 					break;
 
 				case SE_FinishingBlowLvl:
-					if (negate_spellbonus) { spellbonuses.FinishingBlowLvl[SBIndex::FINISHING_EFFECT_LEVEL_MAX] = effect_value; }
-					if (negate_aabonus) { aabonuses.FinishingBlowLvl[SBIndex::FINISHING_EFFECT_LEVEL_MAX] = effect_value; }
-					if (negate_itembonus) { itembonuses.FinishingBlowLvl[SBIndex::FINISHING_EFFECT_LEVEL_MAX] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.FinishingBlowLvl[SBIndex::FINISHING_BLOW_LEVEL_HP_RATIO] = effect_value; }
-					if (negate_aabonus) { aabonuses.FinishingBlowLvl[SBIndex::FINISHING_BLOW_LEVEL_HP_RATIO] = effect_value; }
-					if (negate_itembonus) { itembonuses.FinishingBlowLvl[SBIndex::FINISHING_BLOW_LEVEL_HP_RATIO] = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.FinishingBlowLvl[SBIndex::FINISHING_EFFECT_LEVEL_MAX]    = effect_value;
+						spellbonuses.FinishingBlowLvl[SBIndex::FINISHING_BLOW_LEVEL_HP_RATIO] = effect_value;
+					}
+
+					if (negate_aabonus) {
+						aabonuses.FinishingBlowLvl[SBIndex::FINISHING_EFFECT_LEVEL_MAX]    = effect_value;
+						aabonuses.FinishingBlowLvl[SBIndex::FINISHING_BLOW_LEVEL_HP_RATIO] = effect_value;
+					}
+
+					if (negate_itembonus) {
+						itembonuses.FinishingBlowLvl[SBIndex::FINISHING_EFFECT_LEVEL_MAX]    = effect_value;
+						itembonuses.FinishingBlowLvl[SBIndex::FINISHING_BLOW_LEVEL_HP_RATIO] = effect_value;
+					}
+
 					break;
 
 				case SE_Sanctuary:
@@ -5513,41 +5776,76 @@ void Mob::NegateSpellEffectBonuses(uint16 spell_id)
 					break;
 
 				case SE_Melee_Damage_Position_Mod:
-					if (negate_spellbonus) { spellbonuses.Melee_Damage_Position_Mod[SBIndex::POSITION_BACK] = effect_value; }
-					if (negate_aabonus) { aabonuses.Melee_Damage_Position_Mod[SBIndex::POSITION_BACK] = effect_value; }
-					if (negate_itembonus) { itembonuses.Melee_Damage_Position_Mod[SBIndex::POSITION_BACK] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.Melee_Damage_Position_Mod[SBIndex::POSITION_FRONT] = effect_value; }
-					if (negate_aabonus) { aabonuses.Melee_Damage_Position_Mod[SBIndex::POSITION_FRONT] = effect_value; }
-					if (negate_itembonus) { itembonuses.Melee_Damage_Position_Mod[SBIndex::POSITION_FRONT] = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.Melee_Damage_Position_Mod[SBIndex::POSITION_BACK]  = effect_value;
+						spellbonuses.Melee_Damage_Position_Mod[SBIndex::POSITION_FRONT] = effect_value;
+					}
+
+					if (negate_aabonus) {
+						aabonuses.Melee_Damage_Position_Mod[SBIndex::POSITION_BACK]  = effect_value;
+						aabonuses.Melee_Damage_Position_Mod[SBIndex::POSITION_FRONT] = effect_value;
+					}
+
+					if (negate_itembonus) {
+						itembonuses.Melee_Damage_Position_Mod[SBIndex::POSITION_BACK]  = effect_value;
+						itembonuses.Melee_Damage_Position_Mod[SBIndex::POSITION_FRONT] = effect_value;
+					}
+
 					break;
 
 				case SE_Damage_Taken_Position_Mod:
-					if (negate_spellbonus) { spellbonuses.Damage_Taken_Position_Mod[SBIndex::POSITION_BACK] = effect_value; }
-					if (negate_aabonus) { aabonuses.Damage_Taken_Position_Mod[SBIndex::POSITION_BACK] = effect_value; }
-					if (negate_itembonus) { itembonuses.Damage_Taken_Position_Mod[SBIndex::POSITION_BACK] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.Damage_Taken_Position_Mod[SBIndex::POSITION_FRONT] = effect_value; }
-					if (negate_aabonus) { aabonuses.Damage_Taken_Position_Mod[SBIndex::POSITION_FRONT] = effect_value; }
-					if (negate_itembonus) { itembonuses.Damage_Taken_Position_Mod[SBIndex::POSITION_FRONT] = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.Damage_Taken_Position_Mod[SBIndex::POSITION_BACK]  = effect_value;
+						spellbonuses.Damage_Taken_Position_Mod[SBIndex::POSITION_FRONT] = effect_value;
+					}
+
+					if (negate_aabonus) {
+						aabonuses.Damage_Taken_Position_Mod[SBIndex::POSITION_BACK]  = effect_value;
+						aabonuses.Damage_Taken_Position_Mod[SBIndex::POSITION_FRONT] = effect_value;
+					}
+
+					if (negate_itembonus) {
+						itembonuses.Damage_Taken_Position_Mod[SBIndex::POSITION_BACK]  = effect_value;
+						itembonuses.Damage_Taken_Position_Mod[SBIndex::POSITION_FRONT] = effect_value;
+					}
+
 					break;
 
 				case SE_Melee_Damage_Position_Amt:
-					if (negate_spellbonus) { spellbonuses.Melee_Damage_Position_Amt[SBIndex::POSITION_BACK] = effect_value; }
-					if (negate_aabonus) { aabonuses.Melee_Damage_Position_Amt[SBIndex::POSITION_BACK] = effect_value; }
-					if (negate_itembonus) { itembonuses.Melee_Damage_Position_Amt[SBIndex::POSITION_BACK] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.Melee_Damage_Position_Amt[SBIndex::POSITION_FRONT] = effect_value; }
-					if (negate_aabonus) { aabonuses.Melee_Damage_Position_Amt[SBIndex::POSITION_FRONT] = effect_value; }
-					if (negate_itembonus) { itembonuses.Melee_Damage_Position_Amt[SBIndex::POSITION_FRONT] = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.Melee_Damage_Position_Amt[SBIndex::POSITION_BACK]  = effect_value;
+						spellbonuses.Melee_Damage_Position_Amt[SBIndex::POSITION_FRONT] = effect_value;
+					}
+
+					if (negate_aabonus) {
+						aabonuses.Melee_Damage_Position_Amt[SBIndex::POSITION_BACK]  = effect_value;
+						aabonuses.Melee_Damage_Position_Amt[SBIndex::POSITION_FRONT] = effect_value;
+					}
+
+					if (negate_itembonus) {
+						itembonuses.Melee_Damage_Position_Amt[SBIndex::POSITION_BACK]  = effect_value;
+						itembonuses.Melee_Damage_Position_Amt[SBIndex::POSITION_FRONT] = effect_value;
+					}
+
 					break;
 
 				case SE_Damage_Taken_Position_Amt:
-					if (negate_spellbonus) { spellbonuses.Damage_Taken_Position_Amt[SBIndex::POSITION_BACK] = effect_value; }
-					if (negate_aabonus) { aabonuses.Damage_Taken_Position_Amt[SBIndex::POSITION_BACK] = effect_value; }
-					if (negate_itembonus) { itembonuses.Damage_Taken_Position_Amt[SBIndex::POSITION_BACK] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.Damage_Taken_Position_Amt[SBIndex::POSITION_FRONT] = effect_value; }
-					if (negate_aabonus) { aabonuses.Damage_Taken_Position_Amt[SBIndex::POSITION_FRONT] = effect_value; }
-					if (negate_itembonus) { itembonuses.Damage_Taken_Position_Amt[SBIndex::POSITION_FRONT] = effect_value; }
-					break;
+					if (negate_spellbonus) {
+						spellbonuses.Damage_Taken_Position_Amt[SBIndex::POSITION_BACK]  = effect_value;
+						spellbonuses.Damage_Taken_Position_Amt[SBIndex::POSITION_FRONT] = effect_value;
+					}
 
+					if (negate_aabonus) {
+						aabonuses.Damage_Taken_Position_Amt[SBIndex::POSITION_BACK]  = effect_value;
+						aabonuses.Damage_Taken_Position_Amt[SBIndex::POSITION_FRONT] = effect_value;
+					}
+
+					if (negate_itembonus) {
+						itembonuses.Damage_Taken_Position_Amt[SBIndex::POSITION_BACK]  = effect_value;
+						itembonuses.Damage_Taken_Position_Amt[SBIndex::POSITION_FRONT] = effect_value;
+					}
+
+					break;
 
 				case SE_DS_Mitigation_Amount:
 					if (negate_spellbonus) { spellbonuses.DS_Mitigation_Amount = effect_value; }
@@ -5574,21 +5872,39 @@ void Mob::NegateSpellEffectBonuses(uint16 spell_id)
 					break;
 
 				case SE_PC_Pet_Rampage:
-					if (negate_spellbonus) { spellbonuses.PC_Pet_Rampage[SBIndex::PET_RAMPAGE_CHANCE] = effect_value; }
-					if (negate_itembonus) { itembonuses.PC_Pet_Rampage[SBIndex::PET_RAMPAGE_CHANCE] = effect_value; }
-					if (negate_aabonus) { aabonuses.PC_Pet_Rampage[SBIndex::PET_RAMPAGE_CHANCE] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.PC_Pet_Rampage[SBIndex::PET_RAMPAGE_DMG_MOD] = effect_value; }
-					if (negate_itembonus) { itembonuses.PC_Pet_Rampage[SBIndex::PET_RAMPAGE_DMG_MOD] = effect_value; }
-					if (negate_aabonus) { aabonuses.PC_Pet_Rampage[SBIndex::PET_RAMPAGE_DMG_MOD] = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.PC_Pet_Rampage[SBIndex::PET_RAMPAGE_CHANCE]  = effect_value;
+						spellbonuses.PC_Pet_Rampage[SBIndex::PET_RAMPAGE_DMG_MOD] = effect_value;
+					}
+
+					if (negate_itembonus) {
+						itembonuses.PC_Pet_Rampage[SBIndex::PET_RAMPAGE_CHANCE]  = effect_value;
+						itembonuses.PC_Pet_Rampage[SBIndex::PET_RAMPAGE_DMG_MOD] = effect_value;
+					}
+
+					if (negate_aabonus) {
+						aabonuses.PC_Pet_Rampage[SBIndex::PET_RAMPAGE_CHANCE]  = effect_value;
+						aabonuses.PC_Pet_Rampage[SBIndex::PET_RAMPAGE_DMG_MOD] = effect_value;
+					}
+
 					break;
 
 				case SE_PC_Pet_AE_Rampage:
-					if (negate_spellbonus) { spellbonuses.PC_Pet_AE_Rampage[SBIndex::PET_RAMPAGE_CHANCE] = effect_value; }
-					if (negate_itembonus) { itembonuses.PC_Pet_AE_Rampage[SBIndex::PET_RAMPAGE_CHANCE] = effect_value; }
-					if (negate_aabonus) { aabonuses.PC_Pet_AE_Rampage[SBIndex::PET_RAMPAGE_CHANCE] = effect_value; }
-					if (negate_spellbonus) { spellbonuses.PC_Pet_AE_Rampage[SBIndex::PET_RAMPAGE_DMG_MOD] = effect_value; }
-					if (negate_itembonus) { itembonuses.PC_Pet_AE_Rampage[SBIndex::PET_RAMPAGE_DMG_MOD] = effect_value; }
-					if (negate_aabonus) { aabonuses.PC_Pet_AE_Rampage[SBIndex::PET_RAMPAGE_DMG_MOD] = effect_value; }
+					if (negate_spellbonus) {
+						spellbonuses.PC_Pet_AE_Rampage[SBIndex::PET_RAMPAGE_CHANCE]  = effect_value;
+						spellbonuses.PC_Pet_AE_Rampage[SBIndex::PET_RAMPAGE_DMG_MOD] = effect_value;
+					}
+
+					if (negate_itembonus) {
+						itembonuses.PC_Pet_AE_Rampage[SBIndex::PET_RAMPAGE_CHANCE]  = effect_value;
+						itembonuses.PC_Pet_AE_Rampage[SBIndex::PET_RAMPAGE_DMG_MOD] = effect_value;
+					}
+
+					if (negate_aabonus) {
+						aabonuses.PC_Pet_AE_Rampage[SBIndex::PET_RAMPAGE_CHANCE]  = effect_value;
+						aabonuses.PC_Pet_AE_Rampage[SBIndex::PET_RAMPAGE_DMG_MOD] = effect_value;
+					}
+
 					break;
 
 
@@ -5612,4 +5928,135 @@ void Mob::NegateSpellEffectBonuses(uint16 spell_id)
 			}
 		}
 	}
+}
+
+void Mob::CalcHeroicBonuses(StatBonuses* newbon)
+{
+	if (GetHeroicSTR()) {
+		SetHeroicStrBonuses(newbon);
+	}
+
+	if (GetHeroicSTA()) {
+		SetHeroicStaBonuses(newbon);
+	}
+
+	if (GetHeroicAGI()) {
+		SetHeroicAgiBonuses(newbon);
+	}
+
+	if (GetHeroicDEX()) {
+		SetHeroicDexBonuses(newbon);
+	}
+
+	if (GetHeroicINT()) {
+		SetHeroicIntBonuses(newbon);
+	}
+
+	if (GetHeroicWIS()) {
+		SetHeroicWisBonuses(newbon);
+	}
+}
+
+void Mob::SetHeroicWisBonuses(StatBonuses* n)
+{
+	n->heroic_max_mana += IsWISCasterClass(GetClass()) ? GetHeroicWIS() * RuleR(Character, HeroicWisdomMultiplier) * 10 : 0;
+	n->heroic_mana_regen += IsWISCasterClass(GetClass()) ? GetHeroicWIS() * RuleR(Character, HeroicWisdomMultiplier) / 25 : 0;
+	n->HealAmt += GetHeroicWIS() * RuleR(Character, HeroicWisdomIncreaseHealAmtMultiplier);
+
+	if (RuleB(Character, HeroicStatsUseDataBucketsToScale)) {
+		n->heroic_max_mana += IsWISCasterClass(GetClass()) ? GetHeroicWIS() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::WisMaxMana) * 10 : 0;
+		n->heroic_mana_regen += IsWISCasterClass(GetClass()) ? GetHeroicWIS() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::WisManaRegen) / 25 : 0;
+		n->HealAmt += GetHeroicWIS() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::WisHealAmt);
+	}
+}
+
+void Mob::SetHeroicIntBonuses(StatBonuses* n)
+{
+	n->heroic_max_mana += IsINTCasterClass(GetClass()) ? GetHeroicINT() * RuleR(Character, HeroicIntelligenceMultiplier) * 10 : 0;
+	n->heroic_mana_regen += IsINTCasterClass(GetClass()) ? GetHeroicINT() * RuleR(Character, HeroicIntelligenceMultiplier) / 25 : 0;
+	n->SpellDmg += GetHeroicINT() * RuleR(Character, HeroicIntelligenceIncreaseSpellDmgMultiplier);
+
+	if (RuleB(Character, HeroicStatsUseDataBucketsToScale)) {
+		n->heroic_max_mana += IsINTCasterClass(GetClass()) ? GetHeroicINT() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::IntMaxMana) * 10 : 0;
+		n->heroic_mana_regen += IsINTCasterClass(GetClass()) ? GetHeroicINT() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::IntManaRegen) / 25 : 0;
+		n->SpellDmg += GetHeroicINT() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::IntSpellDmg);
+	}
+}
+
+void Mob::SetHeroicDexBonuses(StatBonuses* n)
+{
+	n->heroic_dex_ranged_damage += GetHeroicDEX() * RuleR(Character, HeroicDexterityMultiplier) / 10;
+	n->heroic_max_end += GetHeroicDEX() * RuleR(Character, HeroicDexterityMultiplier) / 4 * 10.0f;
+	n->heroic_end_regen += GetHeroicDEX() * RuleR(Character, HeroicDexterityMultiplier) / 4 / 50;
+
+	if (RuleB(Character, HeroicStatsUseDataBucketsToScale)) {
+		n->heroic_dex_ranged_damage += GetHeroicDEX() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::DexRangedDamage) / 10;
+		n->heroic_max_end += GetHeroicDEX() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::DexMaxEndurance) / 4 * 10.0f;
+		n->heroic_end_regen += GetHeroicDEX() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::DexEnduranceRegen) / 4 / 50;
+	}
+}
+
+void Mob::SetHeroicAgiBonuses(StatBonuses* n)
+{
+	n->heroic_agi_avoidance += GetHeroicAGI() * RuleR(Character, HeroicAgilityMultiplier) / 10;
+	n->heroic_max_end += GetHeroicAGI() * RuleR(Character, HeroicAgilityMultiplier) / 4 * 10.0f;
+	n->heroic_end_regen += GetHeroicAGI() * RuleR(Character, HeroicAgilityMultiplier) / 4 / 50;
+
+	if (RuleB(Character, HeroicStatsUseDataBucketsToScale)) {
+		n->heroic_agi_avoidance += GetHeroicAGI() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::AgiAvoidance) / 10;
+		n->heroic_max_end += GetHeroicAGI() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::AgiMaxEndurance) / 4 * 10.0f;
+		n->heroic_end_regen += GetHeroicAGI() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::AgiEnduranceRegen) / 4 / 50;
+	}
+}
+
+void Mob::SetHeroicStaBonuses(StatBonuses* n)
+{
+	n->heroic_max_hp += GetHeroicSTA() * RuleR(Character, HeroicStaminaMultiplier) * 10;
+	n->heroic_hp_regen += GetHeroicSTA() * RuleR(Character, HeroicStaminaMultiplier) / 20;
+	n->heroic_max_end += GetHeroicSTA() * RuleR(Character, HeroicStaminaMultiplier) / 4 * 10.0f;
+	n->heroic_end_regen += GetHeroicSTA() * RuleR(Character, HeroicStaminaMultiplier) / 4 / 50;
+
+	if (RuleB(Character, HeroicStatsUseDataBucketsToScale)) {
+		n->heroic_max_hp += GetHeroicSTA() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::StaMaxHP) * 10;
+		n->heroic_hp_regen += GetHeroicSTA() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::StaHPRegen) / 20;
+		n->heroic_max_end += GetHeroicSTA() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::StaMaxEndurance) / 4 * 10.0f;
+		n->heroic_end_regen += GetHeroicSTA() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::StaEnduranceRegen) / 4 / 50;
+	}
+}
+
+void Mob::SetHeroicStrBonuses(StatBonuses* n)
+{
+	n->heroic_str_shield_ac += GetHeroicSTR() * RuleR(Character, HeroicStrengthMultiplier) / 10;
+	n->heroic_str_melee_damage += GetHeroicSTR() * RuleR(Character, HeroicStrengthMultiplier) / 10;
+	n->heroic_max_end += GetHeroicSTR() * RuleR(Character, HeroicStrengthMultiplier) / 4 * 10.0f;
+	n->heroic_end_regen += GetHeroicSTR() * RuleR(Character, HeroicStrengthMultiplier) / 4 / 50;
+
+	if (RuleB(Character, HeroicStatsUseDataBucketsToScale)) {
+		n->heroic_str_shield_ac += GetHeroicSTR() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::StrShieldAC) / 10;
+		n->heroic_str_melee_damage += GetHeroicSTR() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::StrMeleeDamage) / 10;
+		n->heroic_max_end += GetHeroicSTR() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::StrMaxEndurance) / 4 * 10.0f;
+		n->heroic_end_regen += GetHeroicSTR() * CheckHeroicBonusesDataBuckets(HeroicBonusBucket::StrEnduranceRegen) / 4 / 50;
+	}
+}
+
+float Mob::CheckHeroicBonusesDataBuckets(std::string bucket_name)
+{
+	std::string bucket_value;
+	if (!bucket_name.empty()) {
+		const auto full_name = fmt::format(
+			"{}-{}",
+			GetBucketKey(),
+			bucket_name
+		);
+
+		if (IsOfClientBot()) {
+			bucket_value = DataBucket::CheckBucketKey(this, full_name);
+		}
+
+		if (bucket_value.empty() || !Strings::IsNumber(bucket_value)) {
+			return 0.00f;
+		}
+	}
+
+	return Strings::ToFloat(bucket_value);
 }

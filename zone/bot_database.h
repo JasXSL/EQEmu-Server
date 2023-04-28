@@ -20,7 +20,6 @@
 #ifndef BOT_DATABASE_H
 #define BOT_DATABASE_H
 
-#ifdef BOTS
 
 #include <list>
 #include <map>
@@ -77,10 +76,6 @@ public:
 	bool LoadTimers(Bot* bot_inst);
 	bool SaveTimers(Bot* bot_inst);
 	bool DeleteTimers(const uint32 bot_id);
-
-	bool LoadGuildMembership(const uint32 bot_id, uint32& guild_id, uint8& guild_rank, std::string& guild_name);
-	bool SaveGuildMembership(const uint32 bot_id, const uint32 guild_id, const uint8 guild_rank);
-	bool DeleteGuildMembership(const uint32 bot_id);
 
 
 	/* Bot inventory functions   */
@@ -151,36 +146,10 @@ public:
 	bool SaveOwnerOption(const uint32 owner_id, size_t type, const bool flag);
 	bool SaveOwnerOption(const uint32 owner_id, const std::pair<size_t, size_t> type, const std::pair<bool, bool> flag);
 
-	/* Bot bot-group functions   */
-	bool QueryBotGroupExistence(const std::string& botgroup_name);
-
-	bool LoadBotGroupIDByBotGroupName(const std::string& botgroup_name, uint32& botgroup_id);
-	bool LoadBotGroupIDByLeaderID(const uint32 leader_id, uint32& botgroup_id);
-	bool LoadBotGroupIDByMemberID(const uint32 member_id, uint32& botgroup_id);
-
-	bool LoadLeaderIDByBotGroupName(const std::string& botgroup_name, uint32& leader_id);
-	bool LoadLeaderIDByBotGroupID(const uint32 botgroup_id, uint32& leader_id);
-
-	bool LoadBotGroupNameByBotGroupID(const uint32 botgroup_id, std::string& botgroup_name);
-	bool LoadBotGroupNameByLeaderID(const uint32 leader_id, std::string& botgroup_name);
-
-	bool CreateBotGroup(const std::string& botgroup_name, const uint32 leader_id);
-	bool DeleteBotGroup(const uint32 leader_id);
-	bool AddMemberToBotGroup(const uint32 leader_id, const uint32 member_id);
-	bool RemoveMemberFromBotGroup(const uint32 member_id);
-
-	bool LoadBotGroupIDForLoadBotGroup(const uint32 owner_id, const std::string& botgroup_name, uint32& botgroup_id);
-	bool LoadBotGroup(const std::string& botgroup_name, std::map<uint32, std::list<uint32>>& member_list);
-
-	bool LoadBotGroupsListByOwnerID(const uint32 owner_id, std::list<std::pair<std::string, std::string>>& botgroups_list);
-
+	bool SaveBotCasterRange(const uint32 owner_id, const uint32 bot_id, const uint32 bot_caster_range_value);
 
 	/* Bot group functions   */
-	bool IsBotGroupAutoSpawn(const std::string& botgroup_name);
-	bool LoadAutoSpawnBotGroupsByOwnerID(const uint32 owner_id, std::list<std::pair<uint32,std::string>>& group_list);
 	bool LoadGroupedBotsByGroupID(const uint32 owner_id, const uint32 group_id, std::list<uint32>& group_list);
-	bool ToggleBotGroupAutoSpawn(const uint32 group_id);
-
 
 	/* Bot heal rotation functions   */
 	bool LoadHealRotationIDByBotID(const uint32 bot_id, uint32& hr_index);
@@ -195,6 +164,7 @@ public:
 
 	/* Bot miscellaneous functions   */
 	uint8 GetSpellCastingChance(uint8 spell_type_index, uint8 class_index, uint8 stance_index, uint8 conditional_index);
+	std::string GetBotNameByID(const uint32 bot_id); 
 
 	uint16 GetRaceClassBitmask(uint16 bot_race);
 
@@ -215,9 +185,6 @@ public:
 		static const char* LoadTimers();
 		static const char* SaveTimers();
 		static const char* DeleteTimers();
-		static const char* LoadGuildMembership();
-		static const char* SaveGuildMembership();
-		static const char* DeleteGuildMembership();
 
 		/* fail::Bot inventory functions   */
 		static const char* QueryInventoryCount();
@@ -257,23 +224,7 @@ public:
 		static const char* SaveFollowDistance();
 		static const char* SaveAllFollowDistances();
 		static const char* SaveStopMeleeLevel();
-
-		/* fail::Bot bot-group functions   */
-		static const char* QueryBotGroupExistence();
-		static const char* LoadBotGroupIDByBotGroupName();
-		static const char* LoadBotGroupIDByLeaderID();
-		static const char* LoadBotGroupIDByMemberID();
-		static const char* LoadLeaderIDByBotGroupName();
-		static const char* LoadLeaderIDByBotGroupID();
-		static const char* LoadBotGroupNameByBotGroupID();
-		static const char* LoadBotGroupNameByLeaderID();
-		static const char* CreateBotGroup();
-		static const char* DeleteBotGroup();
-		static const char* AddMemberToBotGroup();
-		static const char* RemoveMemberFromBotGroup();
-		static const char* LoadBotGroupIDForLoadBotGroup();
-		static const char* LoadBotGroup();
-		static const char* LoadBotGroupsListByOwnerID();
+		static const char* SaveBotCasterRange();
 
 		/* fail::Bot group functions   */
 		static const char* LoadGroupedBotsByGroupID();
@@ -288,6 +239,7 @@ public:
 		static const char* DeleteAllHealRotations();
 
 		/* fail::Bot miscellaneous functions   */
+		static const char* GetBotNameByID();
 	};
 
 	private:
@@ -295,5 +247,3 @@ public:
 };
 
 #endif
-
-#endif // BOTS

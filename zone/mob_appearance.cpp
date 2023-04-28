@@ -21,18 +21,14 @@
 #include "../common/data_verification.h"
 #include "../common/eqemu_logsys.h"
 #include "../common/item_data.h"
-#include "../common/misc_functions.h"
 #include "../common/spdat.h"
 #include "../common/strings.h"
 
 #include "mob.h"
 #include "quest_parser_collection.h"
 #include "zonedb.h"
-#include "../common/zone_store.h"
 
-#ifdef BOTS
 #include "bot.h"
-#endif
 
 /**
  * Stores internal representation of mob texture by material slot
@@ -45,7 +41,7 @@
 void Mob::SetMobTextureProfile(uint8 material_slot, uint16 texture, uint32 color, uint32 hero_forge_model)
 {
 	Log(Logs::Detail, Logs::MobAppearance,
-		"Mob::SetMobTextureProfile [%s] material_slot: %u texture: %u color: %u hero_forge_model: %u",
+		"[%s] material_slot: %u texture: %u color: %u hero_forge_model: %u",
 		GetCleanName(),
 		material_slot,
 		texture,
@@ -208,13 +204,11 @@ int32 Mob::GetTextureProfileHeroForgeModel(uint8 material_slot) const
  */
 int32 Mob::GetEquipmentMaterial(uint8 material_slot) const
 {
-	uint32 equipment_material         = 0;
-	int32  ornamentation_augment_type = RuleI(Character, OrnamentationAugmentType);
+	uint32 equipment_material       = 0;
+	int32  texture_profile_material = GetTextureProfileMaterial(material_slot);
 
-	int32 texture_profile_material = GetTextureProfileMaterial(material_slot);
-
-	Log(Logs::Detail, Logs::MobAppearance,
-		"Mob::GetEquipmentMaterial [%s] material_slot: %u texture_profile_material: %i",
+	LogMobAppearance(
+		"[{}] material_slot: {} texture_profile_material: {}",
 		clean_name,
 		material_slot,
 		texture_profile_material
@@ -237,11 +231,14 @@ int32 Mob::GetEquipmentMaterial(uint8 material_slot) const
 				}
 
 				const auto* inst = CastToClient()->m_inv[inventory_slot];
+
 				if (inst) {
-					if (inst->GetOrnamentationAug(ornamentation_augment_type)) {
-						item = inst->GetOrnamentationAug(ornamentation_augment_type)->GetItem();
+					const auto augment = inst->GetOrnamentationAugment();
+
+					if (augment) {
+						item = augment->GetItem();
 						if (item && strlen(item->IDFile) > 2 && Strings::IsNumber(&item->IDFile[2])) {
-							equipment_material = std::stoi(&item->IDFile[2]);
+							equipment_material = Strings::ToInt(&item->IDFile[2]);
 						}
 					} else if (inst->GetOrnamentationIDFile()) {
 						equipment_material = inst->GetOrnamentationIDFile();
@@ -250,7 +247,7 @@ int32 Mob::GetEquipmentMaterial(uint8 material_slot) const
 			}
 
 			if (!equipment_material && strlen(item->IDFile) > 2 && Strings::IsNumber(&item->IDFile[2])) {
-				equipment_material = std::stoi(&item->IDFile[2]);
+				equipment_material = Strings::ToInt(&item->IDFile[2]);
 			}
 		}
 		else {
@@ -314,21 +311,20 @@ uint32 Mob::GetEquipmentColor(uint8 material_slot) const
 int32 Mob::GetHerosForgeModel(uint8 material_slot) const
 {
 	uint32 hero_model = 0;
-	if (material_slot >= 0 && material_slot < EQ::textures::weaponPrimary) {
-		uint32 ornamentation_aug_type = RuleI(Character, OrnamentationAugmentType);
-
+	if (EQ::ValueWithin(material_slot, 0, EQ::textures::weaponPrimary)) {
 		const EQ::ItemData *item = database.GetItem(GetEquippedItemFromTextureSlot(material_slot));
-		int16 invslot = EQ::InventoryProfile::CalcSlotFromMaterial(material_slot);
+		const auto         slot  = EQ::InventoryProfile::CalcSlotFromMaterial(material_slot);
 
-		if (item != nullptr && invslot != INVALID_INDEX) {
+		if (item && slot != INVALID_INDEX) {
 			if (IsClient()) {
-				const EQ::ItemInstance *inst = CastToClient()->m_inv[invslot];
+				const auto inst = CastToClient()->m_inv[slot];
 				if (inst) {
-					if (inst->GetOrnamentationAug(ornamentation_aug_type)) {
-						item       = inst->GetOrnamentationAug(ornamentation_aug_type)->GetItem();
+					const auto augment = inst->GetOrnamentationAugment();
+
+					if (augment) {
+						item       = augment->GetItem();
 						hero_model = item->HerosForgeModel;
-					}
-					else if (inst->GetOrnamentHeroModel()) {
+					} else if (inst->GetOrnamentHeroModel()) {
 						hero_model = inst->GetOrnamentHeroModel();
 					}
 				}
@@ -345,8 +341,13 @@ int32 Mob::GetHerosForgeModel(uint8 material_slot) const
 			/**
 			 * Robes require full model number, and should only be sent to chest, arms, wrists, and legs slots
 			 */
-			if (hero_model > 1000 && material_slot != 1 && material_slot != 2 && material_slot != 3 &&
-				material_slot != 5) {
+			if (
+				hero_model > 1000 &&
+				material_slot != EQ::textures::armorChest &&
+				material_slot != EQ::textures::armorArms &&
+				material_slot != EQ::textures::armorWrist &&
+				material_slot != EQ::textures::armorLegs
+			) {
 				hero_model = 0;
 			}
 		}
@@ -358,7 +359,7 @@ int32 Mob::GetHerosForgeModel(uint8 material_slot) const
 	 * Otherwise, use the exact Model if model is > 999
 	 * Robes for example are 11607 to 12107 in RoF
 	 */
-	if (hero_model > 0 && hero_model < 1000) {
+	if (EQ::ValueWithin(hero_model, 1, 999)) {
 		hero_model *= 100;
 		hero_model += material_slot;
 	}
@@ -397,7 +398,7 @@ void Mob::SendArmorAppearance(Client *one_client)
 	 * The other packets work for primary/secondary.
 	 */
 
-	LogMobAppearance("[SendArmorAppearance] [{}]", GetCleanName());
+	LogMobAppearance("[{}]", GetCleanName());
 
 	if (IsPlayerRace(race)) {
 		if (!IsClient()) {
@@ -426,7 +427,7 @@ void Mob::SendWearChange(uint8 material_slot, Client *one_client)
 	auto packet       = new EQApplicationPacket(OP_WearChange, sizeof(WearChange_Struct));
 	auto *wear_change = (WearChange_Struct *) packet->pBuffer;
 
-	Log(Logs::Detail, Logs::MobAppearance, "Mob::SendWearChange [%s]",
+	Log(Logs::Detail, Logs::MobAppearance, "[%s]",
 		GetCleanName()
 	);
 
@@ -435,7 +436,6 @@ void Mob::SendWearChange(uint8 material_slot, Client *one_client)
 	wear_change->elite_material   = IsEliteMaterialItem(material_slot);
 	wear_change->hero_forge_model = static_cast<uint32>(GetHerosForgeModel(material_slot));
 
-#ifdef BOTS
 	if (IsBot()) {
 		auto item_inst = CastToBot()->GetBotItem(EQ::InventoryProfile::CalcSlotFromMaterial(material_slot));
 		if (item_inst)
@@ -446,9 +446,6 @@ void Mob::SendWearChange(uint8 material_slot, Client *one_client)
 	else {
 		wear_change->color.Color = GetEquipmentColor(material_slot);
 	}
-#else
-	wear_change->color.Color = GetEquipmentColor(material_slot);
-#endif
 
 	wear_change->wear_slot_id = material_slot;
 

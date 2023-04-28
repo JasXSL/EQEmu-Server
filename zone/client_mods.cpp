@@ -22,14 +22,10 @@
 #include "../common/rulesys.h"
 #include "../common/spdat.h"
 
-#include "../common/data_verification.h"
-
 #include "client.h"
 #include "mob.h"
 
-#ifdef BOTS
-	#include "bot.h"
-#endif
+#include "bot.h"
 
 #include <algorithm>
 
@@ -53,7 +49,7 @@ int32 Client::GetMaxStat() const
 	else {
 		base = 330;
 	}
-	return (base);
+	return base;
 }
 
 int32 Client::GetMaxResist() const
@@ -236,7 +232,7 @@ int32 Client::LevelRegen()
 int64 Client::CalcHPRegen(bool bCombat)
 {
 	int64 item_regen = itembonuses.HPRegen; // worn spells and +regen, already capped
-	item_regen += GetHeroicSTA() / 20;
+	item_regen += itembonuses.heroic_hp_regen;
 
 	item_regen += aabonuses.HPRegen;
 
@@ -292,7 +288,7 @@ int64 Client::CalcHPRegen(bool bCombat)
 
 	if (!bCombat && CanFastRegen() && (IsSitting() || CanMedOnHorse())) {
 		auto max_hp = GetMaxHP();
-		int fast_regen = 6 * (max_hp / zone->newzone_data.fast_regen_hp);
+		int64 fast_regen = 6 * (max_hp / (zone ? zone->newzone_data.fast_regen_hp : 180));
 		if (base < fast_regen) // weird, but what the client is doing
 			base = fast_regen;
 	}
@@ -493,7 +489,7 @@ int64 Client::CalcBaseHP()
 		auto base_data = database.GetBaseData(GetLevel(), GetClass());
 		if (base_data) {
 			base_hp += base_data->base_hp + (base_data->hp_factor * stats);
-			base_hp += (GetHeroicSTA() * 10);
+			base_hp += itembonuses.heroic_max_hp;
 		}
 	}
 	else {
@@ -581,7 +577,7 @@ int64 Client::CalcMaxMana()
 				break;
 			}
 		default: {
-				LogSpells("[Client::CalcMaxMana] Invalid Class [{}] in CalcMaxMana", GetCasterClass());
+				LogSpells("Invalid Class [{}] in CalcMaxMana", GetCasterClass());
 				max_mana = 0;
 				break;
 			}
@@ -599,7 +595,7 @@ int64 Client::CalcMaxMana()
 			current_mana = curMana_cap;
 		}
 	}
-	LogSpells("[Client::CalcMaxMana] for [{}] returning [{}]", GetName(), max_mana);
+	LogSpells("for [{}] returning [{}]", GetName(), max_mana);
 	return max_mana;
 }
 
@@ -625,7 +621,8 @@ int64 Client::CalcBaseMana()
 				}
 				auto base_data = database.GetBaseData(GetLevel(), GetClass());
 				if (base_data) {
-					max_m = base_data->base_mana + (ConvertedWisInt * base_data->mana_factor) + (GetHeroicINT() * 10);
+					max_m = base_data->base_mana +
+						(ConvertedWisInt * base_data->mana_factor) + itembonuses.heroic_max_mana;
 				}
 			}
 			else {
@@ -657,7 +654,8 @@ int64 Client::CalcBaseMana()
 				}
 				auto base_data = database.GetBaseData(GetLevel(), GetClass());
 				if (base_data) {
-					max_m = base_data->base_mana + (ConvertedWisInt * base_data->mana_factor) + (GetHeroicWIS() * 10);
+					max_m = base_data->base_mana +
+						(ConvertedWisInt * base_data->mana_factor) + itembonuses.heroic_max_mana;
 				}
 			}
 			else {
@@ -750,18 +748,7 @@ int64 Client::CalcManaRegen(bool bCombat)
 	// add in + 1 bonus for SE_CompleteHeal, but we don't do anything for it yet?
 
 	int item_bonus = itembonuses.ManaRegen; // this is capped already
-	int heroic_bonus = 0;
-
-	switch (GetCasterClass()) {
-	case 'W':
-		heroic_bonus = GetHeroicWIS();
-		break;
-	default:
-		heroic_bonus = GetHeroicINT();
-		break;
-	}
-
-	item_bonus += heroic_bonus / 25;
+	item_bonus += itembonuses.heroic_mana_regen;
 	regen += item_bonus;
 
 	if (level <= 70 && regen > 65)
@@ -1033,14 +1020,14 @@ int Client::CalcHaste()
 		h += spellbonuses.hastetype2 > 10 ? 10 : spellbonuses.hastetype2;
 	}
 	// 26+ no cap, 1-25 10
-	if (level > 25) { // 26+
+	if (level > 25 || RuleB(Character, IgnoreLevelBasedHasteCaps)) { // 26+
 		h += itembonuses.haste;
 	}
 	else {   // 1-25
 		h += itembonuses.haste > 10 ? 10 : itembonuses.haste;
 	}
 	// 60+ 100, 51-59 85, 1-50 level+25
-	if (level > 59) { // 60+
+	if (level > 59 || RuleB(Character, IgnoreLevelBasedHasteCaps)) { // 60+
 		cap = RuleI(Character, HasteCap);
 	}
 	else if (level > 50) {  // 51-59
@@ -1049,12 +1036,11 @@ int Client::CalcHaste()
 	else {   // 1-50
 		cap = level + 25;
 	}
-	cap = mod_client_haste_cap(cap);
 	if (h > cap) {
 		h = cap;
 	}
 	// 51+ 25 (despite there being higher spells...), 1-50 10
-	if (level > 50) { // 51+
+	if (level > 50 || RuleB(Character, IgnoreLevelBasedHasteCaps)) { // 51+
 		cap = RuleI(Character, Hastev3Cap);
 		if (spellbonuses.hastetype3 > cap) {
 			h += cap;
@@ -1066,7 +1052,6 @@ int Client::CalcHaste()
 		h += spellbonuses.hastetype3 > 10 ? 10 : spellbonuses.hastetype3;
 	}
 	h += ExtraHaste;	//GM granted haste.
-	h = mod_client_haste(h);
 	Haste = 100 + h;
 	return Haste;
 }
@@ -1663,7 +1648,7 @@ uint32 Mob::GetInstrumentMod(uint16 spell_id)
 		}
 	}
 
-	LogSpells("[Mob::GetInstrumentMod] Name [{}] spell [{}] mod [{}] modcap [{}]\n", GetName(), spell_id, effectmod, effectmodcap);
+	LogSpells("Name [{}] spell [{}] mod [{}] modcap [{}]\n", GetName(), spell_id, effectmod, effectmodcap);
 
 	return effectmod;
 }
@@ -1690,8 +1675,8 @@ int64 Client::CalcBaseEndurance()
 {
 	int64 base_end = 0;
 	if (ClientVersion() >= EQ::versions::ClientVersion::SoF && RuleB(Character, SoDClientUseSoDHPManaEnd)) {
-		double heroic_stats = (GetHeroicSTR() + GetHeroicSTA() + GetHeroicDEX() + GetHeroicAGI()) / 4.0f;
 		double stats = (GetSTR() + GetSTA() + GetDEX() + GetAGI()) / 4.0f;
+
 		if (stats > 201.0f) {
 			stats = 1.25f * (stats - 201.0f) + 352.5f;
 		}
@@ -1700,7 +1685,7 @@ int64 Client::CalcBaseEndurance()
 		}
 		auto base_data = database.GetBaseData(GetLevel(), GetClass());
 		if (base_data) {
-			base_end = base_data->base_end + (heroic_stats * 10.0f) + (base_data->endurance_factor * static_cast<int>(stats));
+			base_end = base_data->base_end + itembonuses.heroic_max_end + (base_data->endurance_factor * static_cast<int>(stats));
 		}
 	}
 	else {
@@ -1789,9 +1774,7 @@ int64 Client::CalcEnduranceRegen(bool bCombat)
 	if (encumbered)
 		base += level / -15;
 
-	auto item_bonus = GetHeroicAGI() + GetHeroicDEX() + GetHeroicSTA() + GetHeroicSTR();
-	item_bonus = item_bonus / 4 / 50;
-	item_bonus += itembonuses.EnduranceRegen; // this is capped already
+	auto item_bonus = itembonuses.EnduranceRegen + itembonuses.heroic_end_regen; // this is capped already
 	base += item_bonus;
 
 	base = base * AreaEndRegen + 0.5f;

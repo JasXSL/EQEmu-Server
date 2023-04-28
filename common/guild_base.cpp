@@ -61,9 +61,11 @@ bool BaseGuildManager::LoadGuilds() {
 	}
 
 	for (auto row=results.begin();row!=results.end();++row)
-		_CreateGuild(atoi(row[0]), row[1], atoi(row[2]), atoi(row[3]), row[4], row[5], row[6], row[7]);
+		_CreateGuild(Strings::ToUnsignedInt(row[0]), row[1], Strings::ToUnsignedInt(row[2]), Strings::ToUnsignedInt(row[3]), row[4], row[5], row[6], row[7]);
 
-    query = "SELECT guild_id,`rank`,title,can_hear,can_speak,can_invite,can_remove,can_promote,can_demote,can_motd,can_warpeace FROM guild_ranks";
+	LogInfo("Loaded [{}] Guilds", Strings::Commify(std::to_string(results.RowCount())));
+
+	query = "SELECT guild_id,`rank`,title,can_hear,can_speak,can_invite,can_remove,can_promote,can_demote,can_motd,can_warpeace FROM guild_ranks";
 	results = m_db->QueryDatabase(query);
 
 	if (!results.Success())
@@ -73,8 +75,8 @@ bool BaseGuildManager::LoadGuilds() {
 
 	for (auto row=results.begin();row!=results.end();++row)
 	{
-		uint32 guild_id = atoi(row[0]);
-		uint8 rankn = atoi(row[1]);
+		uint32 guild_id = Strings::ToUnsignedInt(row[0]);
+		uint8 rankn = Strings::ToUnsignedInt(row[1]);
 
 		if(rankn > GUILD_MAX_RANK) {
 			LogGuilds("Found invalid (too high) rank [{}] for guild [{}], skipping", rankn, guild_id);
@@ -129,7 +131,7 @@ bool BaseGuildManager::RefreshGuild(uint32 guild_id) {
 
 	auto row = results.begin();
 
-	info = _CreateGuild(guild_id, row[0], atoi(row[1]), atoi(row[2]), row[3], row[4], row[5], row[6]);
+	info = _CreateGuild(guild_id, row[0], Strings::ToUnsignedInt(row[1]), Strings::ToUnsignedInt(row[2]), row[3], row[4], row[5], row[6]);
 
     query = StringFormat("SELECT guild_id, `rank`, title, can_hear, can_speak, can_invite, can_remove, can_promote, can_demote, can_motd, can_warpeace "
                         "FROM guild_ranks WHERE guild_id=%lu", (unsigned long)guild_id);
@@ -142,7 +144,7 @@ bool BaseGuildManager::RefreshGuild(uint32 guild_id) {
 
 	for (auto row=results.begin();row!=results.end();++row)
 	{
-		uint8 rankn = atoi(row[1]);
+		uint8 rankn = Strings::ToUnsignedInt(row[1]);
 
 		if(rankn > GUILD_MAX_RANK) {
 			LogGuilds("Found invalid (too high) rank [{}] for guild [{}], skipping", rankn, guild_id);
@@ -785,9 +787,7 @@ bool BaseGuildManager::GetBankerFlag(uint32 CharID)
 
 	auto row = results.begin();
 
-	bool IsBanker = atoi(row[0]);
-
-	return IsBanker;
+	return Strings::ToBool(row[0]);
 }
 
 bool BaseGuildManager::DBSetAltFlag(uint32 charid, bool is_alt)
@@ -815,9 +815,7 @@ bool BaseGuildManager::GetAltFlag(uint32 CharID)
 
 	auto row = results.begin();
 
-	bool IsAlt = atoi(row[0]);
-
-	return IsAlt;
+	return Strings::ToBool(row[0]);
 }
 
 bool BaseGuildManager::DBSetTributeFlag(uint32 charid, bool enabled) {
@@ -864,35 +862,26 @@ bool BaseGuildManager::QueryWithLogging(std::string query, const char *errmsg) {
 	return(true);
 }
 
-//factored out so I dont have to copy this crap.
-#ifdef BOTS
-#define GuildMemberBaseQuery \
-"SELECT c.`id`, c.`name`, c.`class`, c.`level`, c.`last_login`, c.`zone_id`," \
-" g.`guild_id`, g.`rank`, g.`tribute_enable`, g.`total_tribute`, g.`last_tribute`," \
-" g.`banker`, g.`public_note`, g.`alt`" \
-" FROM `vw_bot_character_mobs` AS c LEFT JOIN `vw_guild_members` AS g ON c.`id` = g.`char_id` AND c.`mob_type` = g.`mob_type` "
-#else
 #define GuildMemberBaseQuery \
 "SELECT c.`id`, c.`name`, c.`class`, c.`level`, c.`last_login`, c.`zone_id`," \
 " g.`guild_id`, g.`rank`, g.`tribute_enable`, g.`total_tribute`, g.`last_tribute`," \
 " g.`banker`, g.`public_note`, g.`alt` " \
 " FROM `character_data` AS c LEFT JOIN `guild_members` AS g ON c.`id` = g.`char_id` "
-#endif
 static void ProcessGuildMember(MySQLRequestRow row, CharGuildInfo &into) {
 	//fields from `characer_`
-	into.char_id		= atoi(row[0]);
+	into.char_id		= Strings::ToUnsignedInt(row[0]);
 	into.char_name		= row[1];
-	into.class_			= atoi(row[2]);
-	into.level			= atoi(row[3]);
-	into.time_last_on	= atoul(row[4]);
-	into.zone_id		= atoi(row[5]);
+	into.class_			= Strings::ToUnsignedInt(row[2]);
+	into.level			= Strings::ToUnsignedInt(row[3]);
+	into.time_last_on	= Strings::ToUnsignedInt(row[4]);
+	into.zone_id		= Strings::ToUnsignedInt(row[5]);
 
 	//fields from `guild_members`, leave at defaults if missing
-	into.guild_id		= row[6] ? atoi(row[6]) : GUILD_NONE;
-	into.rank			= row[7] ? atoi(row[7]) : (GUILD_MAX_RANK+1);
+	into.guild_id		= row[6] ? Strings::ToUnsignedInt(row[6]) : GUILD_NONE;
+	into.rank			= row[7] ? Strings::ToUnsignedInt(row[7]) : (GUILD_MAX_RANK+1);
 	into.tribute_enable = row[8] ? (row[8][0] == '0'?false:true) : false;
-	into.total_tribute	= row[9] ? atoi(row[9]) : 0;
-	into.last_tribute	= row[10]? atoul(row[10]) : 0;		//timestamp
+	into.total_tribute	= row[9] ? Strings::ToUnsignedInt(row[9]) : 0;
+	into.last_tribute	= row[10]? Strings::ToUnsignedInt(row[10]) : 0;		//timestamp
 	into.banker			= row[11]? (row[11][0] == '0'?false:true) : false;
 	into.public_note	= row[12]? row[12] : "";
 	into.alt		= row[13]? (row[13][0] == '0'?false:true) : false;
@@ -967,13 +956,8 @@ bool BaseGuildManager::GetCharInfo(uint32 char_id, CharGuildInfo &into) {
 	}
 
 	//load up the rank info for each guild.
-	std::string query;
-#ifdef BOTS
-    query = StringFormat(GuildMemberBaseQuery " WHERE c.id=%d AND c.mob_type = 'C' AND c.deleted_at IS NULL", char_id);
-#else
-    query = StringFormat(GuildMemberBaseQuery " WHERE c.id=%d AND c.deleted_at IS NULL", char_id);
-#endif
-    auto results = m_db->QueryDatabase(query);
+	std::string query   = StringFormat(GuildMemberBaseQuery " WHERE c.id=%d AND c.deleted_at IS NULL", char_id);
+	auto        results = m_db->QueryDatabase(query);
 	if (!results.Success()) {
 		return false;
 	}
@@ -1270,7 +1254,7 @@ uint32 BaseGuildManager::GetGuildIDByCharacterID(uint32 character_id)
 	}
 
 	auto row = results.begin();
-	auto guild_id = std::stoul(row[0]);
+	auto guild_id = Strings::ToUnsignedInt(row[0]);
 	return guild_id;
 }
 
