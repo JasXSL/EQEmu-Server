@@ -1003,6 +1003,7 @@ public:
 	void SetConsumption(int32 in_hunger, int32 in_thirst);
 	bool IsStarved() const { if (GetGM() || !RuleB(Character, EnableFoodRequirement) || !RuleB(Character, EnableHungerPenalties)) return false; return m_pp.hunger_level == 0 || m_pp.thirst_level == 0; }
 	int32 GetIntoxication() const { return m_pp.intoxication; }
+	int32 GetIntoxication() const { return m_pp.intoxication; }
 
 	bool CheckTradeLoreConflict(Client* other);
 	bool CheckTradeNonDroppable();
