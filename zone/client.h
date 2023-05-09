@@ -67,6 +67,7 @@ namespace EQ
 #include "task_client_state.h"
 #include "cheat_manager.h"
 #include "../common/events/player_events.h"
+#include "../common/data_verification.h"
 
 #ifdef _WINDOWS
 	// since windows defines these within windef.h (which windows.h include)
@@ -322,7 +323,6 @@ public:
 	void FillSpawnStruct(NewSpawn_Struct* ns, Mob* ForWho);
 	bool ShouldISpawnFor(Client *c) { return !GMHideMe(c) && !IsHoveringForRespawn(); }
 	virtual bool Process();
-	void ProcessPackets();
 	void QueuePacket(const EQApplicationPacket* app, bool ack_req = true, CLIENT_CONN_STATUS = CLIENT_CONNECTINGALL, eqFilterType filter=FilterNone);
 	void FastQueuePacket(EQApplicationPacket** app, bool ack_req = true, CLIENT_CONN_STATUS = CLIENT_CONNECTINGALL);
 	void ChannelMessageReceived(uint8 chan_num, uint8 language, uint8 lang_skill, const char* orig_message, const char* targetname = nullptr, bool is_silent = false);
@@ -379,12 +379,8 @@ public:
 
 	void SetPetCommandState(int button, int state);
 
-	bool CheckAccess(int16 iDBLevel, int16 iDefaultLevel);
-
-	void CheckQuests(const char* zonename, const char* message, uint32 npc_id, uint32 item_id, Mob* other);
 	bool AutoAttackEnabled() const { return auto_attack; }
 	bool AutoFireEnabled() const { return auto_fire; }
-	void MakeCorpse(uint32 exploss);
 
 	bool ChangeFirstName(const char* in_firstname,const char* gmname);
 
@@ -394,7 +390,6 @@ public:
 
 	virtual void SetMaxHP();
 	int32 LevelRegen();
-	void HPTick();
 	void SetGM(bool toggle);
 	void SetPVP(bool toggle, bool message = true);
 
@@ -971,6 +966,8 @@ public:
 	void IncStats(uint8 type,int16 increase_val);
 	void DropItem(int16 slot_id, bool recurse = true);
 	void DropItemQS(EQ::ItemInstance* inst, bool pickup);
+
+	bool IsAugmentRestricted(uint8 item_type, uint32 augment_restriction);
 
 	int GetItemLinkHash(const EQ::ItemInstance* inst); // move to ItemData..or make use of the pre-calculated database field
 
@@ -1721,7 +1718,6 @@ private:
 	int64 CalcHPRegen(bool bCombat = false);
 	int64 CalcManaRegen(bool bCombat = false);
 	int64 CalcBaseManaRegen();
-	uint64 GetClassHPFactor();
 	void DoHPRegen();
 	void DoManaRegen();
 	void DoStaminaHungerUpdate();

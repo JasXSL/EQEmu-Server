@@ -2783,13 +2783,6 @@ void Client::GMKill() {
 	safe_delete(outapp);
 }
 
-bool Client::CheckAccess(int16 iDBLevel, int16 iDefaultLevel) {
-	if ((admin >= iDBLevel) || (iDBLevel == AccountStatus::Max && admin >= iDefaultLevel))
-		return true;
-	else
-		return false;
-}
-
 void Client::MemorizeSpell(uint32 slot,uint32 spellid,uint32 scribing, uint32 reduction){
 	if (slot < 0 || slot >= EQ::spells::DynamicLookup(ClientVersion(), GetGM())->SpellbookSize)
 		return;
@@ -8349,7 +8342,7 @@ void Client::SetThirst(int32 in_thirst)
 
 void Client::SetIntoxication(int32 in_intoxication)
 {
-	m_pp.intoxication = std::min(200,std::max(0,in_intoxication));
+	m_pp.intoxication = EQ::Clamp(in_intoxication, 0, 200);
 }
 
 void Client::SetConsumption(int32 in_hunger, int32 in_thirst)

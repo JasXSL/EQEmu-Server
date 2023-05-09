@@ -1054,6 +1054,11 @@ void Perl_Mob_SetPetID(Mob* self, uint16 new_pet_id) // @categories Pet
 	self->SetPetID(new_pet_id);
 }
 
+Mob* Perl_Mob_GetPet(Mob* self) // @categories Script Utility, Pet
+{
+	return self->GetPet();
+}
+
 int Perl_Mob_GetPetID(Mob* self) // @categories Script Utility, Pet
 {
 	return self->GetPetID();
@@ -2887,6 +2892,16 @@ float Perl_Mob_GetDefaultRaceSize(Mob* self) // @categories Script Utility
 	return self->GetDefaultRaceSize();
 }
 
+float Perl_Mob_GetDefaultRaceSize(Mob* self, int race_id) // @categories Script Utility
+{
+	return self->GetDefaultRaceSize(race_id);
+}
+
+float Perl_Mob_GetDefaultRaceSize(Mob* self, int race_id, int gender_id) // @categories Script Utility
+{
+	return self->GetDefaultRaceSize(race_id, gender_id);
+}
+
 uint32 Perl_Mob_GetRemainingTimeMS(Mob* self, const char* timer_name)
 {
 	return quest_manager.getremainingtimeMS(timer_name, self);
@@ -2948,6 +2963,11 @@ perl::array Perl_Mob_GetBuffSpellIDs(Mob* self)
 	}
 
 	return l;
+}
+
+bool Perl_Mob_HasSpellEffect(Mob* self, int effect_id)
+{
+	return self->HasSpellEffect(effect_id);
 }
 
 void perl_register_mob()
@@ -3141,7 +3161,9 @@ void perl_register_mob()
 	package.add("GetClassName", &Perl_Mob_GetClassName);
 	package.add("GetCleanName", &Perl_Mob_GetCleanName);
 	package.add("GetCorruption", &Perl_Mob_GetCorruption);
-	package.add("GetDefaultRaceSize", &Perl_Mob_GetDefaultRaceSize);
+	package.add("GetDefaultRaceSize", (float(*)(Mob*))&Perl_Mob_GetDefaultRaceSize);
+	package.add("GetDefaultRaceSize", (float(*)(Mob*, int))&Perl_Mob_GetDefaultRaceSize);
+	package.add("GetDefaultRaceSize", (float(*)(Mob*, int, int))&Perl_Mob_GetDefaultRaceSize);
 	package.add("GetDEX", &Perl_Mob_GetDEX);
 	package.add("GetDR", &Perl_Mob_GetDR);
 	package.add("GetDamageAmount", &Perl_Mob_GetDamageAmount);
@@ -3225,6 +3247,7 @@ void perl_register_mob()
 	package.add("GetOwner", &Perl_Mob_GetOwner);
 	package.add("GetOwnerID", &Perl_Mob_GetOwnerID);
 	package.add("GetPR", &Perl_Mob_GetPR);
+	package.add("GetPet", &Perl_Mob_GetPet);
 	package.add("GetPetID", &Perl_Mob_GetPetID);
 	package.add("GetPetOrder", &Perl_Mob_GetPetOrder);
 	package.add("GetPetType", &Perl_Mob_GetPetType);
@@ -3272,6 +3295,7 @@ void perl_register_mob()
 	package.add("HasPet", &Perl_Mob_HasPet);
 	package.add("HasProcs", &Perl_Mob_HasProcs);
 	package.add("HasShieldEquipped", &Perl_Mob_HasShieldEquipped);
+	package.add("HasSpellEffect", &Perl_Mob_HasSpellEffect);
 	package.add("HasTimer", &Perl_Mob_HasTimer);
 	package.add("HasTwoHandBluntEquipped", &Perl_Mob_HasTwoHandBluntEquipped);
 	package.add("HasTwoHanderEquipped", &Perl_Mob_HasTwoHanderEquipped);
