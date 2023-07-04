@@ -118,8 +118,11 @@ SET(zone_sources
     perl_perlpacket.cpp
     perl_player_corpse.cpp
     perl_questitem.cpp
+    perl_questitem_data.cpp
     perl_raids.cpp
+    perl_spawn.cpp
     perl_spell.cpp
+    perl_stat_bonuses.cpp
     perlpacket.cpp
     petitions.cpp
     pets.cpp
@@ -228,7 +231,6 @@ SET(zone_headers
     lua_stat_bonuses.h
     map.h
     masterentity.h
-    message.h
     merc.h
     mob.h
     mob_movement_manager.h

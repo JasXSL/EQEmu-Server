@@ -256,6 +256,7 @@ RULE_BOOL(Pets, UnTargetableSwarmPet, false, "Setting whether swarm pets should 
 RULE_REAL(Pets, PetPowerLevelCap, 10, "Maximum number of levels a player pet can go up with pet power")
 RULE_BOOL(Pets, CanTakeNoDrop, false, "Setting whether anyone can give no-drop items to pets")
 RULE_BOOL(Pets, LivelikeBreakCharmOnInvis, true, "Default: true will break charm on any type of invis (hide/ivu/iva/etc) false will only break if the pet can not see you (ex. you have an undead pet and cast IVU")
+RULE_BOOL(Pets, ClientPetsUseOwnerNameInLastName, true, "Disable this to keep client pet's last names from being owner_name's pet")
 RULE_CATEGORY_END()
 
 RULE_CATEGORY(GM)
@@ -297,6 +298,7 @@ RULE_BOOL(World, StartZoneSameAsBindOnCreation, true, "Should the start zone alw
 RULE_BOOL(World, EnforceCharacterLimitAtLogin, false, "Enforce the limit for characters that are online at login")
 RULE_BOOL(World, EnableDevTools, true, "Enable or Disable the Developer Tools globally (Most of the time you want this enabled)")
 RULE_BOOL(World, EnableChecksumVerification, false, "Enable or Disable the Checksum Verification for eqgame.exe and spells_us.txt")
+RULE_INT(World, MaximumQuestErrors, 30, "Changes the maximum number of quest errors that can be displayed in #questerrors, default is 30")
 RULE_CATEGORY_END()
 
 RULE_CATEGORY(Zone)
@@ -445,6 +447,7 @@ RULE_BOOL(Spells, UseItemCastMessage, false, "Enable to use the \"item begins to
 RULE_BOOL(Spells, TargetsTargetRequiresCombatRange, true, "Disable to remove combat range requirement from Target's Target Spell Target Type")
 RULE_BOOL(Spells, NPCBuffLevelRestrictions, false, "Impose BuffLevelRestrictions on NPCs if true")
 RULE_INT(Spells, ResurrectionEffectBlock, 2, "0 = allow overwrites/rule disabled. If set to 1 = Block all buffs that would overwrite Resurrection Effects. If set to 2 = Will not overwrite Resurrection Effects, instead moves new buff to an empty slot if available. Default is 2.")
+RULE_BOOL(Spells, WaterMatchRequiredForLoS, true, "Enable/Disable the requirement of both the attacker/victim being both in or out of water for spells LoS to pass.")
 RULE_CATEGORY_END()
 
 RULE_CATEGORY(Combat)
@@ -518,6 +521,7 @@ RULE_BOOL(Combat, EnableWarriorShielding, true, "Enable or disable Warrior Shiel
 RULE_BOOL(Combat, BackstabIgnoresElemental, false, "Enable or disable Elemental weapon damage affecting backstab damage, false by default.")
 RULE_BOOL(Combat, BackstabIgnoresBane, false, "Enable or disable Bane weapon damage affecting backstab damage, false by default.")
 RULE_BOOL(Combat, SummonMeleeRange, true, "Enable or disable summoning of a player when already in melee range of the summoner.")
+RULE_BOOL(Combat, WaterMatchRequiredForAutoFireLoS, true, "Enable/Disable the requirement of both the attacker/victim being both in or out of water for AutoFire LoS to pass.")
 RULE_CATEGORY_END()
 
 RULE_CATEGORY(NPC)

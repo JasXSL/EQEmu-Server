@@ -1018,8 +1018,8 @@ bool QuestManager::isdisctome(uint32 item_id) {
 	const std::string item_name = item->Name;
 
 	if (
-		strcmp(item_name.substr(0, 5).c_str(), "Tome ") &&
-		strcmp(item_name.substr(0, 7).c_str(), "Skill: ")
+		!Strings::BeginsWith(item_name, "Tome of ") &&
+		!Strings::BeginsWith(item_name, "Skill: ")
 	) {
 		return false;
 	}
@@ -2887,6 +2887,21 @@ void QuestManager::we(int type, const char *str) {
 	);
 }
 
+void QuestManager::SendChannelMessage(uint8 channel_number, uint32 guild_id, uint8 language_id, uint8 language_skill, const char* message)
+{
+	worldserver.SendChannelMessage(0, 0, channel_number, guild_id, language_id, language_skill, message);
+}
+
+void QuestManager::SendChannelMessage(Client* from, uint8 channel_number, uint32 guild_id, uint8 language_id, uint8 language_skill, const char* message)
+{
+	worldserver.SendChannelMessage(from, 0, channel_number, guild_id, language_id, language_skill, message);
+}
+
+void QuestManager::SendChannelMessage(Client* from, const char* to, uint8 channel_number, uint32 guild_id, uint8 language_id, uint8 language_skill, const char* message)
+{
+	worldserver.SendChannelMessage(from, to, channel_number, guild_id, language_id, language_skill, message);
+}
+
 void QuestManager::message(uint32 type, const char *message) {
 	QuestManagerCurrentQuestVars();
 	if (!initiator) {
@@ -3866,7 +3881,7 @@ std::string QuestManager::getgendername(uint32 gender_id) {
 }
 
 std::string QuestManager::getdeityname(uint32 deity_id) {
-	return EQ::deity::DeityName(static_cast<EQ::deity::DeityType>(deity_id));
+	return EQ::deity::GetDeityName(static_cast<EQ::deity::DeityType>(deity_id));
 }
 
 std::string QuestManager::getinventoryslotname(int16 slot_id) {

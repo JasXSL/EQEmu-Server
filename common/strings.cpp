@@ -370,7 +370,8 @@ std::string Strings::NumberToWords(unsigned long long int n)
 
 	return res;
 }
-std::string Strings::Money(uint32 platinum, uint32 gold, uint32 silver, uint32 copper)
+
+std::string Strings::Money(uint64 platinum, uint64 gold, uint64 silver, uint64 copper)
 {
 	std::string money_string = "Unknown";
 	if (copper && silver && gold && platinum) { // CSGP
@@ -694,8 +695,31 @@ std::string Strings::ConvertToDigit(int n, const std::string& suffix)
 		return NUM_TO_ENGLISH_X[n] + suffix;
 	}
 }
+
+bool Strings::BeginsWith(const std::string& subject, const std::string& search)
+{
+	if (subject.length() < search.length()) {
+		return false;
+	}
+
+	return subject.starts_with(search);
+}
+
+bool Strings::EndsWith(const std::string& subject, const std::string& search)
+{
+	if (subject.length() < search.length()) {
+		return false;
+	}
+
+	return subject.ends_with(search);
+}
+
 bool Strings::Contains(const std::string& subject, const std::string& search)
 {
+	if (subject.length() < search.length()) {
+		return false;
+	}
+
 	return subject.find(search) != std::string::npos;
 }
 
