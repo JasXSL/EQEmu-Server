@@ -236,19 +236,18 @@ bool Mob::CastSpell(uint16 spell_id, uint16 target_id, CastingSlot slot,
 		}
 	}
 
-	std::string export_string = fmt::format(
-		"{} {} {}",
-		spell_id,
-		GetID(),
-		GetCasterLevel(spell_id)
-	);
-	if(IsClient()) {
+	if (IsClient()) {
 		if (parse->PlayerHasQuestSub(EVENT_CAST_BEGIN)) {
-			std::vector<std::any> extra;
-			if(spell_target) {
-				extra.push_back(spell_target);
-			}
-			if (parse->EventPlayer(EVENT_CAST_BEGIN, CastToClient(), export_string, 0, &extra) != 0) {
+			Mob* spell_target = entity_list.GetMobID(target_id);
+			std::vector<std::any> args = { spell_target };
+			const auto& export_string = fmt::format(
+				"{} {} {} {}",
+				spell_id,
+				GetID(),
+				GetCasterLevel(spell_id),
+				target_id
+			);
+			if (parse->EventPlayer(EVENT_CAST_BEGIN, CastToClient(), export_string, 0, &args) != 0) {
 				if (IsDiscipline(spell_id)) {
 					CastToClient()->SendDisciplineTimer(spells[spell_id].timer_id, 0);
 				} else {
@@ -259,11 +258,29 @@ bool Mob::CastSpell(uint16 spell_id, uint16 target_id, CastingSlot slot,
 		}
 	} else if(IsNPC()) {
 		if (parse->HasQuestSub(GetNPCTypeID(), EVENT_CAST_BEGIN)) {
-			parse->EventNPC(EVENT_CAST_BEGIN, CastToNPC(), spell_target, export_string, 0);
+			Mob* spell_target = entity_list.GetMobID(target_id);
+			std::vector<std::any> args = { spell_target };
+			const auto& export_string = fmt::format(
+				"{} {} {} {}",
+				spell_id,
+				GetID(),
+				GetCasterLevel(spell_id),
+				target_id
+			);
+			parse->EventNPC(EVENT_CAST_BEGIN, CastToNPC(), nullptr, export_string, 0, &args);
 		}
 	} else if (IsBot()) {
 		if (parse->BotHasQuestSub(EVENT_CAST_BEGIN)) {
-			parse->EventBot(EVENT_CAST_BEGIN, CastToBot(), nullptr, export_string, 0);
+			Mob* spell_target = entity_list.GetMobID(target_id);
+			std::vector<std::any> args = { spell_target };
+			const auto& export_string = fmt::format(
+				"{} {} {} {}",
+				spell_id,
+				GetID(),
+				GetCasterLevel(spell_id),
+				target_id
+			);
+			parse->EventBot(EVENT_CAST_BEGIN, CastToBot(), nullptr, export_string, 0, &args);
 		}
 	}
 
@@ -693,6 +710,18 @@ bool Mob::DoCastingChecksZoneRestrictions(bool check_on_casting, int32 spell_id)
 		Message(Chat::Red, "You cannot cast detrimental spells here.");
 		return false;
 	}
+	/*
+		Zones where you can not cast a spell that is for daytime or nighttime only
+	*/
+	if (spells[spell_id].time_of_day == SpellTimeRestrictions::Day && !zone->zone_time.IsDayTime()) {
+		MessageString(Chat::Red, CAST_DAYTIME);
+		return false;
+	}
+
+	if (spells[spell_id].time_of_day == SpellTimeRestrictions::Night && !zone->zone_time.IsNightTime()) {
+		MessageString(Chat::Red, CAST_NIGHTTIME);
+		return false;
+	}
 
 	if (check_on_casting) {
 		/*
@@ -702,19 +731,6 @@ bool Mob::DoCastingChecksZoneRestrictions(bool check_on_casting, int32 spell_id)
 			if (IsClient() && !CastToClient()->GetGM()) {
 				MessageString(Chat::Red, CAST_OUTDOORS);
 				LogSpells("Spell casting canceled [{}] : can not cast outdoors.", spell_id);
-				return false;
-			}
-		}
-		/*
-			Zones where you can not gate.
-		*/
-		if (IsClient() &&
-			(zone->GetZoneID() == Zones::TUTORIAL || zone->GetZoneID() == Zones::LOAD) &&
-			CastToClient()->Admin() < AccountStatus::QuestTroupe) {
-			if (IsEffectInSpell(spell_id, SE_Gate) ||
-				IsEffectInSpell(spell_id, SE_Translocate) ||
-				IsEffectInSpell(spell_id, SE_Teleport)) {
-				Message(Chat::White, "The Gods brought you here, only they can send you away.");
 				return false;
 			}
 		}
@@ -1652,27 +1668,41 @@ void Mob::CastedSpellFinished(uint16 spell_id, uint32 target_id, CastingSlot slo
 	// at this point the spell has successfully been cast
 	//
 
-	const auto& export_string = fmt::format(
-		"{} {} {}",
-		spell_id,
-		GetID(),
-		GetCasterLevel(spell_id)
-	);
-	if(IsClient()) {
+	if (IsClient()) {
 		if (parse->PlayerHasQuestSub(EVENT_CAST)) {
-			std::vector<std::any> extra;
-			if (spell_target){
-				extra.push_back(spell_target);
-			}
-			parse->EventPlayer(EVENT_CAST, CastToClient(), export_string, 0, &extra);
+			std::vector<std::any> args = { spell_target };
+			const auto& export_string = fmt::format(
+				"{} {} {} {}",
+				spell_id,
+				GetID(),
+				GetCasterLevel(spell_id),
+				target_id
+			);
+			parse->EventPlayer(EVENT_CAST, CastToClient(), export_string, 0, &args);
 		}
-	} else if(IsNPC()) {
+	} else if (IsNPC()) {
 		if (parse->HasQuestSub(GetNPCTypeID(), EVENT_CAST)) {
-			parse->EventNPC(EVENT_CAST, CastToNPC(), spell_target, export_string, 0);
+			std::vector<std::any> args = { spell_target };
+			const auto& export_string = fmt::format(
+				"{} {} {} {}",
+				spell_id,
+				GetID(),
+				GetCasterLevel(spell_id),
+				target_id
+			);
+			parse->EventNPC(EVENT_CAST, CastToNPC(), nullptr, export_string, 0, &args);
 		}
 	} else if (IsBot()) {
 		if (parse->BotHasQuestSub(EVENT_CAST)) {
-			parse->EventBot(EVENT_CAST, CastToBot(), nullptr, export_string, 0);
+			std::vector<std::any> args = { spell_target };
+			const auto& export_string = fmt::format(
+				"{} {} {} {}",
+				spell_id,
+				GetID(),
+				GetCasterLevel(spell_id),
+				target_id
+			);
+			parse->EventBot(EVENT_CAST, CastToBot(), nullptr, export_string, 0, &args);
 		}
 	}
 
@@ -2743,12 +2773,18 @@ bool Mob::ApplyBardPulse(int32 spell_id, Mob *spell_target, CastingSlot slot) {
 		Live does not spam client with do not take hold messages. Checking here avoids that from happening. Only try to reapply if charm fades.
 	*/
 	if (spell_target->IsCharmed() && spells[spell_id].mana == 0 && spell_target->GetOwner() == this && IsEffectInSpell(spell_id, SE_Charm)) {
+		if (IsClient()) {
+			CastToClient()->CheckSongSkillIncrease(spell_id);
+		}
 		return true;
 	}
 	/*
 		If divine aura applied while pulsing, it is not interrupted but does not reapply until DA fades.
 	*/
 	if (DivineAura() && !IsCastNotStandingSpell(spell_id)) {
+		if (IsClient()) {
+			CastToClient()->CheckSongSkillIncrease(spell_id);
+		}
 		return true;
 	}
 	/*
@@ -2762,6 +2798,9 @@ bool Mob::ApplyBardPulse(int32 spell_id, Mob *spell_target, CastingSlot slot) {
 		return false;
 	}
 
+	if (IsClient()) {
+		CastToClient()->CheckSongSkillIncrease(spell_id);
+	}
 	return true;
 }
 
@@ -3662,10 +3701,14 @@ bool Mob::SpellOnTarget(
 	}
 
 	// select target
+	uint16 target_id = 0;
+
 	if (IsEffectInSpell(spell_id, SE_BindSight)) {
 		action->target = GetID();
+		target_id = GetID();
 	} else {
 		action->target = spelltar->GetID();
+		target_id = spelltar->GetID();
 	}
 
 	action->spell_level = action->level = caster_level;	// caster level, for animation only
@@ -3696,23 +3739,41 @@ bool Mob::SpellOnTarget(
 		(spellOwner->IsClient() ? FilterPCSpells : FilterNPCSpells) /* EQ Filter Type: (8 or 9) */
 	);
 
-	const auto& export_string = fmt::format(
-		"{} {} {}",
-		spell_id,
-		GetID(),
-		caster_level
-	);
 	if (spelltar->IsNPC()) {
 		if (parse->HasQuestSub(spelltar->GetNPCTypeID(), EVENT_CAST_ON)) {
-			parse->EventNPC(EVENT_CAST_ON, spelltar->CastToNPC(), this, export_string, 0);
+			std::vector<std::any> args = { spelltar };
+			const auto& export_string = fmt::format(
+				"{} {} {} {}",
+				spell_id,
+				GetID(),
+				caster_level,
+				target_id
+			);
+			parse->EventNPC(EVENT_CAST_ON, spelltar->CastToNPC(), this, export_string, 0, &args);
 		}
 	} else if (spelltar->IsClient()) {
 		if (parse->PlayerHasQuestSub(EVENT_CAST_ON)) {
-			parse->EventPlayer(EVENT_CAST_ON, spelltar->CastToClient(), export_string, 0);
+			std::vector<std::any> args = { spelltar };
+			const auto& export_string = fmt::format(
+				"{} {} {} {}",
+				spell_id,
+				GetID(),
+				caster_level,
+				target_id
+			);
+			parse->EventPlayer(EVENT_CAST_ON, spelltar->CastToClient(), export_string, 0, &args);
 		}
 	} else if (spelltar->IsBot()) {
 		if (parse->BotHasQuestSub(EVENT_CAST_ON)) {
-			parse->EventBot(EVENT_CAST_ON, spelltar->CastToBot(), this, export_string, 0);
+			std::vector<std::any> args = { spelltar };
+			const auto& export_string = fmt::format(
+				"{} {} {} {}",
+				spell_id,
+				GetID(),
+				caster_level,
+				target_id
+			);
+			parse->EventBot(EVENT_CAST_ON, spelltar->CastToBot(), this, export_string, 0, &args);
 		}
 	}
 
@@ -4182,41 +4243,39 @@ bool Mob::SpellOnTarget(
 		spelltar->DamageShield(this, true);
 	}
 
-	if (
-		spelltar->IsAIControlled() &&
-		IsDetrimentalSpell(spell_id) &&
-		!IsHarmonySpell(spell_id)
-	) {
-		auto aggro_amount = CheckAggroAmount(spell_id, spelltar, isproc);
-		LogSpells("Spell [{}] cast on [{}] generated [{}] hate", spell_id,
-			spelltar->GetName(), aggro_amount);
-		if (aggro_amount > 0) {
-			spelltar->AddToHateList(this, aggro_amount);
-		} else {
-			int64 newhate = spelltar->GetHateAmount(this) + aggro_amount;
-			spelltar->SetHateAmountOnEnt(this, std::max(newhate, static_cast<int64>(1)));
-		}
-	} else if (IsBeneficialSpell(spell_id) && !IsSummonPCSpell(spell_id)) {
-		if (this != spelltar && IsClient()){
-			if (spelltar->IsClient()) {
-				CastToClient()->UpdateRestTimer(spelltar->CastToClient()->GetRestTimer());
-			} else if (spelltar->IsPet()) {
-				auto* owner = spelltar->GetOwner();
-				if (owner && owner != this && owner->IsClient()) {
-					CastToClient()->UpdateRestTimer(owner->CastToClient()->GetRestTimer());
+	if (!(spelltar->IsNPC() && IsNPC() && !(IsPet() && GetOwner()->IsClient()))) {
+		if (spelltar->IsAIControlled() && IsDetrimentalSpell(spell_id) && !IsHarmonySpell(spell_id)) {
+			auto aggro_amount = CheckAggroAmount(spell_id, spelltar, isproc);
+			LogSpellsDetail("Spell {} cast on {} generated {} hate", spell_id,
+				spelltar->GetName(), aggro_amount);
+			if (aggro_amount > 0) {
+				spelltar->AddToHateList(this, aggro_amount);
+			} else {
+				int64 newhate = spelltar->GetHateAmount(this) + aggro_amount;
+				spelltar->SetHateAmountOnEnt(this, std::max(newhate, static_cast<int64>(1)));
+			}
+		} else if (IsBeneficialSpell(spell_id) && !IsSummonPCSpell(spell_id)) {
+			if (this != spelltar && IsClient()){
+				if (spelltar->IsClient()) {
+					CastToClient()->UpdateRestTimer(spelltar->CastToClient()->GetRestTimer());
+				} else if (spelltar->IsPet()) {
+					auto* owner = spelltar->GetOwner();
+					if (owner && owner != this && owner->IsClient()) {
+						CastToClient()->UpdateRestTimer(owner->CastToClient()->GetRestTimer());
+					}
 				}
 			}
-		}
 
-		entity_list.AddHealAggro(
-			spelltar,
-			this,
-			CheckHealAggroAmount(
-				spell_id,
+			entity_list.AddHealAggro(
 				spelltar,
-				(spelltar->GetMaxHP() - spelltar->GetHP())
-			)
-		);
+				this,
+				CheckHealAggroAmount(
+					spell_id,
+					spelltar,
+					(spelltar->GetMaxHP() - spelltar->GetHP())
+				)
+			);
+		}
 	}
 
 	// make sure spelltar is high enough level for the buff
@@ -4397,14 +4456,18 @@ std::vector<uint16> Mob::GetBuffSpellIDs()
 	return l;
 }
 
-bool Mob::FindBuff(uint16 spell_id)
+bool Mob::FindBuff(uint16 spell_id, uint16 caster_id)
 {
-	uint32 buff_count = GetMaxTotalSlots();
+	const int buff_count = GetMaxTotalSlots();
 	for (int buff_slot = 0; buff_slot < buff_count; buff_slot++) {
-		auto current_spell_id = buffs[buff_slot].spellid;
+		const uint16 current_spell_id = buffs[buff_slot].spellid;
 		if (
 			IsValidSpell(current_spell_id) &&
-			current_spell_id == spell_id
+			current_spell_id == spell_id &&
+			(
+				!caster_id ||
+				buffs[buff_slot].casterid == caster_id
+			)
 		) {
 			return true;
 		}
@@ -5859,20 +5922,17 @@ bool Client::SpellBucketCheck(uint16 spell_id, uint32 character_id) {
 		return true; // If the entry in the spell_buckets table has nothing set for the qglobal name, allow scribing.
 	}
 
-	auto new_bucket_name = fmt::format(
-		"{}-{}",
-		GetBucketKey(),
-		spell_bucket_name
-	);
+	DataBucketKey k = GetScopedBucketKeys();
+	k.key = spell_bucket_name;
 
-	auto bucket_value = DataBucket::GetData(new_bucket_name);
-	if (!bucket_value.empty()) {
-		if (Strings::IsNumber(bucket_value) && Strings::IsNumber(spell_bucket_value)) {
-			if (Strings::ToInt(bucket_value) >= Strings::ToInt(spell_bucket_value)) {
+	auto b = DataBucket::GetData(k);
+	if (!b.value.empty()) {
+		if (Strings::IsNumber(b.value) && Strings::IsNumber(spell_bucket_value)) {
+			if (Strings::ToInt(b.value) >= Strings::ToInt(spell_bucket_value)) {
 				return true; // If value is greater than or equal to spell bucket value, allow scribing.
 			}
 		} else {
-			if (bucket_value == spell_bucket_value) {
+			if (b.value == spell_bucket_value) {
 				return true; // If value is equal to spell bucket value, allow scribing.
 			}
 		}
@@ -5884,7 +5944,7 @@ bool Client::SpellBucketCheck(uint16 spell_id, uint32 character_id) {
 		spell_bucket_name
 	);
 
-	bucket_value = DataBucket::GetData(old_bucket_name);
+	std::string bucket_value = DataBucket::GetData(old_bucket_name);
 	if (!bucket_value.empty()) {
 		if (Strings::IsNumber(bucket_value) && Strings::IsNumber(spell_bucket_value)) {
 			if (Strings::ToInt(bucket_value) >= Strings::ToInt(spell_bucket_value)) {
@@ -5966,7 +6026,7 @@ bool Mob::IsCombatProc(uint16 spell_id) {
 	/*
 		Procs that originate from casted spells are still limited by SPA 311 (~Kayen confirmed on live 2/4/22)
 	*/
-	for (int i = 0; i < MAX_PROCS; i++) {
+	for (int i = 0; i < m_max_procs; i++) {
 		if (PermaProcs[i].spellID == spell_id ||
 			SpellProcs[i].spellID == spell_id ||
 			RangedProcs[i].spellID == spell_id ||
@@ -5993,7 +6053,7 @@ bool Mob::AddProcToWeapon(uint16 spell_id, bool bPerma, uint16 iChance, uint16 b
 
 	int i;
 	if (bPerma) {
-		for (i = 0; i < MAX_PROCS; i++) {
+		for (i = 0; i < m_max_procs; i++) {
 			if (!IsValidSpell(PermaProcs[i].spellID)) {
 				PermaProcs[i].spellID = spell_id;
 				PermaProcs[i].chance = iChance;
@@ -6008,7 +6068,7 @@ bool Mob::AddProcToWeapon(uint16 spell_id, bool bPerma, uint16 iChance, uint16 b
 	} else {
 		// If its a poison proc, replace any existing one if present.
 		if (base_spell_id == POISON_PROC) {
-			for (i = 0; i < MAX_PROCS; i++) {
+			for (i = 0; i < m_max_procs; i++) {
 				// If we already have a poison proc active replace it and return
 				if (SpellProcs[i].base_spellID == POISON_PROC) {
 					SpellProcs[i].spellID = spell_id;
@@ -6025,7 +6085,7 @@ bool Mob::AddProcToWeapon(uint16 spell_id, bool bPerma, uint16 iChance, uint16 b
 		// or it is poison and no poison procs are currently present.
 		// Find a slot and use it as normal.
 
-		for (i = 0; i < MAX_PROCS; i++) {
+		for (i = 0; i < m_max_procs; i++) {
 			if (!IsValidSpell(SpellProcs[i].spellID)) {
 				SpellProcs[i].spellID = spell_id;
 				SpellProcs[i].chance = iChance;
@@ -6042,7 +6102,7 @@ bool Mob::AddProcToWeapon(uint16 spell_id, bool bPerma, uint16 iChance, uint16 b
 }
 
 bool Mob::RemoveProcFromWeapon(uint16 spell_id, bool bAll) {
-	for (int i = 0; i < MAX_PROCS; i++) {
+	for (int i = 0; i < m_max_procs; i++) {
 		if (bAll || SpellProcs[i].spellID == spell_id) {
 			SpellProcs[i].spellID = SPELL_UNKNOWN;
 			SpellProcs[i].chance = 0;
@@ -6061,7 +6121,7 @@ bool Mob::AddDefensiveProc(uint16 spell_id, uint16 iChance, uint16 base_spell_id
 		return(false);
 
 	int i;
-	for (i = 0; i < MAX_PROCS; i++) {
+	for (i = 0; i < m_max_procs; i++) {
 		if (!IsValidSpell(DefensiveProcs[i].spellID)) {
 			DefensiveProcs[i].spellID = spell_id;
 			DefensiveProcs[i].chance = iChance;
@@ -6077,7 +6137,7 @@ bool Mob::AddDefensiveProc(uint16 spell_id, uint16 iChance, uint16 base_spell_id
 
 bool Mob::RemoveDefensiveProc(uint16 spell_id, bool bAll)
 {
-	for (int i = 0; i < MAX_PROCS; i++) {
+	for (int i = 0; i < m_max_procs; i++) {
 		if (bAll || DefensiveProcs[i].spellID == spell_id) {
 			DefensiveProcs[i].spellID = SPELL_UNKNOWN;
 			DefensiveProcs[i].chance = 0;
@@ -6095,7 +6155,7 @@ bool Mob::AddRangedProc(uint16 spell_id, uint16 iChance, uint16 base_spell_id, u
 		return(false);
 
 	int i;
-	for (i = 0; i < MAX_PROCS; i++) {
+	for (i = 0; i < m_max_procs; i++) {
 		if (!IsValidSpell(RangedProcs[i].spellID)) {
 			RangedProcs[i].spellID = spell_id;
 			RangedProcs[i].chance = iChance;
@@ -6111,7 +6171,7 @@ bool Mob::AddRangedProc(uint16 spell_id, uint16 iChance, uint16 base_spell_id, u
 
 bool Mob::RemoveRangedProc(uint16 spell_id, bool bAll)
 {
-	for (int i = 0; i < MAX_PROCS; i++) {
+	for (int i = 0; i < m_max_procs; i++) {
 		if (bAll || RangedProcs[i].spellID == spell_id) {
 			RangedProcs[i].spellID = SPELL_UNKNOWN;
 			RangedProcs[i].chance = 0;
@@ -6256,16 +6316,22 @@ void Mob::SendBuffsToClient(Client *c)
 	}
 }
 
-EQApplicationPacket *Mob::MakeBuffsPacket(bool for_target)
+EQApplicationPacket *Mob::MakeBuffsPacket(bool for_target, bool clear_buffs)
 {
 	uint32 count = 0;
+	uint32 buff_count;
+
 	// for self we want all buffs, for target, we want to skip song window buffs
 	// since NPCs and pets don't have a song window, we still see it for them :P
-	uint32 buff_count = for_target ? GetMaxBuffSlots() : GetMaxTotalSlots();
-	for(int i = 0; i < buff_count; ++i)
-	{
-		if (IsValidSpell(buffs[i].spellid))
-		{
+	if (for_target) {
+		buff_count = (clear_buffs) ? 0 : GetMaxBuffSlots();
+	}
+	else {
+		buff_count = GetMaxTotalSlots();
+	}
+
+	for(int i = 0; i < buff_count; ++i) {
+		if (IsValidSpell(buffs[i].spellid)) {
 			++count;
 		}
 	}
@@ -6273,12 +6339,10 @@ EQApplicationPacket *Mob::MakeBuffsPacket(bool for_target)
 	EQApplicationPacket* outapp = nullptr;
 
 	//Create it for a targeting window, else create it for a create buff packet.
-	if(for_target)
-	{
+	if(for_target) {
 		outapp = new EQApplicationPacket(OP_TargetBuffs, sizeof(BuffIcon_Struct) + sizeof(BuffIconEntry_Struct) * count);
 	}
-	else
-	{
+	else {
 		outapp = new EQApplicationPacket(OP_BuffCreate, sizeof(BuffIcon_Struct) + sizeof(BuffIconEntry_Struct) * count);
 	}
 	BuffIcon_Struct *buff = (BuffIcon_Struct*)outapp->pBuffer;
@@ -6295,10 +6359,8 @@ EQApplicationPacket *Mob::MakeBuffsPacket(bool for_target)
 
 	buff->name_lengths = 0; // hacky shit
 	uint32 index = 0;
-	for(int i = 0; i < buff_count; ++i)
-	{
-		if (IsValidSpell(buffs[i].spellid))
-		{
+	for(int i = 0; i < buff_count; ++i) {
+		if (IsValidSpell(buffs[i].spellid)) {
 			buff->entries[index].buff_slot = i;
 			buff->entries[index].spell_id = buffs[i].spellid;
 			buff->entries[index].tics_remaining = buffs[i].ticsremaining;

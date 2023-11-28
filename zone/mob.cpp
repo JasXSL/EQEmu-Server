@@ -288,8 +288,11 @@ Mob::Mob(
 
 	feigned = false;
 
+	int max_procs = MAX_PROCS;
+	m_max_procs = std::min(RuleI(Combat, MaxProcs), max_procs);
+
 	// clear the proc arrays
-	for (int j = 0; j < MAX_PROCS; j++) {
+	for (int j = 0; j < m_max_procs; j++) {
 		PermaProcs[j].spellID             = SPELL_UNKNOWN;
 		PermaProcs[j].chance              = 0;
 		PermaProcs[j].base_spellID        = SPELL_UNKNOWN;
@@ -511,6 +514,8 @@ Mob::Mob(
 	SetCanOpenDoors(true);
 
 	is_boat = IsBoat();
+
+	current_alliance_faction = -1;
 }
 
 Mob::~Mob()
@@ -593,42 +598,49 @@ void Mob::CalcSeeInvisibleLevel()
 	see_invis = std::max({ spellbonuses.SeeInvis, itembonuses.SeeInvis, aabonuses.SeeInvis, innate_see_invis });
 }
 
-void Mob::CalcInvisibleLevel()
-{
-	bool is_invisible = invisible;
+bool Mob::HasAnInvisibilityEffect() {
+	return invisible || hidden || improved_hidden || invisible_animals || invisible_undead;
+}
 
-	invisible = std::max({ spellbonuses.invisibility, nobuff_invisible });
-	invisible_undead = spellbonuses.invisibility_verse_undead;
-	invisible_animals = spellbonuses.invisibility_verse_animal;
-
-	if (!is_invisible && invisible) {
-		SetInvisible(Invisibility::Invisible, true);
-		return;
-	}
-
-	if (is_invisible && !invisible) {
-		SetInvisible(invisible, true);
-		return;
+void Mob::BreakCharmPetIfConditionsMet() {
+	auto pet = GetPet();
+	if (pet && pet->GetPetType() == petCharmed && HasAnInvisibilityEffect()) {
+		if (RuleB(Pets, LivelikeBreakCharmOnInvis) || IsInvisible(pet)) {
+			pet->BuffFadeByEffect(SE_Charm);
+		}
+		LogRules(
+			"Pets:LivelikeBreakCharmOnInvis for [{}] invisible [{}] hidden [{}] improved_hidden (shroud of stealth) [{}] invisible_animals [{}] invisible_undead [{}]",
+			GetCleanName(),
+			invisible,
+			hidden,
+			improved_hidden,
+			invisible_animals,
+			invisible_undead
+		);
 	}
 }
 
-void Mob::SetInvisible(uint8 state, bool set_on_bonus_calc)
+void Mob::CalcInvisibleLevel()
 {
-	/*
-		If you set an NPC to invisible you will only be able to see it on
-		your client if your see invisible level is greater than equal to the invisible level.
-		Note, the clients spell file must match the servers see invisible level on the spell.
-	*/
+	bool was_invisible = invisible;
 
+	invisible         = std::max({spellbonuses.invisibility, nobuff_invisible});
+	invisible_undead  = spellbonuses.invisibility_verse_undead;
+	invisible_animals = spellbonuses.invisibility_verse_animal;
+
+	if (was_invisible != invisible) {
+		SetInvisible(invisible, true);
+		return;
+	}
+
+	BreakCharmPetIfConditionsMet();
+}
+
+void Mob::SetInvisible(uint8 state, bool set_on_bonus_calc) {
 	if (state == Invisibility::Visible) {
 		SendAppearancePacket(AT_Invis, Invisibility::Visible);
 		ZeroInvisibleVars(InvisType::T_INVISIBLE);
-	}
-	else {
-		/*
-			if your setting invisible from a script, or escape/fading memories effect then
-			we use the internal invis variable which allows invisible without a buff on mob.
-		*/
+	} else {
 		if (!set_on_bonus_calc) {
 			nobuff_invisible = state;
 			CalcInvisibleLevel();
@@ -636,14 +648,7 @@ void Mob::SetInvisible(uint8 state, bool set_on_bonus_calc)
 		SendAppearancePacket(AT_Invis, invisible);
 	}
 
-	// Invis and hide breaks charms
-	auto pet = GetPet();
-	if (pet && pet->GetPetType() == petCharmed && (invisible || hidden || improved_hidden || invisible_animals || invisible_undead)) {
-		if (RuleB(Pets, LivelikeBreakCharmOnInvis) || IsInvisible(pet)) {
-			pet->BuffFadeByEffect(SE_Charm);
-		}
-		LogRules("Pets:LivelikeBreakCharmOnInvis for [{}] | Invis [{}] - Hidden [{}] - Shroud of Stealth [{}] - IVA [{}] - IVU [{}]", GetCleanName(), invisible, hidden, improved_hidden, invisible_animals, invisible_undead);
-	}
+	BreakCharmPetIfConditionsMet();
 }
 
 void Mob::ZeroInvisibleVars(uint8 invisible_type)
@@ -1793,15 +1798,12 @@ void Mob::SendStatsWindow(Client* c, bool use_window)
 		}
 
 		regen_string += DialogueWindow::TableRow(
-			fmt::format(
-				"{}{}{}{}{}{}",
-				DialogueWindow::TableCell(DialogueWindow::ColorMessage(regen_row_color, regen_row_header)),
-				DialogueWindow::TableCell(DialogueWindow::ColorMessage(regen_row_color, base_regen_field)),
-				DialogueWindow::TableCell(DialogueWindow::ColorMessage(regen_row_color, fmt::format("{} ({})", item_regen_field, cap_regen_field))),
-				DialogueWindow::TableCell(DialogueWindow::ColorMessage(regen_row_color, spell_regen_field)),
-				DialogueWindow::TableCell(DialogueWindow::ColorMessage(regen_row_color, aa_regen_field)),
-				DialogueWindow::TableCell(DialogueWindow::ColorMessage(regen_row_color, total_regen_field))
-			)
+			DialogueWindow::TableCell(DialogueWindow::ColorMessage(regen_row_color, regen_row_header)) +
+			DialogueWindow::TableCell(DialogueWindow::ColorMessage(regen_row_color, base_regen_field)) +
+			DialogueWindow::TableCell(DialogueWindow::ColorMessage(regen_row_color, fmt::format("{} ({})", item_regen_field, cap_regen_field))) +
+			DialogueWindow::TableCell(DialogueWindow::ColorMessage(regen_row_color, spell_regen_field)) +
+			DialogueWindow::TableCell(DialogueWindow::ColorMessage(regen_row_color, aa_regen_field)) +
+			DialogueWindow::TableCell(DialogueWindow::ColorMessage(regen_row_color, total_regen_field))
 		);
 	}
 
@@ -1907,23 +1909,20 @@ void Mob::SendStatsWindow(Client* c, bool use_window)
 		}
 
 		stat_table += DialogueWindow::TableRow(
-			fmt::format(
-				"{}{}{}{}",
-				DialogueWindow::TableCell(a_stat_name),
-				DialogueWindow::TableCell(
-					fmt::format(
-						"{} {}",
-						a_stat,
-						DialogueWindow::ColorMessage(heroic_color, fmt::format("+{}", h_stat))
-					)
-				),
-				DialogueWindow::TableCell(a_resist_name),
-				DialogueWindow::TableCell(
-					fmt::format(
-						"{} {}",
-						a_resist,
-						DialogueWindow::ColorMessage(heroic_color, fmt::format("+{}", h_resist_field))
-					)
+			DialogueWindow::TableCell(a_stat_name) +
+			DialogueWindow::TableCell(
+				fmt::format(
+					"{} {}",
+					a_stat,
+					DialogueWindow::ColorMessage(heroic_color, fmt::format("+{}", h_stat))
+				)
+			) +
+			DialogueWindow::TableCell(a_resist_name) +
+			DialogueWindow::TableCell(
+				fmt::format(
+					"{} {}",
+					a_resist,
+					DialogueWindow::ColorMessage(heroic_color, fmt::format("+{}", h_resist_field))
 				)
 			)
 		);
@@ -2026,23 +2025,20 @@ void Mob::SendStatsWindow(Client* c, bool use_window)
 		}
 
 		mod2_table += DialogueWindow::TableRow(
-			fmt::format(
-				"{}{}",
-				DialogueWindow::TableCell(
-					fmt::format(
-						"{}: {} / {}",
-						mod2a_name,
-						Strings::Commify(mod2a),
-						Strings::Commify(mod2a_cap)
-					)
-				),
-				DialogueWindow::TableCell(
-					fmt::format(
-						"{}: {} / {}",
-						mod2b_name,
-						Strings::Commify(mod2b),
-						Strings::Commify(mod2b_cap)
-					)
+			DialogueWindow::TableCell(
+				fmt::format(
+					"{}: {} / {}",
+					mod2a_name,
+					Strings::Commify(mod2a),
+					Strings::Commify(mod2a_cap)
+				)
+			) +
+			DialogueWindow::TableCell(
+				fmt::format(
+					"{}: {} / {}",
+					mod2b_name,
+					Strings::Commify(mod2b),
+					Strings::Commify(mod2b_cap)
 				)
 			)
 		);
@@ -2114,7 +2110,7 @@ void Mob::SendStatsWindow(Client* c, bool use_window)
 				"{}: {}{}{}",
 				!faction_name.empty() ? faction_name : "Unknown Faction",
 				sign,
-				Strings::Commify(f.second),
+				f.second,
 				DialogueWindow::Break(1)
 			);
 		}
@@ -2208,12 +2204,9 @@ void Mob::SendStatsWindow(Client* c, bool use_window)
 	// Class, Level, and Race
 	final_string += DialogueWindow::Table(
 		DialogueWindow::TableRow(
-			fmt::format(
-				"{}{}{}",
-				DialogueWindow::TableCell(fmt::format("Race: {}", GetPlayerRaceAbbreviation(GetBaseRace()))),
-				DialogueWindow::TableCell(fmt::format("Class: {}", GetPlayerClassAbbreviation(GetClass()))),
-				DialogueWindow::TableCell(fmt::format("Level: {}", std::to_string(GetLevel())))
-			)
+			DialogueWindow::TableCell(fmt::format("Race: {}", GetPlayerRaceAbbreviation(GetBaseRace()))) +
+			DialogueWindow::TableCell(fmt::format("Class: {}", GetPlayerClassAbbreviation(GetClass()))) +
+			DialogueWindow::TableCell(fmt::format("Level: {}", std::to_string(GetLevel())))
 		)
 	);
 
@@ -2221,15 +2214,12 @@ void Mob::SendStatsWindow(Client* c, bool use_window)
 	if (rune_number || magic_rune_number) {
 		final_string += DialogueWindow::Table(
 			DialogueWindow::TableRow(
-				fmt::format(
-					"{}{}{}",
-					DialogueWindow::TableCell(
-						fmt::format("Rune: {}", rune_number)
-					),
-					DialogueWindow::TableCell(""),
-					DialogueWindow::TableCell(
-						fmt::format("Spell Rune: {}", magic_rune_number)
-					)
+				DialogueWindow::TableCell(
+					fmt::format("Rune: {}", rune_number)
+				) +
+				DialogueWindow::TableCell("") +
+				DialogueWindow::TableCell(
+					fmt::format("Spell Rune: {}", magic_rune_number)
 				)
 			)
 		);
@@ -2313,21 +2303,21 @@ void Mob::SendStatsWindow(Client* c, bool use_window)
 		fmt::format(
 			"{}{}",
 			DialogueWindow::TableRow(
-				fmt::format(
-					"{}{}{}{}",
-					DialogueWindow::TableCell("Item"),
-					DialogueWindow::TableCell("Spell"),
-					DialogueWindow::TableCell("Over"),
-					DialogueWindow::TableCell("Total (Cap)")
-				)
+				DialogueWindow::TableCell("Item") +
+				DialogueWindow::TableCell("Spell") +
+				DialogueWindow::TableCell("Over") +
+				DialogueWindow::TableCell("Total (Cap)")
 			),
 			DialogueWindow::TableRow(
-				fmt::format(
-					"{}{}{}{}",
-					DialogueWindow::TableCell(Strings::Commify(itembonuses.haste)),
-					DialogueWindow::TableCell(Strings::Commify(spellbonuses.haste + spellbonuses.hastetype2)),
-					DialogueWindow::TableCell(Strings::Commify(spellbonuses.hastetype3 + ExtraHaste)),
-					DialogueWindow::TableCell(fmt::format("{} ({})", Strings::Commify(GetHaste()), Strings::Commify(RuleI(Character, HasteCap))))
+				DialogueWindow::TableCell(Strings::Commify(itembonuses.haste)) +
+				DialogueWindow::TableCell(Strings::Commify(spellbonuses.haste + spellbonuses.hastetype2)) +
+				DialogueWindow::TableCell(Strings::Commify(spellbonuses.hastetype3 + ExtraHaste)) +
+				DialogueWindow::TableCell(
+					fmt::format(
+						"{} ({})",
+						Strings::Commify(GetHaste()),
+						Strings::Commify(RuleI(Character, HasteCap))
+					)
 				)
 			)
 		)
@@ -2339,21 +2329,15 @@ void Mob::SendStatsWindow(Client* c, bool use_window)
 	final_string += DialogueWindow::CenterMessage("Regen");
 
 	const auto& regen_table = DialogueWindow::Table(
-		fmt::format(
-			"{}{}",
-			DialogueWindow::TableRow(
-				fmt::format(
-					"{}{}{}{}{}{}",
-					DialogueWindow::TableCell("Type"),
-					DialogueWindow::TableCell("Base"),
-					DialogueWindow::TableCell("Items (Cap)"),
-					DialogueWindow::TableCell("Spell"),
-					DialogueWindow::TableCell("AAs"),
-					DialogueWindow::TableCell("Total")
-				)
-			),
-			regen_string
-		)
+		DialogueWindow::TableRow(
+			DialogueWindow::TableCell("Type") +
+			DialogueWindow::TableCell("Base") +
+			DialogueWindow::TableCell("Items (Cap)") +
+			DialogueWindow::TableCell("Spell") +
+			DialogueWindow::TableCell("AAs") +
+			DialogueWindow::TableCell("Total")
+		) +
+		regen_string
 	);
 
 	// Regen
@@ -3481,10 +3465,10 @@ void Mob::ShowBuffs(Client* c) {
 	);
 
 	for (auto i = 0; i < GetMaxTotalSlots(); i++) {
-		const auto spell_id              = buffs[i].spellid;
-		const auto buff_duration_formula = spells[spell_id].buff_duration_formula;
+		const auto spell_id = buffs[i].spellid;
 		if (IsValidSpell(spell_id)) {
-			const auto is_permanent = (
+			const auto buff_duration_formula = spells[spell_id].buff_duration_formula;
+			const auto is_permanent          = (
 				buff_duration_formula == DF_Aura ||
 				buff_duration_formula == DF_Permanent
 			);
@@ -3496,7 +3480,7 @@ void Mob::ShowBuffs(Client* c) {
 					"{}{}{}{}{}",
 					DialogueWindow::TableCell(std::to_string(i)),
 					DialogueWindow::TableCell(GetSpellName(spell_id)),
-					DialogueWindow::TableCell(Strings::Commify(spell_id)),
+					DialogueWindow::TableCell(std::to_string(spell_id)),
 					DialogueWindow::TableCell(is_permanent ? "Permanent" : time),
 					DialogueWindow::TableCell(std::to_string(buffs[i].hit_number))
 				)
@@ -3539,135 +3523,107 @@ void Mob::GMMove(const glm::vec4 &position) {
 	}
 }
 
-void Mob::SendIllusionPacket(
-	uint16 in_race,
-	uint8 in_gender,
-	uint8 in_texture,
-	uint8 in_helmtexture,
-	uint8 in_haircolor,
-	uint8 in_beardcolor,
-	uint8 in_eyecolor1,
-	uint8 in_eyecolor2,
-	uint8 in_hairstyle,
-	uint8 in_luclinface,
-	uint8 in_beard,
-	uint8 in_aa_title,
-	uint32 in_drakkin_heritage,
-	uint32 in_drakkin_tattoo,
-	uint32 in_drakkin_details,
-	float in_size,
-	bool send_appearance_effects,
-	Client* target
-)
+void Mob::SendIllusionPacket(const AppearanceStruct& a)
 {
-	uint8  new_texture     = in_texture;
-	uint8  new_helmtexture = in_helmtexture;
-	uint8  new_haircolor;
-	uint8  new_beardcolor;
-	uint8  new_eyecolor1;
-	uint8  new_eyecolor2;
-	uint8  new_hairstyle;
-	uint8  new_luclinface;
-	uint8  new_beard;
-	uint8  new_aa_title;
-	uint32 new_drakkin_heritage;
-	uint32 new_drakkin_tattoo;
-	uint32 new_drakkin_details;
+	uint16 new_race = (
+		a.race_id != RACE_DOUG_0 ?
+		a.race_id :
+		(use_model ? use_model : GetBaseRace())
+	);
 
-	race = in_race;
-	if (race == 0) {
-		race = use_model ? use_model : GetBaseRace();
-	}
+	uint8 new_gender = (
+		a.gender_id != UINT8_MAX ?
+		a.gender_id :
+		(a.race_id ? GetDefaultGender(a.race_id, a.gender_id) : GetBaseGender())
+	);
 
-	if (in_gender != 0xFF) {
-		gender = in_gender;
-	}
-	else {
-		gender = in_race ? GetDefaultGender(race, gender) : GetBaseGender();
-	}
+	float new_size = a.size <= 0.0f ? GetRaceGenderDefaultHeight(race, gender) : a.size;
 
-	if (in_texture == 0xFF && !IsPlayerRace(race)) {
-		new_texture = GetTexture();
-	}
+	uint8 new_texture        = a.texture == UINT8_MAX && !IsPlayerRace(a.race_id) ? GetTexture() : a.texture;
+	uint8 new_helmet_texture = a.helmet_texture == UINT8_MAX && !IsPlayerRace(race) ? GetHelmTexture() : a.helmet_texture;
 
-	if (in_helmtexture == 0xFF && !IsPlayerRace(race)) {
-		new_helmtexture = GetHelmTexture();
-	}
+	uint8 new_hair       = a.hair == UINT8_MAX ? GetHairStyle() : a.hair;
+	uint8 new_hair_color = a.hair_color == UINT8_MAX ? GetHairColor() : a.hair_color;
 
-	new_haircolor        = (in_haircolor == 0xFF) ? GetHairColor() : in_haircolor;
-	new_beardcolor       = (in_beardcolor == 0xFF) ? GetBeardColor() : in_beardcolor;
-	new_eyecolor1        = (in_eyecolor1 == 0xFF) ? GetEyeColor1() : in_eyecolor1;
-	new_eyecolor2        = (in_eyecolor2 == 0xFF) ? GetEyeColor2() : in_eyecolor2;
-	new_hairstyle        = (in_hairstyle == 0xFF) ? GetHairStyle() : in_hairstyle;
-	new_luclinface       = (in_luclinface == 0xFF) ? GetLuclinFace() : in_luclinface;
-	new_beard            = (in_beard == 0xFF) ? GetBeard() : in_beard;
-	new_drakkin_heritage = (in_drakkin_heritage == 0xFFFFFFFF) ? GetDrakkinHeritage() : in_drakkin_heritage;
-	new_drakkin_tattoo   = (in_drakkin_tattoo == 0xFFFFFFFF) ? GetDrakkinTattoo() : in_drakkin_tattoo;
-	new_drakkin_details  = (in_drakkin_details == 0xFFFFFFFF) ? GetDrakkinDetails() : in_drakkin_details;
-	new_aa_title         = in_aa_title;
+	uint8 new_beard       = a.beard == UINT8_MAX ? GetBeard() : a.beard;
+	uint8 new_beard_color = a.beard_color == UINT8_MAX ? GetBeardColor() : a.beard_color;
+
+	uint8 new_eye_color_one = a.eye_color_one == UINT8_MAX ? GetEyeColor1() : a.eye_color_one;
+	uint8 new_eye_color_two = a.eye_color_two == UINT8_MAX ? GetEyeColor2() : a.eye_color_two;
+
+	uint8 new_face = a.face == UINT8_MAX ? GetLuclinFace() : a.face;
+
+	uint32 new_drakkin_details  = a.drakkin_details == UINT32_MAX ? GetDrakkinDetails() : a.drakkin_details;
+	uint32 new_drakkin_heritage = a.drakkin_heritage == UINT32_MAX ? GetDrakkinHeritage() : a.drakkin_heritage;
+	uint32 new_drakkin_tattoo   = a.drakkin_tattoo == UINT32_MAX ? GetDrakkinTattoo() : a.drakkin_tattoo;
 
 	// Reset features to Base from the Player Profile
-	if (IsClient() && in_race == 0) {
-		race                 = CastToClient()->GetBaseRace();
-		gender               = CastToClient()->GetBaseGender();
-		new_texture          = texture          = 0xFF;
-		new_helmtexture      = helmtexture      = 0xFF;
-		new_haircolor        = haircolor        = CastToClient()->GetBaseHairColor();
-		new_beardcolor       = beardcolor       = CastToClient()->GetBaseBeardColor();
-		new_eyecolor1        = eyecolor1        = CastToClient()->GetBaseEyeColor();
-		new_eyecolor2        = eyecolor2        = CastToClient()->GetBaseEyeColor();
-		new_hairstyle        = hairstyle        = CastToClient()->GetBaseHairStyle();
-		new_luclinface       = luclinface       = CastToClient()->GetBaseFace();
-		new_beard            = beard            = CastToClient()->GetBaseBeard();
-		new_aa_title         = aa_title         = 0xFF;
-		new_drakkin_heritage = drakkin_heritage = CastToClient()->GetBaseHeritage();
-		new_drakkin_tattoo   = drakkin_tattoo   = CastToClient()->GetBaseTattoo();
-		new_drakkin_details  = drakkin_details  = CastToClient()->GetBaseDetails();
+	if (IsClient() && a.race_id == RACE_DOUG_0) {
+		new_beard            = CastToClient()->GetBaseBeard();
+		new_beard_color      = CastToClient()->GetBaseBeardColor();
+		new_drakkin_details  = CastToClient()->GetBaseDetails();
+		new_drakkin_heritage = CastToClient()->GetBaseHeritage();
+		new_drakkin_tattoo   = CastToClient()->GetBaseTattoo();
+		new_eye_color_one    = CastToClient()->GetBaseEyeColor();
+		new_eye_color_two    = CastToClient()->GetBaseEyeColor();
+		new_face             = CastToClient()->GetBaseFace();
+		new_gender           = CastToClient()->GetBaseGender();
+		new_helmet_texture   = UINT8_MAX;
+		new_hair             = CastToClient()->GetBaseHairStyle();
+		new_hair_color       = CastToClient()->GetBaseHairColor();
+		new_race             = CastToClient()->GetBaseRace();
+		new_size             = CastToClient()->GetSize();
+		new_texture          = UINT8_MAX;
 	}
 
-	// update internal values for mob
-	size             = (in_size <= 0.0f) ? GetRaceGenderDefaultHeight(race, gender) : in_size;
-	if (new_texture != 0xFF) {
-		texture          = new_texture;
-	}
-	if (new_helmtexture != 0xFF) {
-		helmtexture      = new_helmtexture;
-	}
-	haircolor        = new_haircolor;
-	beardcolor       = new_beardcolor;
-	eyecolor1        = new_eyecolor1;
-	eyecolor2        = new_eyecolor2;
-	hairstyle        = new_hairstyle;
-	luclinface       = new_luclinface;
 	beard            = new_beard;
+	beardcolor       = new_beard_color;
 	drakkin_heritage = new_drakkin_heritage;
 	drakkin_tattoo   = new_drakkin_tattoo;
 	drakkin_details  = new_drakkin_details;
+	eyecolor1        = new_eye_color_one;
+	eyecolor2        = new_eye_color_two;
+	luclinface       = new_face;
+	gender           = new_gender;
+	hairstyle        = new_hair;
+	haircolor        = new_hair_color;
+	race             = new_race;
+	size             = new_size;
 
-	auto            outapp = new EQApplicationPacket(OP_Illusion, sizeof(Illusion_Struct));
-	Illusion_Struct *is    = (Illusion_Struct *) outapp->pBuffer;
+	// These two should not be modified in base data - it kills db texture
+	// when illusion is only for RandomizeFeatures...
+	if (new_helmet_texture != UINT8_MAX) {
+		helmtexture      = new_helmet_texture;
+	}
+	if (new_texture != UINT8_MAX) {
+		texture          = new_texture;
+	}
+
+	auto outapp = new EQApplicationPacket(OP_Illusion, sizeof(Illusion_Struct));
+	auto is     = (Illusion_Struct *) outapp->pBuffer;
+
 	is->spawnid = GetID();
-	strcpy(is->charname, GetCleanName());
-	is->race             = race;
-	is->gender           = gender;
-	is->texture          = new_texture;
-	is->helmtexture      = new_helmtexture;
-	is->haircolor        = new_haircolor;
-	is->beardcolor       = new_beardcolor;
+	strn0cpy(is->charname, GetCleanName(), sizeof(is->charname));
+	is->beardcolor       = new_beard_color;
 	is->beard            = new_beard;
-	is->eyecolor1        = new_eyecolor1;
-	is->eyecolor2        = new_eyecolor2;
-	is->hairstyle        = new_hairstyle;
-	is->face             = new_luclinface;
 	is->drakkin_heritage = new_drakkin_heritage;
 	is->drakkin_tattoo   = new_drakkin_tattoo;
 	is->drakkin_details  = new_drakkin_details;
-	is->size             = size;
+	is->eyecolor1        = new_eye_color_one;
+	is->eyecolor2        = new_eye_color_two;
+	is->face             = new_face;
+	is->gender           = new_gender;
+	is->hairstyle        = new_hair;
+	is->haircolor        = new_hair_color;
+	is->helmtexture      = new_helmet_texture;
+	is->race             = new_race;
+	is->size             = new_size;
+	is->texture          = new_texture;
 
-	if (!target) {
+	if (!a.target) {
 		entity_list.QueueClients(this, outapp);
 	} else {
-		target->QueuePacket(outapp, false);
+		a.target->QueuePacket(outapp, false);
 	}
 
 	safe_delete(outapp);
@@ -3675,7 +3631,7 @@ void Mob::SendIllusionPacket(
 	/* Refresh armor and tints after send illusion packet */
 	SendArmorAppearance();
 
-	if (send_appearance_effects) {
+	if (a.send_effects) {
 		SendSavedAppearenceEffects(nullptr);
 	}
 
@@ -3684,17 +3640,17 @@ void Mob::SendIllusionPacket(
 		race,
 		gender,
 		new_texture,
-		new_helmtexture,
-		new_haircolor,
-		new_beardcolor,
-		new_eyecolor1,
-		new_eyecolor2,
-		new_hairstyle,
-		new_luclinface,
+		new_helmet_texture,
+		new_hair_color,
+		new_beard_color,
+		new_eye_color_one,
+		new_eye_color_two,
+		new_hair,
+		new_face,
 		new_drakkin_heritage,
 		new_drakkin_tattoo,
 		new_drakkin_details,
-		size,
+		new_size,
 		target ? target->GetCleanName() : "No Target"
 	);
 }
@@ -3924,21 +3880,22 @@ bool Mob::RandomizeFeatures(bool send_illusion, bool set_variables)
 
 		if (send_illusion) {
 			SendIllusionPacket(
-				GetRace(),
-				current_gender,
-				new_texture,
-				new_helm_texture,
-				new_hair_color,
-				new_beard_color,
-				new_eye_color_one,
-				new_eye_color_two,
-				new_hair_style,
-				new_luclin_face,
-				new_beard,
-				0xFF,
-				new_drakkin_heritage,
-				new_drakkin_tattoo,
-				new_drakkin_details
+				AppearanceStruct{
+					.beard = new_beard,
+					.beard_color = new_beard_color,
+					.drakkin_details = new_drakkin_details,
+					.drakkin_heritage = new_drakkin_heritage,
+					.drakkin_tattoo = new_drakkin_tattoo,
+					.eye_color_one = new_eye_color_one,
+					.eye_color_two = new_eye_color_two,
+					.face = new_luclin_face,
+					.gender_id = current_gender,
+					.hair = new_hair_style,
+					.hair_color = new_hair_color,
+					.helmet_texture = new_helm_texture,
+					.race_id = GetRace(),
+					.texture = new_texture,
+				}
 			);
 		}
 
@@ -4932,16 +4889,14 @@ bool Mob::RemoveFromHateList(Mob* mob)
 	return bFound;
 }
 
-void Mob::WipeHateList()
-{
-	if(IsEngaged())
-	{
-		hate_list.WipeHateList();
-		AI_Event_NoLongerEngaged();
-	}
-	else
-	{
-		hate_list.WipeHateList();
+void Mob::WipeHateList(bool npc_only) {
+	if (IsEngaged()) {
+		hate_list.WipeHateList(npc_only);
+		if (hate_list.IsHateListEmpty()) {
+			AI_Event_NoLongerEngaged();
+		}
+	} else {
+		hate_list.WipeHateList(npc_only);
 	}
 }
 
@@ -5123,7 +5078,7 @@ const char *Mob::GetCleanName()
 	return clean_name;
 }
 
-std::string Mob::GetTargetDescription(Mob* target, uint8 description_type)
+std::string Mob::GetTargetDescription(Mob* target, uint8 description_type, uint16 entity_id_override)
 {
 	std::string self_return = "yourself";
 
@@ -5169,12 +5124,12 @@ std::string Mob::GetTargetDescription(Mob* target, uint8 description_type)
 	auto d = fmt::format(
 		"{}",
 		(
-			this == target ?
+			target && this == target ?
 			self_return :
 			fmt::format(
 				"{} ({})",
 				target->GetCleanName(),
-				target->GetID()
+				entity_id_override ? entity_id_override : target->GetID()
 			)
 		)
 	);
@@ -5361,7 +5316,7 @@ int Mob::GetHaste()
 		h += spellbonuses.hastetype2 > 10 ? 10 : spellbonuses.hastetype2;
 
 	// 26+ no cap, 1-25 10
-	if (level > 25) // 26+
+	if (level > 25 || (IsClient() && RuleB(Character, IgnoreLevelBasedHasteCaps))) // 26+
 		h += itembonuses.haste;
 	else // 1-25
 		h += itembonuses.haste > 10 ? 10 : itembonuses.haste;
@@ -5383,7 +5338,7 @@ int Mob::GetHaste()
 		h = cap;
 
 	// 51+ 25 (despite there being higher spells...), 1-50 10
-	if (level > 50) { // 51+
+	if (level > 50 || (IsClient() && RuleB(Character, IgnoreLevelBasedHasteCaps))) { // 51+
 		cap = RuleI(Character, Hastev3Cap);
 		if (spellbonuses.hastetype3 > cap) {
 			h += cap;
@@ -5445,6 +5400,14 @@ void Mob::SetTarget(Mob *mob)
 
 	if (IsClient() && GetTarget()) {
 		GetTarget()->SendHPUpdate(true);
+	}
+
+	if (IsOfClientBot()) {
+		Raid* r = GetRaid();
+		if (r) {
+			r->UpdateRaidXTargets();
+			r->SendRaidAssistTarget();
+		}
 	}
 }
 
@@ -7164,24 +7127,10 @@ int8 Mob::GetDecayEffectValue(uint16 spell_id, uint16 spelleffect) {
 	return effect_value;
 }
 
-// Faction Mods for Alliance type spells
+// Faction Mods for Alliance type spells (only 1 ever active)
 void Mob::AddFactionBonus(uint32 pFactionID,int32 bonus) {
-	std::map <uint32, int32> :: const_iterator faction_bonus;
-	typedef std::pair <uint32, int32> NewFactionBonus;
-
-	faction_bonus = faction_bonuses.find(pFactionID);
-	if(faction_bonus == faction_bonuses.end())
-	{
-		faction_bonuses.emplace(NewFactionBonus(pFactionID,bonus));
-	}
-	else
-	{
-		if(faction_bonus->second<bonus)
-		{
-			faction_bonuses.erase(pFactionID);
-			faction_bonuses.emplace(NewFactionBonus(pFactionID,bonus));
-		}
-	}
+	current_alliance_faction = pFactionID;
+	current_alliance_mod = bonus;
 }
 
 // Faction Mods from items
@@ -7205,11 +7154,9 @@ void Mob::AddItemFactionBonus(uint32 pFactionID,int32 bonus) {
 }
 
 int32 Mob::GetFactionBonus(uint32 pFactionID) {
-	std::map <uint32, int32> :: const_iterator faction_bonus;
-	faction_bonus = faction_bonuses.find(pFactionID);
-	if(faction_bonus != faction_bonuses.end())
+	if(current_alliance_faction == pFactionID)
 	{
-		return (*faction_bonus).second;
+		return current_alliance_mod;
 	}
 	return 0;
 }
@@ -8062,54 +8009,63 @@ void Mob::SetCanOpenDoors(bool can_open)
 	m_can_open_doors = can_open;
 }
 
-void Mob::DeleteBucket(std::string bucket_name) {
-	std::string full_bucket_name = fmt::format("{}-{}", GetBucketKey(), bucket_name);
-	DataBucket::DeleteData(full_bucket_name);
+void Mob::DeleteBucket(std::string bucket_name)
+{
+	DataBucketKey k = GetScopedBucketKeys();
+	k.key = bucket_name;
+
+	DataBucket::DeleteData(k);
 }
 
-std::string Mob::GetBucket(std::string bucket_name) {
-	std::string full_bucket_name = fmt::format("{}-{}", GetBucketKey(), bucket_name);
-	std::string bucket_value = DataBucket::GetData(full_bucket_name);
-	if (!bucket_value.empty()) {
-		return bucket_value;
+std::string Mob::GetBucket(std::string bucket_name)
+{
+	DataBucketKey k = GetScopedBucketKeys();
+	k.key = bucket_name;
+
+	auto b = DataBucket::GetData(k);
+	if (!b.value.empty()) {
+		return b.value;
 	}
-	return std::string();
+	return {};
 }
 
-std::string Mob::GetBucketExpires(std::string bucket_name) {
-	std::string full_bucket_name = fmt::format("{}-{}", GetBucketKey(), bucket_name);
-	std::string bucket_expiration = DataBucket::GetDataExpires(full_bucket_name);
+std::string Mob::GetBucketExpires(std::string bucket_name)
+{
+	DataBucketKey k = GetScopedBucketKeys();
+	k.key = bucket_name;
+
+	std::string bucket_expiration = DataBucket::GetDataExpires(k);
 	if (!bucket_expiration.empty()) {
 		return bucket_expiration;
 	}
-	return std::string();
+
+	return {};
 }
 
-std::string Mob::GetBucketKey() {
-	if (IsClient()) {
-		return fmt::format("character-{}", CastToClient()->CharacterID());
-	} else if (IsNPC()) {
-		return fmt::format("npc-{}", GetNPCTypeID());
-	} else if (IsBot()) {
-		return fmt::format("bot-{}", CastToBot()->GetBotID());
-	}
-	return std::string();
-}
+std::string Mob::GetBucketRemaining(std::string bucket_name)
+{
+	DataBucketKey k = GetScopedBucketKeys();
+	k.key = bucket_name;
 
-std::string Mob::GetBucketRemaining(std::string bucket_name) {
-	std::string full_bucket_name = fmt::format("{}-{}", GetBucketKey(), bucket_name);
-	std::string bucket_remaining = DataBucket::GetDataRemaining(full_bucket_name);
+	std::string bucket_remaining = DataBucket::GetDataRemaining(k);
 	if (!bucket_remaining.empty() && Strings::ToInt(bucket_remaining) > 0) {
 		return bucket_remaining;
-	} else if (Strings::ToInt(bucket_remaining) == 0) {
+	}
+	else if (Strings::ToInt(bucket_remaining) == 0) {
 		return "0";
 	}
-	return std::string();
+
+	return {};
 }
 
-void Mob::SetBucket(std::string bucket_name, std::string bucket_value, std::string expiration) {
-	std::string full_bucket_name = fmt::format("{}-{}", GetBucketKey(), bucket_name);
-	DataBucket::SetData(full_bucket_name, bucket_value, expiration);
+void Mob::SetBucket(std::string bucket_name, std::string bucket_value, std::string expiration)
+{
+	DataBucketKey k = GetScopedBucketKeys();
+	k.key     = bucket_name;
+	k.expires = expiration;
+	k.value   = bucket_value;
+
+	DataBucket::SetData(k);
 }
 
 std::string Mob::GetMobDescription()
@@ -8157,21 +8113,23 @@ void Mob::CloneAppearance(Mob* other, bool clone_name)
 	}
 
 	SendIllusionPacket(
-		other->GetRace(),
-		other->GetGender(),
-		other->GetTexture(),
-		other->GetHelmTexture(),
-		other->GetHairColor(),
-		other->GetBeardColor(),
-		other->GetEyeColor1(),
-		other->GetEyeColor2(),
-		other->GetHairStyle(),
-		other->GetBeard(),
-		0xFF,
-		other->GetRace() == DRAKKIN ? other->GetDrakkinHeritage() : 0xFFFFFFFF,
-		other->GetRace() == DRAKKIN ? other->GetDrakkinTattoo() : 0xFFFFFFFF,
-		other->GetRace() == DRAKKIN ? other->GetDrakkinDetails() : 0xFFFFFFFF,
-		other->GetSize()
+		AppearanceStruct{
+			.beard = other->GetBeard(),
+			.beard_color = other->GetBeardColor(),
+			.drakkin_details = other->GetDrakkinDetails(),
+			.drakkin_heritage = other->GetDrakkinHeritage(),
+			.drakkin_tattoo = other->GetDrakkinTattoo(),
+			.eye_color_one = other->GetEyeColor1(),
+			.eye_color_two = other->GetEyeColor2(),
+			.face = other->GetLuclinFace(),
+			.gender_id = other->GetGender(),
+			.hair = other->GetHairStyle(),
+			.hair_color = other->GetHairColor(),
+			.helmet_texture = other->GetHelmTexture(),
+			.race_id = other->GetRace(),
+			.size = other->GetSize(),
+			.texture = other->GetTexture(),
+		}
 	);
 
 	for (
@@ -8340,5 +8298,77 @@ std::string Mob::GetClassPlural()
 			return "Berserkers";
 		default:
 			return "Classes";
+	}
+}
+
+DataBucketKey Mob::GetScopedBucketKeys()
+{
+	DataBucketKey k = {};
+	if (IsClient()) {
+		k.character_id = CastToClient()->CharacterID();
+	} else if (IsNPC()) {
+		k.npc_id = GetNPCTypeID();
+	} else if (IsBot()) {
+		k.bot_id = CastToBot()->GetBotID();
+	}
+
+	return k;
+}
+
+uint32 Mob::GetMobTypeIdentifier()
+{
+	if (IsClient()) {
+		return CastToClient()->CharacterID();
+	} else if (IsNPC()) {
+		return GetNPCTypeID();
+	} else if (IsBot()) {
+		return CastToBot()->GetBotID();
+	}
+
+	return 0;
+}
+
+void Mob::HandleDoorOpen()
+{
+	for (auto e : entity_list.GetDoorsList()) {
+		Doors *d = e.second;
+		if (d->GetKeyItem()) {
+			continue;
+		}
+		if (d->GetLockpick()) {
+			continue;
+		}
+		if (d->IsDoorOpen()) {
+			continue;
+		}
+		if (d->IsDoorBlacklisted()) {
+			continue;
+		}
+
+		// If the door is a trigger door, check if the trigger door is open
+		if (d->GetTriggerDoorID() > 0) {
+			auto td = entity_list.GetDoorsByDoorID(d->GetTriggerDoorID());
+			if (td) {
+				if (Strings::RemoveNumbers(d->GetDoorName()) != Strings::RemoveNumbers(td->GetDoorName())) {
+					continue;
+				}
+			}
+		}
+
+		if (d->GetDoorParam() > 0) {
+			continue;
+		}
+
+		float distance                = DistanceSquared(m_Position, d->GetPosition());
+		float distance_scan_door_open = 20;
+
+		if (distance <= (distance_scan_door_open * distance_scan_door_open)) {
+			// Make sure we're opening a door within height relevance and not platforms above or below us
+			if (std::abs(m_Position.z - d->GetPosition().z) > 10) {
+				continue;
+			}
+
+			d->ForceOpen(this);
+		}
 	}
 }

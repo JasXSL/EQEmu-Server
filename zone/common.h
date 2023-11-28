@@ -207,6 +207,8 @@ enum {
 	MODIFY_AVOID_DAMAGE = 51,                    //Modify by percent the NPCs chance to riposte, block, parry or dodge individually, or for all skills
 	IMMUNE_FADING_MEMORIES = 52,
 	IMMUNE_OPEN = 53,
+	IMMUNE_ASSASSINATE = 54,
+	IMMUNE_HEADSHOT = 55,
 	MAX_SPECIAL_ATTACK
 };
 
@@ -891,7 +893,7 @@ struct ExtraAttackOptions {
 	int hit_chance;
 	int melee_damage_bonus_flat;
 	int skilldmgtaken_bonus_flat;
-
+	int range_percent;
 };
 
 struct DamageTable {

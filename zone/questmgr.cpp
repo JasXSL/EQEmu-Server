@@ -359,22 +359,25 @@ Mob *QuestManager::spawn_from_spawn2(uint32 spawn2_id)
 
 void QuestManager::enable_spawn2(uint32 spawn2_id)
 {
-	database.UpdateSpawn2Status(spawn2_id, 1);
+	database.UpdateSpawn2Status(spawn2_id, 1, zone->GetInstanceID());
 	auto pack = new ServerPacket(ServerOP_SpawnStatusChange, sizeof(ServerSpawnStatusChange_Struct));
-	ServerSpawnStatusChange_Struct* ssc = (ServerSpawnStatusChange_Struct*) pack->pBuffer;
-	ssc->id = spawn2_id;
-	ssc->new_status = 1;
+	auto *ssc = (ServerSpawnStatusChange_Struct *) pack->pBuffer;
+	ssc->id          = spawn2_id;
+	ssc->new_status  = true;
+	ssc->instance_id = zone->GetInstanceID();
 	worldserver.SendPacket(pack);
 	safe_delete(pack);
 }
 
 void QuestManager::disable_spawn2(uint32 spawn2_id)
 {
-	database.UpdateSpawn2Status(spawn2_id, 0);
+	database.UpdateSpawn2Status(spawn2_id, 0, zone->GetInstanceID());
 	auto pack = new ServerPacket(ServerOP_SpawnStatusChange, sizeof(ServerSpawnStatusChange_Struct));
-	ServerSpawnStatusChange_Struct* ssc = (ServerSpawnStatusChange_Struct*) pack->pBuffer;
-	ssc->id = spawn2_id;
-	ssc->new_status = 0;
+	auto *ssc = (ServerSpawnStatusChange_Struct *) pack->pBuffer;
+	ssc->id          = spawn2_id;
+	ssc->new_status  = false;
+	ssc->instance_id = zone->GetInstanceID();
+
 	worldserver.SendPacket(pack);
 	safe_delete(pack);
 }
@@ -2187,7 +2190,7 @@ bool QuestManager::isdooropen(uint32 doorid) {
 	return false;
 }
 
-void QuestManager::npcrace(int race_id)
+void QuestManager::npcrace(uint16 race_id)
 {
 	QuestManagerCurrentQuestVars();
 
@@ -2195,10 +2198,14 @@ void QuestManager::npcrace(int race_id)
 		return;
 	}
 
-	owner->SendIllusionPacket(race_id);
+	owner->SendIllusionPacket(
+		AppearanceStruct{
+			.race_id = race_id,
+		}
+	);
 }
 
-void QuestManager::npcgender(int gender_id)
+void QuestManager::npcgender(uint8 gender_id)
 {
 	QuestManagerCurrentQuestVars();
 
@@ -2206,10 +2213,15 @@ void QuestManager::npcgender(int gender_id)
 		return;
 	}
 
-	owner->SendIllusionPacket(owner->GetRace(), gender_id);
+	owner->SendIllusionPacket(
+		AppearanceStruct{
+			.gender_id = gender_id,
+			.race_id = owner->GetRace(),
+		}
+	);
 }
 
-void QuestManager::npcsize(int newsize)
+void QuestManager::npcsize(float size)
 {
 	QuestManagerCurrentQuestVars();
 
@@ -2217,10 +2229,10 @@ void QuestManager::npcsize(int newsize)
 		return;
 	}
 
-	owner->ChangeSize(newsize, true);
+	owner->ChangeSize(size, true);
 }
 
-void QuestManager::npctexture(int newtexture)
+void QuestManager::npctexture(uint8 texture)
 {
 	QuestManagerCurrentQuestVars();
 
@@ -2228,10 +2240,15 @@ void QuestManager::npctexture(int newtexture)
 		return;
 	}
 
-	owner->SendIllusionPacket(owner->GetRace(), 0xFF, newtexture);
+	owner->SendIllusionPacket(
+		AppearanceStruct{
+			.race_id = owner->GetRace(),
+			.texture = texture,
+		}
+	);
 }
 
-void QuestManager::playerrace(int race_id)
+void QuestManager::playerrace(uint16 race_id)
 {
 	QuestManagerCurrentQuestVars();
 
@@ -2239,10 +2256,14 @@ void QuestManager::playerrace(int race_id)
 		return;
 	}
 
-	initiator->SendIllusionPacket(race_id);
+	initiator->SendIllusionPacket(
+		AppearanceStruct{
+			.race_id = race_id,
+		}
+	);
 }
 
-void QuestManager::playergender(int gender_id)
+void QuestManager::playergender(uint8 gender_id)
 {
 	QuestManagerCurrentQuestVars();
 
@@ -2250,10 +2271,15 @@ void QuestManager::playergender(int gender_id)
 		return;
 	}
 
-	initiator->SendIllusionPacket(initiator->GetRace(), gender_id);
+	initiator->SendIllusionPacket(
+		AppearanceStruct{
+			.gender_id = gender_id,
+			.race_id = initiator->GetRace(),
+		}
+	);
 }
 
-void QuestManager::playersize(int newsize)
+void QuestManager::playersize(float size)
 {
 	QuestManagerCurrentQuestVars();
 
@@ -2261,10 +2287,10 @@ void QuestManager::playersize(int newsize)
 		return;
 	}
 
-	initiator->ChangeSize(newsize, true);
+	initiator->ChangeSize(size, true);
 }
 
-void QuestManager::playertexture(int newtexture)
+void QuestManager::playertexture(uint8 texture)
 {
 	QuestManagerCurrentQuestVars();
 
@@ -2272,7 +2298,12 @@ void QuestManager::playertexture(int newtexture)
 		return;
 	}
 
-	initiator->SendIllusionPacket(initiator->GetRace(), 0xFF, newtexture);
+	initiator->SendIllusionPacket(
+		AppearanceStruct{
+			.race_id = initiator->GetRace(),
+			.texture = texture,
+		}
+	);
 }
 
 void QuestManager::playerfeature(const char* feature, int setting)
@@ -2334,22 +2365,23 @@ void QuestManager::playerfeature(const char* feature, int setting)
 	}
 
 	initiator->SendIllusionPacket(
-		Race,
-		Gender,
-		Texture,
-		HelmTexture,
-		HairColor,
-		BeardColor,
-		EyeColor1,
-		EyeColor2,
-		HairStyle,
-		LuclinFace,
-		Beard,
-		0xFF,
-		DrakkinHeritage,
-		DrakkinTattoo,
-		DrakkinDetails,
-		Size
+		AppearanceStruct{
+			.beard = Beard,
+			.beard_color = BeardColor,
+			.drakkin_details = DrakkinDetails,
+			.drakkin_heritage = DrakkinHeritage,
+			.drakkin_tattoo = DrakkinTattoo,
+			.eye_color_one = EyeColor1,
+			.eye_color_two = EyeColor2,
+			.face = LuclinFace,
+			.gender_id = Gender,
+			.hair = HairStyle,
+			.hair_color = HairColor,
+			.helmet_texture = HelmTexture,
+			.race_id = Race,
+			.size = Size,
+			.texture = Texture,
+		}
 	);
 }
 
@@ -2412,22 +2444,23 @@ void QuestManager::npcfeature(const char* feature, int setting)
 	}
 
 	owner->SendIllusionPacket(
-		Race,
-		Gender,
-		Texture,
-		HelmTexture,
-		HairColor,
-		BeardColor,
-		EyeColor1,
-		EyeColor2,
-		HairStyle,
-		LuclinFace,
-		Beard,
-		0xFF,
-		DrakkinHeritage,
-		DrakkinTattoo,
-		DrakkinDetails,
-		Size
+		AppearanceStruct{
+			.beard = Beard,
+			.beard_color = BeardColor,
+			.drakkin_details = DrakkinDetails,
+			.drakkin_heritage = DrakkinHeritage,
+			.drakkin_tattoo = DrakkinTattoo,
+			.eye_color_one = EyeColor1,
+			.eye_color_two = EyeColor2,
+			.face = LuclinFace,
+			.gender_id = Gender,
+			.hair = HairStyle,
+			.hair_color = HairColor,
+			.helmet_texture = HelmTexture,
+			.race_id = Race,
+			.size = Size,
+			.texture = Texture,
+		}
 	);
 }
 
@@ -2620,6 +2653,8 @@ bool QuestManager::createBot(const char *name, const char *lastname, uint8 level
 				).c_str()
 			);
 		} else {
+			new_bot->AddBotStartingItems(race, botclass);
+
 			initiator->Message(
 				Chat::White,
 				fmt::format(
@@ -3163,8 +3198,29 @@ std::string QuestManager::varlink(
 
 	return linker.GenerateLink();
 }
+
+std::string QuestManager::getitemcomment(uint32 item_id) {
+	const auto* item_data = database.GetItem(item_id);
+	if (!item_data) {
+		return "INVALID ITEM ID IN GETITEMCOMMENT";
+	}
+
+	std::string item_comment = item_data->Comment;
+	return item_comment;
+}
+
+std::string QuestManager::getitemlore(uint32 item_id) {
+	const auto* item_data = database.GetItem(item_id);
+	if (!item_data) {
+		return "INVALID ITEM ID IN GETITEMLORE";
+	}
+
+	std::string item_lore = item_data->Lore;
+	return item_lore;
+}
+
 std::string QuestManager::getitemname(uint32 item_id) {
-	const EQ::ItemData* item_data = database.GetItem(item_id);
+	const auto* item_data = database.GetItem(item_id);
 	if (!item_data) {
 		return "INVALID ITEM ID IN GETITEMNAME";
 	}
@@ -3573,7 +3629,7 @@ void QuestManager::removetitle(int titleset) {
 	initiator->RemoveTitle(titleset);
 }
 
-void QuestManager::wearchange(uint8 slot, uint16 texture, uint32 hero_forge_model /*= 0*/, uint32 elite_material /*= 0*/)
+void QuestManager::wearchange(uint8 slot, uint32 texture, uint32 hero_forge_model, uint32 elite_material)
 {
 	QuestManagerCurrentQuestVars();
 
@@ -3950,15 +4006,25 @@ void QuestManager::CrossZoneMessage(uint8 update_type, int update_identifier, ui
 	safe_delete(pack);
 }
 
-void QuestManager::CrossZoneMove(uint8 update_type, uint8 update_subtype, int update_identifier, const char* zone_short_name, uint16 instance_id, const char* client_name) {
+void QuestManager::CrossZoneMove(const CZMove_Struct& m)
+{
 	auto pack = new ServerPacket(ServerOP_CZMove, sizeof(CZMove_Struct));
-	CZMove_Struct* CZM = (CZMove_Struct*)pack->pBuffer;
-	CZM->update_type = update_type;
-	CZM->update_subtype = update_subtype;
-	CZM->update_identifier = update_identifier;
-	strn0cpy(CZM->zone_short_name, zone_short_name, 32);
-	CZM->instance_id = instance_id;
-	strn0cpy(CZM->client_name, client_name, 64);
+	auto s = (CZMove_Struct*) pack->pBuffer;
+
+	if (!m.client_name.empty()) {
+		s->client_name = m.client_name;
+	}
+
+	s->coordinates       = m.coordinates;
+	s->instance_id       = m.instance_id;
+	s->update_type       = m.update_type;
+	s->update_subtype    = m.update_subtype;
+	s->update_identifier = m.update_identifier;
+
+	if (!m.zone_short_name.empty()) {
+		s->zone_short_name = m.zone_short_name;
+	}
+
 	worldserver.SendPacket(pack);
 	safe_delete(pack);
 }

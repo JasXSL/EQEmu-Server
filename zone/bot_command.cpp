@@ -63,6 +63,7 @@
 #include "water_map.h"
 #include "worldserver.h"
 #include "dialogue_window.h"
+#include "mob.h"
 
 #include <fmt/format.h>
 
@@ -1423,6 +1424,7 @@ int bot_command_init(void)
 		bot_command_add("petremove", "Orders a bot to remove its charmed pet", AccountStatus::Player, bot_subcommand_pet_remove) ||
 		bot_command_add("petsettype", "Orders a Magician bot to use a specified pet type", AccountStatus::Player, bot_subcommand_pet_set_type) ||
 		bot_command_add("picklock", "Orders a capable bot to pick the lock of the closest door", AccountStatus::Player, bot_command_pick_lock) ||
+		bot_command_add("pickpocket", "Orders a capable bot to pickpocket a NPC", AccountStatus::Player, bot_command_pickpocket) ||
 		bot_command_add("precombat", "Sets flag used to determine pre-combat behavior", AccountStatus::Player, bot_command_precombat) ||
 		bot_command_add("portal", "Orders a Wizard bot to open a magical doorway to a specified destination", AccountStatus::Player, bot_subcommand_portal) ||
 		bot_command_add("pull", "Orders a designated bot to 'pull' an enemy", AccountStatus::Player, bot_command_pull) ||
@@ -1669,33 +1671,39 @@ int bot_command_real_dispatch(Client *c, const char *message)
 namespace MyBots
 {
 	static bool IsMyBot(Client *bot_owner, Mob *my_bot) {
-		if (!bot_owner || !my_bot || !my_bot->IsBot())
+		if (!bot_owner || !my_bot || !my_bot->IsBot()) {
 			return false;
+		}
 
 		auto test_bot = my_bot->CastToBot();
-		if (!test_bot->GetOwner() || !test_bot->GetOwner()->IsClient() || test_bot->GetOwner()->CastToClient() != bot_owner)
+		if (!test_bot->GetOwner() || !test_bot->GetOwner()->IsClient() || test_bot->GetOwner()->CastToClient() != bot_owner) {
 			return false;
+		}
 
 		return true;
 	}
 
 	static bool IsMyBotInTargetsGroup(Client *bot_owner, Mob *grouped_bot) {
-		if (!bot_owner || !grouped_bot || !grouped_bot->GetGroup() || !IsMyBot(bot_owner, grouped_bot))
+		if (!bot_owner || !grouped_bot || !grouped_bot->GetGroup() || !IsMyBot(bot_owner, grouped_bot)) {
 			return false;
+		}
 
 		auto target_mob = bot_owner->GetTarget();
-		if (!target_mob)
+		if (!target_mob) {
 			return false;
+		}
 
-		if (!target_mob->GetGroup() || (!target_mob->IsClient() && !target_mob->IsBot()))
+		if (!target_mob->GetGroup() || (!target_mob->IsClient() && !target_mob->IsBot())) {
 			return false;
+		}
 
 		return (grouped_bot->GetGroup() == target_mob->GetGroup());
 	}
 
 	static bool IsMyBotInPlayerGroup(Client *bot_owner, Mob *grouped_bot, Client *grouped_player) {
-		if (!bot_owner || !grouped_player || !grouped_player->GetGroup() || !grouped_bot || !grouped_bot->GetGroup() || !IsMyBot(bot_owner, grouped_bot))
+		if (!bot_owner || !grouped_player || !grouped_player->GetGroup() || !grouped_bot || !grouped_bot->GetGroup() || !IsMyBot(bot_owner, grouped_bot)) {
 			return false;
+		}
 
 		return (grouped_player->GetGroup() == grouped_bot->GetGroup());
 	}
@@ -1707,21 +1715,27 @@ namespace MyBots
 	}
 
 	static void PopulateSBL_ByTargetedBot(Client *bot_owner, std::list<Bot*> &sbl, bool clear_list = true) {
-		if (clear_list)
+		if (clear_list) {
 			sbl.clear();
+		}
 
-		if (IsMyBot(bot_owner, bot_owner->GetTarget()))
+		if (IsMyBot(bot_owner, bot_owner->GetTarget())) {
 			sbl.push_back(bot_owner->GetTarget()->CastToBot());
+		}
 
-		if (!clear_list)
+		if (!clear_list) {
 			UniquifySBL(sbl);
+		}
 	}
 
 	static void PopulateSBL_ByNamedBot(Client *bot_owner, std::list<Bot*> &sbl, const char* name, bool clear_list = true) {
-		if (clear_list)
+		if (clear_list) {
 			sbl.clear();
-		if (!bot_owner || !name)
+		}
+
+		if (!bot_owner || !name) {
 			return;
+		}
 
 		auto selectable_bot_list = entity_list.GetBotsByBotOwnerCharacterID(bot_owner->CharacterID());
 		for (auto bot_iter : selectable_bot_list) {
@@ -1731,56 +1745,153 @@ namespace MyBots
 			}
 		}
 
-		if (!clear_list)
+		if (!clear_list) {
 			UniquifySBL(sbl);
+		}
 	}
 
 	static void PopulateSBL_ByMyGroupedBots(Client *bot_owner, std::list<Bot*> &sbl, bool clear_list = true) {
-		if (clear_list)
+		if (clear_list) {
 			sbl.clear();
-		if (!bot_owner)
-			return;
-
-		if (!bot_owner->GetGroup())
-			return;
-
-		std::list<Bot*> group_list;
-		bot_owner->GetGroup()->GetBotList(group_list);
-		for (auto member_iter : group_list) {
-			if (IsMyBot(bot_owner, member_iter))
-				sbl.push_back(member_iter);
 		}
 
-		if (!clear_list)
+		if (!bot_owner) {
+			return;
+		}
+
+		if (!bot_owner->GetGroup() && !bot_owner->GetRaid()) {
+			return;
+		}
+
+		if (bot_owner->IsRaidGrouped()) {
+			Raid* raid = bot_owner->GetRaid();
+			if (!raid) {
+				return;
+			}
+
+			uint32 raid_group = raid->GetGroup(bot_owner);
+			if (raid_group >= MAX_RAID_GROUPS) {
+				return;
+			}
+
+			for (const auto& m : raid->members) {
+				if (m.member && m.group_number == raid_group) {
+					if (!MyBots::IsMyBot(bot_owner, m.member->CastToBot())) {
+						continue;
+					}
+
+					sbl.push_back(m.member->CastToBot());
+				}
+			}
+		}
+		else {
+			std::list<Bot*> group_list;
+			bot_owner->GetGroup()->GetBotList(group_list);
+			for (auto member_iter : group_list) {
+				if (IsMyBot(bot_owner, member_iter)) {
+					sbl.push_back(member_iter);
+				}
+			}
+		}
+
+		if (!clear_list) {
 			UniquifySBL(sbl);
+		}
+	}
+
+	static void PopulateSBL_ByMyRaidBots(Client* bot_owner, std::list<Bot*>& sbl, bool clear_list = true) {
+		if (clear_list) {
+			sbl.clear();
+		}
+
+		if (!bot_owner) {
+			return;
+		}
+
+		if (!bot_owner->GetRaid()) {
+			return;
+		}
+
+		Raid* raid = bot_owner->GetRaid();
+		if (!raid) {
+			return;
+		}
+
+		for (const auto& m : raid->members) {
+			if (m.member) {
+				if (!MyBots::IsMyBot(bot_owner, m.member->CastToBot())) {
+					continue;
+				}
+
+				sbl.push_back(m.member->CastToBot());
+			}
+		}
+
+		if (!clear_list) {
+			UniquifySBL(sbl);
+		}
 	}
 
 	static void PopulateSBL_ByTargetsGroupedBots(Client *bot_owner, std::list<Bot*> &sbl, bool clear_list = true) {
-		if (clear_list)
+		if (clear_list) {
 			sbl.clear();
-		if (!bot_owner)
-			return;
-
-		auto target_mob = bot_owner->GetTarget();
-		if (!target_mob || !target_mob->GetGroup() || (!target_mob->IsClient() && !target_mob->IsBot()))
-			return;
-
-		std::list<Bot*> group_list;
-		target_mob->GetGroup()->GetBotList(group_list);
-		for (auto member_iter : group_list) {
-			if (IsMyBot(bot_owner, member_iter))
-				sbl.push_back(member_iter);
 		}
 
-		if (!clear_list)
+		if (!bot_owner) {
+			return;
+		}
+
+		auto target_mob = bot_owner->GetTarget();
+		if (!target_mob || (!target_mob->GetGroup() && !target_mob->GetRaid()) || (!target_mob->IsClient() && !target_mob->IsBot())) {
+			return;
+		}
+
+		if (bot_owner->IsRaidGrouped()) {
+			Raid* raid = bot_owner->GetRaid();
+			if (!raid) {
+				return;
+			}
+
+			if (MyBots::IsMyBot(bot_owner, target_mob)) {
+				uint32 raid_group = raid->GetGroup(target_mob->CastToClient());
+				if (raid_group >= MAX_RAID_GROUPS) {
+					return;
+				}
+
+				for (const auto& m : raid->members) {
+					if (m.member && m.group_number == raid_group) {
+						if (!MyBots::IsMyBot(bot_owner, m.member->CastToBot())) {
+							continue;
+						}
+
+						sbl.push_back(m.member->CastToBot());
+					}
+				}
+			}
+		}
+		else {
+			std::list<Bot*> group_list;
+			bot_owner->GetGroup()->GetBotList(group_list);
+			for (auto member_iter : group_list) {
+				if (IsMyBot(bot_owner, member_iter)) {
+					sbl.push_back(member_iter);
+				}
+			}
+		}
+
+		if (!clear_list) {
 			UniquifySBL(sbl);
+		}
 	}
 
 	static void PopulateSBL_ByNamesGroupedBots(Client *bot_owner, std::list<Bot*> &sbl, const char* name, bool clear_list = true) {
-		if (clear_list)
+		if (clear_list) {
 			sbl.clear();
-		if (!bot_owner || !name)
+		}
+
+		if (!bot_owner || !name) {
 			return;
+		}
 
 		Mob* named_mob = nullptr;
 		std::list<Mob*> l_mob_list;
@@ -1791,110 +1902,207 @@ namespace MyBots
 				break;
 			}
 		}
-		if (!named_mob || !named_mob->GetGroup() || (!named_mob->IsClient() && !named_mob->IsBot()))
-			return;
 
-		std::list<Bot*> group_list;
-		named_mob->GetGroup()->GetBotList(group_list);
-		for (auto member_iter : group_list) {
-			if (IsMyBot(bot_owner, member_iter))
-				sbl.push_back(member_iter);
+		if (!named_mob || !MyBots::IsMyBot(bot_owner, named_mob) || (!named_mob->GetGroup() && !named_mob->GetRaid()) || (!named_mob->IsClient() && !named_mob->IsBot())) {
+			return;
 		}
 
-		if (!clear_list)
+		if (bot_owner->IsRaidGrouped()) {
+			Raid* raid = bot_owner->GetRaid();
+			if (!raid) {
+				return;
+			}
+
+			uint32 raid_group = raid->GetGroup(named_mob->CastToClient());
+			if (raid_group >= MAX_RAID_GROUPS) {
+				return;
+			}
+
+			for (const auto& m : raid->members) {
+				if (m.member && m.group_number == raid_group) {
+					if (!MyBots::IsMyBot(bot_owner, m.member->CastToBot())) {
+						continue;
+					}
+
+					sbl.push_back(m.member->CastToBot());
+				}
+			}
+		}
+		else {
+			std::list<Bot*> group_list;
+			bot_owner->GetGroup()->GetBotList(group_list);
+			for (auto member_iter : group_list) {
+				if (IsMyBot(bot_owner, member_iter)) {
+					sbl.push_back(member_iter);
+				}
+			}
+		}
+
+		if (!clear_list) {
 			UniquifySBL(sbl);
+		}
 	}
 
 	static void PopulateSBL_ByHealRotation(Client *bot_owner, std::list<Bot*> &sbl, const char* name, bool clear_list = true) {
-		if (clear_list)
+		if (clear_list) {
 			sbl.clear();
-		if (!bot_owner || (!name && !bot_owner->GetTarget()))
+		}
+
+		if (!bot_owner || (!name && !bot_owner->GetTarget())) {
 			return;
+		}
 
 		std::list<Bot*> selectable_bot_list;
-		if (name)
+		if (name) {
 			PopulateSBL_ByNamedBot(bot_owner, selectable_bot_list, name);
-		else
+		}
+		else {
 			PopulateSBL_ByTargetedBot(bot_owner, selectable_bot_list);
+		}
 
-		if (selectable_bot_list.empty() || !selectable_bot_list.front()->IsHealRotationMember())
+		if (selectable_bot_list.empty() || !selectable_bot_list.front()->IsHealRotationMember()) {
 			return;
+		}
 
 		auto hrm = (*selectable_bot_list.front()->MemberOfHealRotation())->MemberList();
 		for (auto hrm_iter : *hrm) {
-			if (IsMyBot(bot_owner, hrm_iter))
+			if (IsMyBot(bot_owner, hrm_iter)) {
 				sbl.push_back(hrm_iter);
+			}
 		}
 
 		auto hrt = (*selectable_bot_list.front()->MemberOfHealRotation())->TargetList();
 		for (auto hrt_iter : *hrt) {
-			if (IsMyBot(bot_owner, hrt_iter))
+			if (IsMyBot(bot_owner, hrt_iter)) {
 				sbl.push_back(hrt_iter->CastToBot());
+			}
 		}
 
 		UniquifySBL(sbl);
 	}
 
 	static void PopulateSBL_ByHealRotationMembers(Client *bot_owner, std::list<Bot*> &sbl, const char* name, bool clear_list = true) {
-		if (clear_list)
+		if (clear_list) {
 			sbl.clear();
-		if (!bot_owner || (!name && !bot_owner->GetTarget()))
+		}
+
+		if (!bot_owner || (!name && !bot_owner->GetTarget())) {
 			return;
+		}
 
 		std::list<Bot*> selectable_bot_list;
-		if (name)
+		if (name) {
 			PopulateSBL_ByNamedBot(bot_owner, selectable_bot_list, name);
-		else
+		}
+		else {
 			PopulateSBL_ByTargetedBot(bot_owner, selectable_bot_list);
+		}
 
-		if (selectable_bot_list.empty() || !selectable_bot_list.front()->IsHealRotationMember())
+		if (selectable_bot_list.empty() || !selectable_bot_list.front()->IsHealRotationMember()) {
 			return;
+		}
 
 		auto hrm = (*selectable_bot_list.front()->MemberOfHealRotation())->MemberList();
 		for (auto hrm_iter : *hrm) {
-			if (IsMyBot(bot_owner, hrm_iter))
+			if (IsMyBot(bot_owner, hrm_iter)) {
 				sbl.push_back(hrm_iter);
+			}
 		}
 
-		if (!clear_list)
+		if (!clear_list) {
 			UniquifySBL(sbl);
+		}
 	}
 
 	static void PopulateSBL_ByHealRotationTargets(Client *bot_owner, std::list<Bot*> &sbl, const char* name, bool clear_list = true) {
-		if (clear_list)
+		if (clear_list) {
 			sbl.clear();
-		if (!bot_owner || (!name && !bot_owner->GetTarget()))
+		}
+
+		if (!bot_owner || (!name && !bot_owner->GetTarget())) {
 			return;
+		}
 
 		std::list<Bot*> selectable_bot_list;
-		if (name)
+		if (name) {
 			PopulateSBL_ByNamedBot(bot_owner, selectable_bot_list, name);
-		else
+		}
+		else {
 			PopulateSBL_ByTargetedBot(bot_owner, selectable_bot_list);
+		}
 
-		if (selectable_bot_list.empty() || !selectable_bot_list.front()->IsHealRotationMember())
+		if (selectable_bot_list.empty() || !selectable_bot_list.front()->IsHealRotationMember()) {
 			return;
+		}
 
 		auto hrm = (*selectable_bot_list.front()->MemberOfHealRotation())->TargetList();
 		for (auto hrm_iter : *hrm) {
-			if (IsMyBot(bot_owner, hrm_iter))
+			if (IsMyBot(bot_owner, hrm_iter)) {
 				sbl.push_back(static_cast<Bot*>(hrm_iter));
+			}
 		}
 
-		if (!clear_list)
+		if (!clear_list) {
 			UniquifySBL(sbl);
+		}
 	}
 
 	static void PopulateSBL_BySpawnedBots(Client *bot_owner, std::list<Bot*> &sbl) { // should be used for most spell casting commands
 		sbl.clear();
-		if (!bot_owner)
+		if (!bot_owner) {
 			return;
+		}
 
 		sbl = entity_list.GetBotsByBotOwnerCharacterID(bot_owner->CharacterID());
 		sbl.remove(nullptr);
 	}
 
-}
+	static void PopulateSBL_BySpawnedBotsClass(Client * bot_owner, std::list<Bot*> &sbl, uint16 cls, bool clear_list = true) {
+		if (clear_list) {
+			sbl.clear();
+		}
+
+		if (!bot_owner || !cls) {
+			return;
+		}
+
+		auto selectable_bot_list = entity_list.GetBotsByBotOwnerCharacterID(bot_owner->CharacterID());
+		for (auto bot_iter : selectable_bot_list) {
+			if (bot_iter->GetClass() != cls) {
+				continue;
+			}
+
+			sbl.push_back(bot_iter);
+		}
+
+		if (!clear_list) {
+			UniquifySBL(sbl);
+		}
+	}
+
+	static void PopulateSBL_BySpawnedBotsRace(Client* bot_owner, std::list<Bot*>& sbl, uint16 race, bool clear_list = true) {
+		if (clear_list) {
+			sbl.clear();
+		}
+
+		if (!bot_owner || !race) {
+			return;
+		}
+
+		auto selectable_bot_list = entity_list.GetBotsByBotOwnerCharacterID(bot_owner->CharacterID());
+		for (auto bot_iter : selectable_bot_list) {
+			if (bot_iter->GetBaseRace() != race) {
+				continue;
+			}
+
+			sbl.push_back(bot_iter);
+		}
+
+		if (!clear_list) {
+			UniquifySBL(sbl);
+		}
+	}
+};
 
 namespace ActionableTarget
 {
@@ -2097,12 +2305,14 @@ namespace ActionableBots
 		ABT_Target,
 		ABT_ByName,
 		ABT_OwnerGroup,
-		ABT_BotGroup,
+		ABT_OwnerRaid,
 		ABT_TargetGroup,
 		ABT_NamesGroup,
 		ABT_HealRotation,
 		ABT_HealRotationMembers,
 		ABT_HealRotationTargets,
+		ABT_Class,
+		ABT_Race,
 		ABT_Spawned,
 		ABT_All
 	};
@@ -2112,127 +2322,225 @@ namespace ActionableBots
 		ABM_Target = (1 << (ABT_Target - 1)),
 		ABM_ByName = (1 << (ABT_ByName - 1)),
 		ABM_OwnerGroup = (1 << (ABT_OwnerGroup - 1)),
+		ABM_OwnerRaid = (1 << (ABT_OwnerRaid - 1)),
 		ABM_TargetGroup = (1 << (ABT_TargetGroup - 1)),
 		ABM_NamesGroup = (1 << (ABT_NamesGroup - 1)),
 		ABM_HealRotation = (1 << (ABT_HealRotation - 1)),
 		ABM_HealRotationMembers = (1 << (ABT_HealRotationMembers - 1)),
 		ABM_HealRotationTargets = (1 << (ABT_HealRotationTargets - 1)),
+		ABM_Class = (1 << (ABT_Class - 1)),
+		ABM_Race = (1 << (ABT_Race - 1)),
 		ABM_Spawned = (1 << (ABT_Spawned - 1)),
 		ABM_All = (1 << (ABT_All - 1)),
 		ABM_Spawned_All = (3 << (ABT_Spawned - 1)),
 		ABM_NoFilter = ~0,
 		// grouped values
-		ABM_Type1 = (ABM_Target | ABM_ByName | ABM_OwnerGroup | ABM_TargetGroup | ABM_NamesGroup | ABM_HealRotationTargets | ABM_Spawned),
-		ABM_Type2 = (ABM_ByName | ABM_OwnerGroup | ABM_NamesGroup | ABM_HealRotation | ABM_Spawned)
+		ABM_Type1 = (ABM_Target | ABM_ByName | ABM_OwnerGroup | ABM_OwnerRaid | ABM_TargetGroup | ABM_NamesGroup | ABM_HealRotationTargets | ABM_Spawned | ABM_Class | ABM_Race),
+		ABM_Type2 = (ABM_ByName | ABM_OwnerGroup | ABM_OwnerRaid | ABM_NamesGroup | ABM_HealRotation | ABM_Spawned | ABM_Class | ABM_Race)
 	};
 
 	// Populates 'sbl'
-	static ABType PopulateSBL(Client* bot_owner, std::string ab_type_arg, std::list<Bot*> &sbl, int ab_mask, const char* name = nullptr, bool clear_list = true, bool suppress_message = false) {
-		if (clear_list)
+	static ABType PopulateSBL(Client* bot_owner, std::string ab_type_arg, std::list<Bot*> &sbl, int ab_mask, const char* name = nullptr, uint16 classrace = 0, bool clear_list = true, bool suppress_message = false) {
+		if (clear_list) {
 			sbl.clear();
-		if (!bot_owner)
+		}
+
+		if (!bot_owner) {
 			return ABT_None;
+		}
 
 		auto ab_type = ABT_None;
-		if (!ab_type_arg.compare("target") || ab_type_arg.empty())
+		if (!ab_type_arg.compare("target") || ab_type_arg.empty()) {
 			ab_type = ABT_Target;
-		else if (!ab_type_arg.compare("byname"))
+		}
+		else if (!ab_type_arg.compare("byname")) {
 			ab_type = ABT_ByName;
-		else if (!ab_type_arg.compare("ownergroup"))
+		}
+		else if (!ab_type_arg.compare("ownergroup")) {
 			ab_type = ABT_OwnerGroup;
-		else if (!ab_type_arg.compare("targetgroup"))
+		}
+		else if (!ab_type_arg.compare("ownerraid")) {
+			ab_type = ABT_OwnerRaid;
+		}
+		else if (!ab_type_arg.compare("targetgroup")) {
 			ab_type = ABT_TargetGroup;
-		else if (!ab_type_arg.compare("namesgroup"))
+		}
+		else if (!ab_type_arg.compare("namesgroup")) {
 			ab_type = ABT_NamesGroup;
-		else if (!ab_type_arg.compare("healrotation"))
+		}
+		else if (!ab_type_arg.compare("healrotation")) {
 			ab_type = ABT_HealRotation;
-		else if (!ab_type_arg.compare("healrotationmembers"))
+		}
+		else if (!ab_type_arg.compare("healrotationmembers")) {
 			ab_type = ABT_HealRotationMembers;
-		else if (!ab_type_arg.compare("healrotationtargets"))
+		}
+		else if (!ab_type_arg.compare("healrotationtargets")) {
 			ab_type = ABT_HealRotationTargets;
-		else if (!ab_type_arg.compare("spawned"))
+		}
+		else if (!ab_type_arg.compare("byclass")) { 
+			ab_type = ABT_Class;
+		}
+		else if (!ab_type_arg.compare("byrace")) {
+			ab_type = ABT_Race;
+		}
+		else if (!ab_type_arg.compare("spawned")) {
 			ab_type = ABT_Spawned;
-		else if (!ab_type_arg.compare("all"))
+		}
+		else if (!ab_type_arg.compare("all")) {
 			ab_type = ABT_All;
+		}
 
-		if (ab_type_arg.empty())
+		if (ab_type_arg.empty()) {
 			ab_type_arg = "target";
+		}
 
 		switch (ab_type) {
-		case ABT_Target:
-			if (ab_mask & ABM_Target)
-				MyBots::PopulateSBL_ByTargetedBot(bot_owner, sbl, clear_list);
-			break;
-		case ABT_ByName:
-			if (ab_mask & ABM_ByName)
-				MyBots::PopulateSBL_ByNamedBot(bot_owner, sbl, name, clear_list);
-			break;
-		case ABT_OwnerGroup:
-			if (ab_mask & ABM_OwnerGroup)
-				MyBots::PopulateSBL_ByMyGroupedBots(bot_owner, sbl, clear_list);
-			break;
-		case ABT_TargetGroup:
-			if (ab_mask & ABM_TargetGroup)
-				MyBots::PopulateSBL_ByTargetsGroupedBots(bot_owner, sbl, clear_list);
-			break;
-		case ABT_NamesGroup:
-			if (ab_mask & ABM_NamesGroup)
-				MyBots::PopulateSBL_ByNamesGroupedBots(bot_owner, sbl, name, clear_list);
-			break;
-		case ABT_HealRotation:
-			if (ab_mask & ABM_HealRotation)
-				MyBots::PopulateSBL_ByHealRotation(bot_owner, sbl, name, clear_list);
-			break;
-		case ABT_HealRotationMembers:
-			if (ab_mask & ABM_HealRotationMembers)
-				MyBots::PopulateSBL_ByHealRotationMembers(bot_owner, sbl, name, clear_list);
-			break;
-		case ABT_HealRotationTargets:
-			if (ab_mask & ABM_HealRotationTargets)
-				MyBots::PopulateSBL_ByHealRotationTargets(bot_owner, sbl, name, clear_list);
-			break;
-		case ABT_Spawned:
-		case ABT_All:
-			if (ab_mask & ABM_Spawned_All)
-				MyBots::PopulateSBL_BySpawnedBots(bot_owner, sbl);
-			break;
-		default:
-			break;
+			case ABT_Target:
+				if (ab_mask & ABM_Target) {
+					MyBots::PopulateSBL_ByTargetedBot(bot_owner, sbl, clear_list);
+				}
+				break;
+			case ABT_ByName:
+				if (ab_mask & ABM_ByName) {
+					MyBots::PopulateSBL_ByNamedBot(bot_owner, sbl, name, clear_list);
+				}
+				break;
+			case ABT_OwnerGroup:
+				if (ab_mask & ABM_OwnerGroup) {
+					MyBots::PopulateSBL_ByMyGroupedBots(bot_owner, sbl, clear_list);
+				}
+				break;
+			case ABT_OwnerRaid:
+				if (ab_mask & ABM_OwnerRaid) {
+					MyBots::PopulateSBL_ByMyRaidBots(bot_owner, sbl, clear_list);
+				}
+				break;
+			case ABT_TargetGroup:
+				if (ab_mask & ABM_TargetGroup) {
+					MyBots::PopulateSBL_ByTargetsGroupedBots(bot_owner, sbl, clear_list);
+				}
+				break;
+			case ABT_NamesGroup:
+				if (ab_mask & ABM_NamesGroup) {
+					MyBots::PopulateSBL_ByNamesGroupedBots(bot_owner, sbl, name, clear_list);
+				}
+				break;
+			case ABT_HealRotation:
+				if (ab_mask & ABM_HealRotation) {
+					MyBots::PopulateSBL_ByHealRotation(bot_owner, sbl, name, clear_list);
+				}
+				break;
+			case ABT_HealRotationMembers:
+				if (ab_mask & ABM_HealRotationMembers) {
+					MyBots::PopulateSBL_ByHealRotationMembers(bot_owner, sbl, name, clear_list);
+				}
+				break;
+			case ABT_HealRotationTargets:
+				if (ab_mask & ABM_HealRotationTargets) {
+					MyBots::PopulateSBL_ByHealRotationTargets(bot_owner, sbl, name, clear_list);
+				}
+				break;
+			case ABT_Class:
+				if (ab_mask & ABM_Class) {
+					MyBots::PopulateSBL_BySpawnedBotsClass(bot_owner, sbl, classrace, clear_list);
+				}
+				break;
+			case ABT_Race:
+				if (ab_mask & ABM_Race) {
+					MyBots::PopulateSBL_BySpawnedBotsRace(bot_owner, sbl, classrace, clear_list);
+				}
+				break;
+			case ABT_Spawned:
+			case ABT_All:
+				if (ab_mask & ABM_Spawned_All) {
+					MyBots::PopulateSBL_BySpawnedBots(bot_owner, sbl);
+				}
+				break;
+			default:
+				break;
 		}
 		if (sbl.empty() && ab_type != ABT_All) {
-			if (suppress_message)
+			if (suppress_message) {
 				return ABT_None;
+			}
 
-			if (!ab_mask)
+			if (!ab_mask) {
 				bot_owner->Message(Chat::White, "Command passed null 'ActionableBot' criteria");
-			else if (ab_mask & ab_type)
-				bot_owner->Message(Chat::White, "You have no spawned bots meeting this criteria - type: '%s', name: '%s'", ab_type_arg.c_str(), ((name) ? (name) : ("")));
-			else
+			}
+			else if (ab_mask & ab_type) {
+				if (classrace) {
+					bot_owner->Message(Chat::White, "You have no spawned bots meeting this criteria - type: '%s', %s: '%i'", ab_type_arg.c_str(), ab_mask & ABM_Class ? "class" : ab_mask & ABM_Race ? "race" : "", classrace);
+				}
+				else {
+					bot_owner->Message(Chat::White, "You have no spawned bots meeting this criteria - type: '%s', name: '%s'", ab_type_arg.c_str(), ((name) ? (name) : ("")));
+				}
+			}
+			else {
 				bot_owner->Message(Chat::White, "This command does not allow 'ActionableBot' criteria '%s'", ab_type_arg.c_str());
+			}
+
 			return ABT_None;
 		}
 
 		return ab_type;
 	}
 
-	// Returns single, scoped bot
 	static Bot* AsGroupMember_ByClass(Client *bot_owner, Client *bot_grouped_player, uint8 cls, bool petless = false) {
-		if (!bot_owner || !bot_grouped_player)
+		if (!bot_owner || !bot_grouped_player) {
 			return nullptr;
-		if (!bot_grouped_player->GetGroup())
+		}
+
+		if (!bot_grouped_player->GetGroup() && !bot_grouped_player->GetRaid()) {
 			return nullptr;
+		}
 
-		std::list<Mob*> group_list;
-		bot_grouped_player->GetGroup()->GetMemberList(group_list);
-		for (auto member_iter : group_list) {
-			if (!MyBots::IsMyBot(bot_owner, member_iter))
-				continue;
-			if (member_iter->GetClass() != cls)
-				continue;
-			if (petless && member_iter->GetPet())
-				continue;
+		if (bot_owner->IsRaidGrouped()) {
+			Raid* raid = bot_grouped_player->GetRaid();
+			if (!raid) {
+				return nullptr;
+			}
 
-			return static_cast<Bot*>(member_iter);
+			uint32 raid_group = raid->GetGroup(bot_grouped_player);
+			if (raid_group >= MAX_RAID_GROUPS) {
+				return nullptr;
+			}
+
+			for (const auto& m : raid->members) {
+				if (m.member && m.group_number == raid_group) {
+					if (!MyBots::IsMyBot(bot_owner, m.member->CastToBot())) {
+						continue;
+					}
+
+					if (m.member->GetClass() != cls) {
+						continue;
+					}
+
+					if (petless && m.member->GetPet()) {
+						continue;
+					}
+
+					return static_cast<Bot*>(m.member->CastToBot());
+				}
+			}
+		}
+		else {
+			std::list<Mob*> group_list;
+			bot_grouped_player->GetGroup()->GetMemberList(group_list);
+			for (auto member_iter : group_list) {
+				if (!MyBots::IsMyBot(bot_owner, member_iter)) {
+					continue;
+				}
+
+				if (member_iter->GetClass() != cls) {
+					continue;
+				}
+
+				if (petless && member_iter->GetPet()) {
+					continue;
+				}
+
+				return static_cast<Bot*>(member_iter);
+			}
 		}
 
 		return nullptr;
@@ -2262,16 +2570,22 @@ namespace ActionableBots
 	}
 
 	static Bot* AsSpawned_ByClass(Client *bot_owner, std::list<Bot*> &sbl, uint8 cls, bool petless = false) {
-		if (!bot_owner)
+		if (!bot_owner) {
 			return nullptr;
+		}
 
 		for (auto bot_iter : sbl) {
-			if (!MyBots::IsMyBot(bot_owner, bot_iter))
+			if (!MyBots::IsMyBot(bot_owner, bot_iter)) {
 				continue;
-			if (bot_iter->GetClass() != cls)
+			}
+
+			if (bot_iter->GetClass() != cls) {
 				continue;
-			if (petless && bot_iter->GetPet())
+			}
+
+			if (petless && bot_iter->GetPet()) {
 				continue;
+			}
 
 			return bot_iter;
 		}
@@ -2438,12 +2752,14 @@ void bot_command_actionable(Client *c, const Seperator *sep)
 	c->Message(Chat::White, "target - selects target as single bot .. use ^command [target] or imply by empty actionable argument");
 	c->Message(Chat::White, "byname [name] - selects single bot by name");
 	c->Message(Chat::White, "ownergroup - selects all bots in the owner's group");
-	c->Message(Chat::White, "botgroup [name] - selects members of a bot-group by its name");
+	c->Message(Chat::White, "ownerraid - selects all bots in the owner's raid");
 	c->Message(Chat::White, "targetgroup - selects all bots in target's group");
 	c->Message(Chat::White, "namesgroup [name] - selects all bots in name's group");
 	c->Message(Chat::White, "healrotation [name] - selects all member and target bots of a heal rotation where name is a member");
 	c->Message(Chat::White, "healrotationmembers [name] - selects all member bots of a heal rotation where name is a member");
 	c->Message(Chat::White, "healrotationtargets [name] - selects all target bots of a heal rotation where name is a member");
+	c->Message(Chat::White, "byclass - selects all bots of the chosen class");
+	c->Message(Chat::White, "byrace - selects all bots of the chosen rsce");
 	c->Message(Chat::White, "spawned - selects all spawned bots");
 	c->Message(Chat::White, "all - selects all spawned bots .. argument use indicates en masse database updating");
 
@@ -2456,15 +2772,23 @@ void bot_command_aggressive(Client *c, const Seperator *sep)
 	if (helper_spell_list_fail(c, local_list, BCEnum::SpT_Stance) || helper_command_alias_fail(c, "bot_command_aggressive", sep->arg[0], "aggressive"))
 		return;
 	if (helper_is_help_or_usage(sep->arg[1])) {
-		c->Message(Chat::White, "usage: %s ([actionable: target | byname | ownergroup | botgroup | targetgroup | namesgroup | healrotationtargets | spawned] ([actionable_name]))", sep->arg[0]);
+		c->Message(Chat::White, "usage: %s ([actionable: target | byname | ownergroup | ownerraid | targetgroup | namesgroup | healrotationtargets | byclass | byrace | spawned] ([actionable_name]))", sep->arg[0]);
 		helper_send_usage_required_bots(c, BCEnum::SpT_Stance);
 		return;
 	}
 	const int ab_mask = ActionableBots::ABM_Type1;
 
+	std::string class_race_arg = sep->arg[1];
+	bool class_race_check = false;
+	if (!class_race_arg.compare("byclass") || !class_race_arg.compare("byrace")) {
+		class_race_check = true;
+	}
+
 	std::list<Bot*> sbl;
-	if (ActionableBots::PopulateSBL(c, sep->arg[1], sbl, ab_mask, sep->arg[2]) == ActionableBots::ABT_None)
+	if (ActionableBots::PopulateSBL(c, sep->arg[1], sbl, ab_mask, !class_race_check ? sep->arg[2] : nullptr, class_race_check ? atoi(sep->arg[2]) : 0) == ActionableBots::ABT_None) {
 		return;
+	}
+
 	sbl.remove(nullptr);
 
 	int success_count = 0;
@@ -2686,7 +3010,7 @@ void bot_command_attack(Client *c, const Seperator *sep)
 	}
 	if (helper_is_help_or_usage(sep->arg[1])) {
 
-		c->Message(Chat::White, "usage: <enemy_target> %s [actionable: byname | ownergroup | botgroup | namesgroup | healrotation | default: spawned] ([actionable_name])", sep->arg[0]);
+		c->Message(Chat::White, "usage: <enemy_target> %s [actionable: byname | ownergroup | ownerraid | namesgroup | healrotation | byclass | byrace | default: spawned] ([actionable_name])", sep->arg[0]);
 		return;
 	}
 	const int ab_mask = ActionableBots::ABM_Type2;
@@ -2703,8 +3027,14 @@ void bot_command_attack(Client *c, const Seperator *sep)
 		ab_arg = "spawned";
 	}
 
+	std::string class_race_arg(sep->arg[1]);
+	bool class_race_check = false;
+	if (!class_race_arg.compare("byclass") || !class_race_arg.compare("byrace")) {
+		class_race_check = true;
+	}
+
 	std::list<Bot*> sbl;
-	if (ActionableBots::PopulateSBL(c, ab_arg, sbl, ab_mask, sep->arg[2]) == ActionableBots::ABT_None) {
+	if (ActionableBots::PopulateSBL(c, ab_arg.c_str(), sbl, ab_mask, !class_race_check ? sep->arg[2] : nullptr, class_race_check ? atoi(sep->arg[2]) : 0) == ActionableBots::ABT_None) {
 		return;
 	}
 
@@ -2812,19 +3142,6 @@ void bot_command_bot(Client *c, const Seperator *sep)
 		return;
 
 	helper_send_available_subcommands(c, "bot", subcommand_list);
-}
-
-void bot_command_botgroup(Client *c, const Seperator *sep)
-{
-	const std::list<const char*> subcommand_list = {
-		"botgroupaddmember", "botgroupcreate", "botgroupdelete", "botgrouplist", "botgroupload", "botgroupremovemember"
-	};
-
-	if (helper_command_alias_fail(c, "bot_command_botgroup", sep->arg[0], "botgroup")) {
-		return;
-	}
-
-	helper_send_available_subcommands(c, "bot-group", subcommand_list);
 }
 
 void bot_command_charm(Client *c, const Seperator *sep)
@@ -2956,15 +3273,22 @@ void bot_command_defensive(Client *c, const Seperator *sep)
 	if (helper_spell_list_fail(c, local_list, BCEnum::SpT_Stance) || helper_command_alias_fail(c, "bot_command_defensive", sep->arg[0], "defensive"))
 		return;
 	if (helper_is_help_or_usage(sep->arg[1])) {
-		c->Message(Chat::White, "usage: %s ([actionable: target | byname | ownergroup | botgroup | targetgroup | namesgroup | healrotationtargets | spawned] ([actionable_name]))", sep->arg[0]);
+		c->Message(Chat::White, "usage: %s ([actionable: target | byname | ownergroup | ownerraid | targetgroup | namesgroup | healrotationtargets | byclass | byrace | spawned] ([actionable_name]))", sep->arg[0]);
 		helper_send_usage_required_bots(c, BCEnum::SpT_Stance);
 		return;
 	}
 	const int ab_mask = ActionableBots::ABM_Type1;
 
+	std::string class_race_arg = sep->arg[1];
+	bool class_race_check = false;
+	if (!class_race_arg.compare("byclass") || !class_race_arg.compare("byrace")) {
+		class_race_check = true;
+	}
+
 	std::list<Bot*> sbl;
-	if (ActionableBots::PopulateSBL(c, sep->arg[1], sbl, ab_mask, sep->arg[2]) == ActionableBots::ABT_None)
+	if (ActionableBots::PopulateSBL(c, sep->arg[1], sbl, ab_mask, !class_race_check ? sep->arg[2] : nullptr, class_race_check ? atoi(sep->arg[2]) : 0) == ActionableBots::ABT_None) {
 		return;
+	}
 	sbl.remove(nullptr);
 
 	int success_count = 0;
@@ -3158,7 +3482,7 @@ void bot_command_follow(Client *c, const Seperator *sep)
 	if (helper_command_alias_fail(c, "bot_command_follow", sep->arg[0], "follow"))
 		return;
 	if (helper_is_help_or_usage(sep->arg[1])) {
-		c->Message(Chat::White, "usage: (<friendly_target>) %s ([option: reset]) [actionable: byname | ownergroup | botgroup | namesgroup | healrotation | spawned] ([actionable_name])", sep->arg[0]);
+		c->Message(Chat::White, "usage: (<friendly_target>) %s ([option: reset]) [actionable: byname | ownergroup | ownerraid | namesgroup | healrotation | byclass | byrace | spawned]] ([actionable_name])", sep->arg[0]);
 		c->Message(Chat::White, "usage: %s chain", sep->arg[0]);
 		return;
 	}
@@ -3190,9 +3514,16 @@ void bot_command_follow(Client *c, const Seperator *sep)
 		}
 	}
 
+	std::string class_race_arg = sep->arg[ab_arg];
+	bool class_race_check = false;
+	if (!class_race_arg.compare("byclass") || !class_race_arg.compare("byrace")) {
+		class_race_check = true;
+	}
+
 	std::list<Bot*> sbl;
-	if (ActionableBots::PopulateSBL(c, sep->arg[ab_arg], sbl, ab_mask, sep->arg[name_arg]) == ActionableBots::ABT_None)
+	if (ActionableBots::PopulateSBL(c, sep->arg[ab_arg], sbl, ab_mask, !class_race_check ? sep->arg[name_arg] : nullptr, class_race_check ? atoi(sep->arg[name_arg]) : 0) == ActionableBots::ABT_None) {
 		return;
+	}
 
 	sbl.remove(nullptr);
 	for (auto bot_iter : sbl) {
@@ -3265,7 +3596,7 @@ void bot_command_guard(Client *c, const Seperator *sep)
 	}
 	if (helper_is_help_or_usage(sep->arg[1])) {
 
-		c->Message(Chat::White, "usage: %s ([option: clear]) [actionable: target | byname | ownergroup | botgroup | namesgroup | healrotation | spawned] ([actionable_name])", sep->arg[0]);
+		c->Message(Chat::White, "usage: %s ([option: clear]) [actionable: byname | ownergroup | ownerraid | namesgroup | healrotation | byclass | byrace | spawned]] ([actionable_name])", sep->arg[0]);
 		return;
 	}
 	const int ab_mask = (ActionableBots::ABM_Target | ActionableBots::ABM_Type2);
@@ -3282,8 +3613,14 @@ void bot_command_guard(Client *c, const Seperator *sep)
 		name_arg = 3;
 	}
 
+	std::string class_race_arg = sep->arg[ab_arg];
+	bool class_race_check = false;
+	if (!class_race_arg.compare("byclass") || !class_race_arg.compare("byrace")) {
+		class_race_check = true;
+	}
+
 	std::list<Bot*> sbl;
-	if (ActionableBots::PopulateSBL(c, sep->arg[ab_arg], sbl, ab_mask, sep->arg[name_arg]) == ActionableBots::ABT_None) {
+	if (ActionableBots::PopulateSBL(c, sep->arg[ab_arg], sbl, ab_mask, !class_race_check ? sep->arg[name_arg] : nullptr, class_race_check ? atoi(sep->arg[name_arg]) : 0) == ActionableBots::ABT_None) {
 		return;
 	}
 
@@ -3399,7 +3736,7 @@ void bot_command_hold(Client *c, const Seperator *sep)
 	}
 	if (helper_is_help_or_usage(sep->arg[1])) {
 
-		c->Message(Chat::White, "usage: %s ([option: clear]) [actionable: target | byname | ownergroup | botgroup | namesgroup | healrotation | spawned] ([actionable_name])", sep->arg[0]);
+		c->Message(Chat::White, "usage: %s ([option: clear]) [actionable: byname | ownergroup | ownerraid | namesgroup | healrotation | byclass | byrace | spawned]] ([actionable_name])", sep->arg[0]);
 		return;
 	}
 	const int ab_mask = (ActionableBots::ABM_Target | ActionableBots::ABM_Type2);
@@ -3416,8 +3753,14 @@ void bot_command_hold(Client *c, const Seperator *sep)
 		name_arg = 3;
 	}
 
+	std::string class_race_arg = sep->arg[ab_arg];
+	bool class_race_check = false;
+	if (!class_race_arg.compare("byclass") || !class_race_arg.compare("byrace")) {
+		class_race_check = true;
+	}
+
 	std::list<Bot*> sbl;
-	if (ActionableBots::PopulateSBL(c, sep->arg[ab_arg], sbl, ab_mask, sep->arg[name_arg]) == ActionableBots::ABT_None) {
+	if (ActionableBots::PopulateSBL(c, sep->arg[ab_arg], sbl, ab_mask, !class_race_check ? sep->arg[name_arg] : nullptr, class_race_check ? atoi(sep->arg[name_arg]) : 0) == ActionableBots::ABT_None) {
 		return;
 	}
 
@@ -4739,7 +5082,7 @@ void bot_command_taunt(Client *c, const Seperator *sep)
 	if (helper_command_alias_fail(c, "bot_command_taunt", sep->arg[0], "taunt"))
 		return;
 	if (helper_is_help_or_usage(sep->arg[1])) {
-		c->Message(Chat::White, "usage: %s ([option: on | off]) ([actionable: target | byname | ownergroup | botgroup | targetgroup | namesgroup | healrotationtargets | spawned] ([actionable_name]))", sep->arg[0]);
+		c->Message(Chat::White, "usage: %s ([option: on | off]) ([actionable: target | byname | ownergroup | ownerraid | targetgroup | namesgroup | healrotationtargets | byclass | byrace | spawned] ([actionable_name]))", sep->arg[0]);
 		return;
 	}
 	const int ab_mask = ActionableBots::ABM_Type1;
@@ -4759,9 +5102,16 @@ void bot_command_taunt(Client *c, const Seperator *sep)
 		ab_arg = 2;
 	}
 
+	std::string class_race_arg = sep->arg[ab_arg];
+	bool class_race_check = false;
+	if (!class_race_arg.compare("byclass") || !class_race_arg.compare("byrace")) {
+		class_race_check = true;
+	}
+
 	std::list<Bot*> sbl;
-	if (ActionableBots::PopulateSBL(c, sep->arg[ab_arg], sbl, ab_mask, sep->arg[(ab_arg + 1)]) == ActionableBots::ABT_None)
+	if (ActionableBots::PopulateSBL(c, sep->arg[ab_arg], sbl, ab_mask, !class_race_check ? sep->arg[(ab_arg + 1)] : nullptr, class_race_check ? atoi(sep->arg[(ab_arg + 1)]) : 0) == ActionableBots::ABT_None) {
 		return;
+	}
 	sbl.remove(nullptr);
 
 	int taunting_count = 0;
@@ -5056,14 +5406,21 @@ void bot_subcommand_bot_camp(Client *c, const Seperator *sep)
 	if (helper_command_alias_fail(c, "bot_subcommand_bot_camp", sep->arg[0], "botcamp"))
 		return;
 	if (helper_is_help_or_usage(sep->arg[1])) {
-		c->Message(Chat::White, "usage: %s ([actionable: target | byname | ownergroup | botgroup | targetgroup | namesgroup | healrotation | spawned] ([actionable_name]))", sep->arg[0]);
+		c->Message(Chat::White, "usage: %s ([actionable: target | byname | ownergroup | ownerraid | targetgroup | namesgroup | healrotationtargets | byclass | byrace | spawned] ([actionable_name]))", sep->arg[0]);
 		return;
 	}
-	const int ab_mask = ActionableBots::ABM_NoFilter;
+	const int ab_mask = ActionableBots::ABM_Type1;
+
+	std::string class_race_arg = sep->arg[1];
+	bool class_race_check = false;
+	if (!class_race_arg.compare("byclass") || !class_race_arg.compare("byrace")) {
+		class_race_check = true;
+	}
 
 	std::list<Bot*> sbl;
-	if (ActionableBots::PopulateSBL(c, sep->arg[1], sbl, ab_mask, sep->arg[2]) == ActionableBots::ABT_None)
+	if (ActionableBots::PopulateSBL(c, sep->arg[1], sbl, ab_mask, !class_race_check ? sep->arg[2] : nullptr, class_race_check ? atoi(sep->arg[2]) : 0) == ActionableBots::ABT_None) {
 		return;
+	}
 
 	for (auto bot_iter : sbl)
 		bot_iter->Camp();
@@ -5513,11 +5870,6 @@ void bot_subcommand_bot_create(Client *c, const Seperator *sep)
 	std::string bot_name = sep->arg[1];
 	bot_name = Strings::UcFirst(bot_name);
 
-	if (Strings::Contains(bot_name, "_")) {
-		c->Message(Chat::White, "Bot name cannot contain underscores!");
-		return;
-	}
-	
 	if (arguments < 2 || !sep->IsNumber(2)) {
 		c->Message(Chat::White, "Invalid class!");
 		return;
@@ -5645,7 +5997,7 @@ void bot_subcommand_bot_dye_armor(Client *c, const Seperator *sep)
 		c->Message(
 			Chat::White,
 			fmt::format(
-				"Usage: {} [Material Slot] [Red: 0-255] [Green: 0-255] [Blue: 0-255] ([actionable: target | byname | ownergroup | botgroup | targetgroup | namesgroup | healrotation | spawned] ([actionable_name]))",
+				"Usage: {} [Material Slot] [Red: 0-255] [Green: 0-255] [Blue: 0-255] ([actionable: target | byname | ownergroup | targetgroup | namesgroup | healrotation | spawned] ([actionable_name]))",
 				sep->arg[0]
 			).c_str()
 		);
@@ -5852,8 +6204,8 @@ void bot_subcommand_bot_follow_distance(Client *c, const Seperator *sep)
 	if (helper_command_alias_fail(c, "bot_subcommand_bot_follow_distance", sep->arg[0], "botfollowdistance"))
 		return;
 	if (helper_is_help_or_usage(sep->arg[1])) {
-		c->Message(Chat::White, "usage: %s [set] [distance] ([actionable: target | byname | ownergroup | botgroup | targetgroup | namesgroup | healrotation | spawned] ([actionable_name]))", sep->arg[0]);
-		c->Message(Chat::White, "usage: %s [clear] ([actionable: target | byname | ownergroup | botgroup | targetgroup | namesgroup | healrotation | spawned] ([actionable_name]))", sep->arg[0]);
+		c->Message(Chat::White, "usage: %s [set] [distance] ([actionable: target | byname | ownergroup | targetgroup | namesgroup | healrotation | spawned] ([actionable_name]))", sep->arg[0]);
+		c->Message(Chat::White, "usage: %s [clear] ([actionable: target | byname | ownergroup | targetgroup | namesgroup | healrotation | spawned] ([actionable_name]))", sep->arg[0]);
 		return;
 	}
 	const int ab_mask = ActionableBots::ABM_NoFilter;
@@ -6027,7 +6379,7 @@ void bot_subcommand_bot_inspect_message(Client *c, const Seperator *sep)
 	if (helper_command_alias_fail(c, "bot_subcommand_bot_inspect_message", sep->arg[0], "botinspectmessage"))
 		return;
 	if (helper_is_help_or_usage(sep->arg[1])) {
-		c->Message(Chat::White, "usage: %s [set | clear] ([actionable: target | byname | ownergroup | botgroup | targetgroup | namesgroup | healrotation | spawned] ([actionable_name]))", sep->arg[0]);
+		c->Message(Chat::White, "usage: %s [set | clear] ([actionable: target | byname | ownergroup | targetgroup | namesgroup | healrotation | spawned] ([actionable_name]))", sep->arg[0]);
 		c->Message(Chat::White, "Notes:");
 		if (c->ClientVersion() >= EQ::versions::ClientVersion::SoF) {
 			c->Message(Chat::White, "- Self-inspect and type your bot's inspect message");
@@ -6409,7 +6761,7 @@ void bot_subcommand_bot_report(Client *c, const Seperator *sep)
 	if (helper_command_alias_fail(c, "bot_subcommand_bot_report", sep->arg[0], "botreport"))
 		return;
 	if (helper_is_help_or_usage(sep->arg[1])) {
-		c->Message(Chat::White, "usage: %s ([actionable: target | byname | ownergroup | botgroup | targetgroup | namesgroup | healrotation | spawned] ([actionable_name]))", sep->arg[0]);
+		c->Message(Chat::White, "usage: %s ([actionable: target | byname | ownergroup | targetgroup | namesgroup | healrotation | spawned] ([actionable_name]))", sep->arg[0]);
 		return;
 	}
 	const int ab_mask = ActionableBots::ABM_NoFilter;
@@ -6765,21 +7117,23 @@ void bot_subcommand_bot_summon(Client *c, const Seperator *sep)
 	}
 
 	if (helper_is_help_or_usage(sep->arg[1])) {
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Usage: {} ([actionable: target | byname | ownergroup | botgroup | targetgroup | namesgroup | healrotation | spawned] ([actionable_name]))",
-				sep->arg[0]
-			).c_str()
-		);
+		c->Message(Chat::White, "usage: %s ([actionable: target | byname | ownergroup | ownerraid | targetgroup | namesgroup | healrotationtargets | byclass | byrace | spawned] ([actionable_name]))", sep->arg[0]);
 		return;
 	}
-	const int ab_mask = ActionableBots::ABM_NoFilter;
+	const int ab_mask = ActionableBots::ABM_Type1;
+
+	std::string class_race_arg = sep->arg[1];
+	bool class_race_check = false;
+	if (!class_race_arg.compare("byclass") || !class_race_arg.compare("byrace")) {
+		class_race_check = true;
+	}
 
 	std::list<Bot*> sbl;
-	if (ActionableBots::PopulateSBL(c, sep->arg[1], sbl, ab_mask, sep->arg[2]) == ActionableBots::ABT_None) {
+	if (ActionableBots::PopulateSBL(c, sep->arg[1], sbl, ab_mask, !class_race_check ? sep->arg[2] : nullptr, class_race_check ? atoi(sep->arg[2]) : 0) == ActionableBots::ABT_None) {
 		return;
 	}
+
+	sbl.remove(nullptr);
 
 	for (auto bot_iter : sbl) {
 		if (!bot_iter) {
@@ -6808,7 +7162,8 @@ void bot_subcommand_bot_summon(Client *c, const Seperator *sep)
 				sbl.front() ? sbl.front()->GetCleanName() : "no one"
 			).c_str()
 		);
-	} else {
+	}
+	else {
 		c->Message(
 			Chat::White,
 			fmt::format(
@@ -6913,7 +7268,7 @@ void bot_subcommand_bot_toggle_helm(Client *c, const Seperator *sep)
 	if (helper_command_alias_fail(c, "bot_subcommand_bot_toggle_helm", sep->arg[0], "bottogglehelm"))
 		return;
 	if (helper_is_help_or_usage(sep->arg[1])) {
-		c->Message(Chat::White, "usage: %s ([option: on | off]) ([actionable: target | byname | ownergroup | botgroup | targetgroup | namesgroup | healrotation | spawned] ([actionable_name]))", sep->arg[0]);
+		c->Message(Chat::White, "usage: %s ([option: on | off]) ([actionable: target | byname | ownergroup | targetgroup | namesgroup | healrotation | spawned] ([actionable_name]))", sep->arg[0]);
 		return;
 	}
 	const int ab_mask = ActionableBots::ABM_NoFilter;
@@ -8593,7 +8948,7 @@ void bot_subcommand_pet_get_lost(Client *c, const Seperator *sep)
 	if (helper_command_alias_fail(c, "bot_subcommand_pet_get_lost", sep->arg[0], "petgetlost"))
 		return;
 	if (helper_is_help_or_usage(sep->arg[1])) {
-		c->Message(Chat::White, "usage: %s ([actionable: target | byname | ownergroup | botgroup | targetgroup | namesgroup | healrotation | spawned] ([actionable_name]))", sep->arg[0]);
+		c->Message(Chat::White, "usage: %s ([actionable: target | byname | ownergroup | targetgroup | namesgroup | healrotation | spawned] ([actionable_name]))", sep->arg[0]);
 		return;
 	}
 	int ab_mask = ActionableBots::ABM_NoFilter;
@@ -8836,26 +9191,28 @@ void helper_bot_appearance_form_final(Client *bot_owner, Bot *my_bot)
 
 void helper_bot_appearance_form_update(Bot *my_bot)
 {
-	if (!my_bot)
+	if (!my_bot) {
 		return;
+	}
 
 	my_bot->SendIllusionPacket(
-		my_bot->GetRace(),
-		my_bot->GetGender(),
-		0xFF,	//my_bot->GetTexture(),		// 0xFF - change back if issues arise
-		0xFF,	//my_bot->GetHelmTexture(),	// 0xFF - change back if issues arise
-		my_bot->GetHairColor(),
-		my_bot->GetBeardColor(),
-		my_bot->GetEyeColor1(),
-		my_bot->GetEyeColor2(),
-		my_bot->GetHairStyle(),
-		my_bot->GetLuclinFace(),
-		my_bot->GetBeard(),
-		0xFF,					// aa_title (0xFF)
-		my_bot->GetDrakkinHeritage(),
-		my_bot->GetDrakkinTattoo(),
-		my_bot->GetDrakkinDetails(),
-		my_bot->GetSize()
+		AppearanceStruct{
+			.beard = my_bot->GetBeard(),
+			.beard_color = my_bot->GetBeardColor(),
+			.drakkin_details = my_bot->GetDrakkinDetails(),
+			.drakkin_heritage = my_bot->GetDrakkinHeritage(),
+			.drakkin_tattoo = my_bot->GetDrakkinTattoo(),
+			.eye_color_one = my_bot->GetEyeColor1(),
+			.eye_color_two = my_bot->GetEyeColor2(),
+			.face = my_bot->GetLuclinFace(),
+			.gender_id = my_bot->GetGender(),
+			.hair = my_bot->GetHairStyle(),
+			.hair_color = my_bot->GetHairColor(),
+			.helmet_texture = my_bot->GetHelmTexture(),
+			.race_id = my_bot->GetRace(),
+			.size = my_bot->GetSize(),
+			.texture = my_bot->GetTexture(),
+		}
 	);
 }
 
@@ -8870,8 +9227,8 @@ uint32 helper_bot_create(Client *bot_owner, std::string bot_name, uint8 bot_clas
 		bot_owner->Message(
 			Chat::White,
 			fmt::format(
-				"'{}' is an invalid name. You may only use characters 'A-Z', 'a-z' and '_'.",
-				bot_name
+				"'{}' is an invalid name. You may only use characters 'A-Z' or 'a-z'. Mixed case {} allowed.",
+				bot_name, RuleB(Bots, AllowCamelCaseNames) ? "is" : "is not"
 			).c_str()
 		);
 		return bot_id;
@@ -8900,7 +9257,7 @@ uint32 helper_bot_create(Client *bot_owner, std::string bot_name, uint8 bot_clas
 		return bot_id;
 	}
 
-	if (!Bot::IsValidRaceClassCombo(bot_race, bot_class) && IsPlayerRace(bot_race)) {
+	if (!Bot::IsValidRaceClassCombo(bot_race, bot_class)) {
 		const std::string bot_race_name = GetRaceIDName(bot_race);
 		const std::string bot_class_name = GetClassIDName(bot_class);
 		const auto view_saylink = Saylink::Silent(
@@ -9057,6 +9414,8 @@ uint32 helper_bot_create(Client *bot_owner, std::string bot_name, uint8 bot_clas
 		parse->EventPlayer(EVENT_BOT_CREATE, bot_owner, export_string, 0);
 	}
 
+	my_bot->AddBotStartingItems(bot_race, bot_class);
+
 	safe_delete(my_bot);
 
 	return bot_id;
@@ -9187,7 +9546,7 @@ bool helper_cast_standard_spell(Bot* casting_bot, Mob* target_mob, int spell_id,
 
 bool helper_command_disabled(Client* bot_owner, bool rule_value, const char* command)
 {
-	if (rule_value) {
+	if (!rule_value) {
 		bot_owner->Message(Chat::White, "Bot command %s is not enabled on this server.", command);
 		return true;
 	}
@@ -9969,47 +10328,309 @@ void bot_command_caster_range(Client* c, const Seperator* sep)
 	if (helper_command_alias_fail(c, "bot_command_caster_range", sep->arg[0], "casterrange")) {
 		return;
 	}
+
 	if (helper_is_help_or_usage(sep->arg[1])) {
-		c->Message(Chat::White, "usage: <target_bot> %s [current | value: 0 - 300].", sep->arg[0]);
+		c->Message(Chat::White, "usage: %s [current | value: 0 - 300] ([actionable: target | byname | ownergroup | ownerraid | targetgroup | namesgroup | healrotationtargets | byclass | byrace | spawned] ([actionable_name]))", sep->arg[0]);
 		c->Message(Chat::White, "note: Can only be used for Casters or Hybrids.");
 		c->Message(Chat::White, "note: Use [current] to check the current setting.");
 		c->Message(Chat::White, "note: Set the value to the minimum distance you want your bot to try to remain from its target.");
 		c->Message(Chat::White, "note: If they are too far for a spell, it will be skipped.");
+		c->Message(Chat::White, "note: This is set to (90) units by default.");
 		return;
 	}
+	const int ab_mask = ActionableBots::ABM_Type1;
 
-	auto my_bot = ActionableBots::AsTarget_ByBot(c);
-	if (!my_bot) {
-		c->Message(Chat::White, "You must <target> a bot that you own to use this command.");
-		return;
-	}
-	if (!IsCasterClass(my_bot->GetClass()) && !IsHybridClass(my_bot->GetClass())) {
-		c->Message(Chat::White, "You must <target> a caster or hybrid class to use this command.");
-		return;
-	}
-
+	std::string arg1 = sep->arg[1];
+	int ab_arg = 1;
+	bool current_check = false;
 	uint32 crange = 0;
+
 	if (sep->IsNumber(1)) {
+		ab_arg = 2;
 		crange = atoi(sep->arg[1]);
-		if (crange >= 0 && crange <= 300) {
-			my_bot->SetBotCasterRange(crange);
-			if (!database.botdb.SaveBotCasterRange(c->CharacterID(), my_bot->GetBotID(), crange)) {
-				c->Message(Chat::White, "%s for '%s'", BotDatabase::fail::SaveBotCasterRange(), my_bot->GetCleanName());
-				return;
-			}
-			else {
-				c->Message(Chat::White, "Successfully set Caster Range for %s to %u.", my_bot->GetCleanName(), crange);
-			}
-		}
-		else {
+		if (crange < 0 || crange > 300) {
 			c->Message(Chat::White, "You must enter a value within the range of 0 - 300.");
 			return;
 		}
 	}
-	else if (!strcasecmp(sep->arg[1], "current")) {
-		c->Message(Chat::White, "My current range is %u.", my_bot->GetBotCasterRange());
+	else if (!arg1.compare("current")) {
+		ab_arg = 2;
+		current_check = true;
 	}
 	else {
-		c->Message(Chat::White, "Incorrect argument, use help for a list of options.");
+		c->Message(Chat::White, "Incorrect argument, use %s help for a list of options.", sep->arg[0]);
+		return;
 	}
+
+	std::string class_race_arg = sep->arg[ab_arg];
+	bool class_race_check = false;
+
+	if (!class_race_arg.compare("byclass") || !class_race_arg.compare("byrace")) {
+		class_race_check = true;
+	}
+
+	std::list<Bot*> sbl;
+	if (ActionableBots::PopulateSBL(c, sep->arg[ab_arg], sbl, ab_mask, !class_race_check ? sep->arg[ab_arg + 1] : nullptr, class_race_check ? atoi(sep->arg[ab_arg + 1]) : 0) == ActionableBots::ABT_None) {
+		return;
+	}
+
+	sbl.remove(nullptr);
+
+	Bot* first_found = nullptr;
+	int success_count = 0;
+
+	for (auto my_bot : sbl) {
+		if (!IsCasterClass(my_bot->GetClass()) && !IsHybridClass(my_bot->GetClass())) {
+			continue;
+		}
+
+		if (!first_found) {
+			first_found = my_bot;
+		}
+
+		if (current_check) {
+			c->Message(
+				Chat::White,
+				fmt::format(
+					"{} says, 'My current Caster Range is {}.'",
+					my_bot->GetCleanName(),
+					my_bot->GetBotCasterRange()
+				).c_str()
+			);
+		}
+		else {
+			my_bot->SetBotCasterRange(crange);
+			++success_count;
+
+			if (!database.botdb.SaveBotCasterRange(c->CharacterID(), my_bot->GetBotID(), crange)) {
+				c->Message(
+					Chat::White,
+					fmt::format(
+						"{} for '{}'",
+						BotDatabase::fail::SaveBotCasterRange(),
+						my_bot->GetCleanName()
+					).c_str()
+				);
+			}
+		}
+	}
+	if (!current_check) {
+		if (success_count == 1 && first_found) {
+			c->Message(
+				Chat::White,
+				fmt::format(
+					"{} says, 'My Caster Range was set to {}.'",
+					first_found->GetCleanName(),
+					crange
+				).c_str()
+			);
+		}
+		else {
+			c->Message(
+				Chat::White,
+				fmt::format(
+					"{} of your bots set their Caster Range to {}.",
+					success_count,
+					crange
+				).c_str()
+			);
+		}
+	}
+}
+
+void bot_command_pickpocket(Client *c, const Seperator *sep)
+{
+	if (helper_command_disabled(c, RuleB(Bots, AllowPickpocketCommand), "pickpocket")) {
+		return;
+	}
+
+	if (helper_command_alias_fail(c, "bot_command_pickpocket", sep->arg[0], "pickpocket")) {
+		return;
+	}
+
+	if (helper_is_help_or_usage(sep->arg[1])) {
+		c->Message(Chat::White, "usage: <enemy_target>", sep->arg[0]);
+		return;
+	}
+
+	std::list<Bot *> sbl;
+	MyBots::PopulateSBL_BySpawnedBots(c, sbl);
+
+	// Check for capable rogue
+	ActionableBots::Filter_ByClasses(c, sbl, PLAYER_CLASS_ROGUE_BIT);
+	Bot *my_bot = ActionableBots::AsSpawned_ByMinLevelAndClass(c, sbl, 7, ROGUE);
+	if (!my_bot) {
+		c->Message(Chat::White, "No bots are capable of performing this action");
+		return;
+	}
+
+	// Make sure a mob is targetted and a valid NPC
+	Mob *target_mob = ActionableTarget::AsSingle_ByAttackable(c);
+	if (!target_mob || !target_mob->IsNPC()) {
+		c->Message(Chat::White, "You must <target> an enemy to use this command");
+		return;
+	}
+
+	NPC *target_npc = ActionableTarget::AsSingle_ByAttackable(c)->CastToNPC();
+
+	// Check if mob is close enough
+	glm::vec4 mob_distance    = (c->GetPosition() - target_mob->GetPosition());
+	float     mob_xy_distance = ((mob_distance.x * mob_distance.x) + (mob_distance.y * mob_distance.y));
+	float     mob_z_distance  = (mob_distance.z * mob_distance.z);
+	float     z_offset_diff   = target_mob->GetZOffset() - c->GetZOffset();
+
+	if (mob_z_distance >= (35-z_offset_diff) || mob_xy_distance > 250) {
+		c->Message(Chat::White, "You must be closer to an enemy to use this command");
+		return;
+	}
+
+	// Adapted from pickpock skill in npc.cpp
+	// Make sure we are allowed to target them
+	uint8 over_level = target_mob->GetLevel();
+	if (over_level > (my_bot->GetLevel() + THIEF_PICKPOCKET_OVER)) {
+		c->Message(Chat::Red, "You are too inexperienced to pick pocket this target");
+		return;
+	}
+
+	// Random fail roll
+	if (zone->random.Roll(5)) {
+		if (zone->CanDoCombat()) {
+			target_mob->AddToHateList(c, 50);
+		}
+		target_mob->Say("Stop thief!");
+		c->Message(Chat::Red, "You are noticed trying to steal!");
+		return;
+	}
+
+	// Setup variables for calcs
+	bool steal_skill  = my_bot->GetSkill(EQ::skills::SkillPickPockets);
+	bool steal_chance = steal_skill * 100 / (5 * over_level + 5);
+
+	// Determine whether to steal money or an item.
+	uint32 money[6] = {
+		0,
+		((steal_skill >= 125) ? (target_npc->GetPlatinum()) : (0)),
+		((steal_skill >= 60) ? (target_npc->GetGold()) : (0)),
+		target_npc->GetSilver(),
+		target_npc->GetCopper(),
+		0
+	};
+
+	bool   has_coin   = ((money[PickPocketPlatinum] | money[PickPocketGold] | money[PickPocketSilver] | money[PickPocketCopper]) != 0);
+	bool   steal_item = (steal_skill >= steal_chance && (zone->random.Roll(50) || !has_coin));
+
+	// Steal item
+	while (steal_item) {
+		std::vector<std::pair<const EQ::ItemData *, uint16>> loot_selection; // <const ItemData*, charges>
+		for (auto                                            item_iter: target_npc->itemlist) {
+			if (!item_iter || !item_iter->item_id) {
+				continue;
+			}
+			auto item_test = database.GetItem(item_iter->item_id);
+			if (item_test->Magic || !item_test->NoDrop || item_test->IsClassBag() || c->CheckLoreConflict(item_test) ||
+				item_iter->equip_slot != EQ::invslot::SLOT_INVALID) {
+				continue;
+			}
+			loot_selection.emplace_back(
+				std::make_pair(
+					item_test,
+					((item_test->Stackable) ? (1) : (item_iter->charges))
+				)
+			);
+		}
+		if (loot_selection.empty()) {
+			steal_item = false;
+			break;
+		}
+
+		int random = zone->random.Int(0, (loot_selection.size() - 1));
+
+		int16 slot_id = c->GetInv().FindFreeSlot(
+			false,
+			true,
+			(loot_selection[random].first->Size),
+			(loot_selection[random].first->ItemType == EQ::item::ItemTypeArrow)
+		);
+		if (slot_id == INVALID_INDEX) {
+			steal_item = false;
+			break;
+		}
+
+		auto item_inst = database.CreateItem(loot_selection[random].first, loot_selection[random].second);
+		if (item_inst == nullptr) {
+			steal_item = false;
+			break;
+		}
+
+		// Successful item pickpocket
+		if (item_inst->IsStackable() && RuleB(Character, UseStackablePickPocketing)) {
+			if (!c->TryStacking(item_inst, ItemPacketTrade, false, false)) {
+				c->PutItemInInventory(slot_id, *item_inst);
+				c->SendItemPacket(slot_id, item_inst, ItemPacketTrade);
+			}
+		}
+		else {
+			c->PutItemInInventory(slot_id, *item_inst);
+			c->SendItemPacket(slot_id, item_inst, ItemPacketTrade);
+		}
+		target_npc->RemoveItem(item_inst->GetID());
+		c->Message(Chat::White, "You stole an item.");
+		safe_delete(item_inst);
+		return;
+	}
+
+	// no items, try money
+	while (!steal_item && has_coin) {
+		uint32 coin_amount = zone->random.Int(1, (steal_skill / 25) + 1);
+
+		int coin_type = PickPocketPlatinum;
+		while (coin_type <= PickPocketCopper) {
+			if (money[coin_type]) {
+				if (coin_amount > money[coin_type]) {
+					coin_amount = money[coin_type];
+				}
+				break;
+			}
+			++coin_type;
+		}
+		if (coin_type > PickPocketCopper) {
+			break;
+		}
+
+		memset(money, 0, (sizeof(int) * 6));
+		money[coin_type] = coin_amount;
+
+		if (zone->random.Roll(steal_chance)) { // Successful coin pickpocket
+			switch (coin_type) {
+				case PickPocketPlatinum:
+					target_npc->SetPlatinum(target_npc->GetPlatinum() - coin_amount);
+					break;
+				case PickPocketGold:
+					target_npc->SetGold(target_npc->GetGold() - coin_amount);
+					break;
+				case PickPocketSilver:
+					target_npc->SetSilver(target_npc->GetSilver() - coin_amount);
+					break;
+				case PickPocketCopper:
+					target_npc->SetCopper(target_npc->GetCopper() - coin_amount);
+					break;
+				default: // has_coin..but, doesn't have coin?
+					c->Message(Chat::Red, "You failed to pickpocket.");
+					return;
+			}
+			c->Message(Chat::White, "You stole money.");
+			c->AddMoneyToPP(
+				money[PickPocketCopper],
+				money[PickPocketSilver],
+				money[PickPocketGold],
+				money[PickPocketPlatinum],
+				true
+			);
+			return;
+		}
+
+		c->Message(Chat::Red, "You failed to pickpocket.");
+		return;
+	}
+	c->Message(Chat::White, "This target's pockets are empty");
 }

@@ -381,6 +381,8 @@ Client::Client(EQStreamInterface *ieqs) : Mob(
 Client::~Client() {
 	mMovementManager->RemoveClient(this);
 
+	DataBucket::DeleteCachedBuckets(DataBucketLoadType::Client, CharacterID());
+
 	if (RuleB(Bots, Enabled)) {
 		Bot::ProcessBotOwnerRefDelete(this);
 	}
@@ -1533,6 +1535,56 @@ bool Client::UpdateLDoNPoints(uint32 theme_id, int points) {
 	return true;
 }
 
+void Client::SetLDoNPoints(uint32 theme_id, uint32 points)
+{
+	switch (theme_id) {
+		case LDoNThemes::GUK: {
+			m_pp.ldon_points_guk = points;
+			break;
+		}
+		case LDoNThemes::MIR: {
+			m_pp.ldon_points_mir = points;
+			break;
+		}
+		case LDoNThemes::MMC: {
+			m_pp.ldon_points_mmc = points;
+			break;
+		}
+		case LDoNThemes::RUJ: {
+			m_pp.ldon_points_ruj = points;
+			break;
+		}
+		case LDoNThemes::TAK: {
+			m_pp.ldon_points_tak = points;
+			break;
+		}
+	}
+
+	m_pp.ldon_points_available = (
+		m_pp.ldon_points_guk +
+		m_pp.ldon_points_mir +
+		m_pp.ldon_points_mmc +
+		m_pp.ldon_points_ruj +
+		m_pp.ldon_points_tak
+	);
+
+	auto outapp = new EQApplicationPacket(OP_AdventurePointsUpdate, sizeof(AdventurePoints_Update_Struct));
+
+	auto a = (AdventurePoints_Update_Struct*) outapp->pBuffer;
+
+	a->ldon_available_points = m_pp.ldon_points_available;
+	a->ldon_guk_points       = m_pp.ldon_points_guk;
+	a->ldon_mirugal_points   = m_pp.ldon_points_mir;
+	a->ldon_mistmoore_points = m_pp.ldon_points_mmc;
+	a->ldon_rujarkian_points = m_pp.ldon_points_ruj;
+	a->ldon_takish_points    = m_pp.ldon_points_tak;
+
+	outapp->priority = 6;
+
+	QueuePacket(outapp);
+	safe_delete(outapp);
+}
+
 void Client::SetSkill(EQ::skills::SkillType skillid, uint16 value) {
 	if (skillid > EQ::skills::HIGHEST_SKILL)
 		return;
@@ -2159,25 +2211,13 @@ void Client::ReadBook(BookRequest_Struct *book) {
 
 
 		if (ClientVersion() >= EQ::versions::ClientVersion::SoF) {
-			// Find out what slot the book was read from.
 			// SoF+ need to look up book type for the output message.
-			int16	read_from_slot;
-
-			if (book->subslot >= 0) {
-				uint16 offset;
-				offset = (book->invslot-23) * 10;	// How many packs to skip.
-				read_from_slot = 251 + offset + book->subslot;
-			}
-			else {
-				read_from_slot = book->invslot -1;
-			}
-
 			const EQ::ItemInstance *inst = nullptr;
 
-			if (read_from_slot <= EQ::invbag::GENERAL_BAGS_END)
-				{
-				inst = m_inv[read_from_slot];
-				}
+			if (book->invslot <= EQ::invbag::GENERAL_BAGS_END)
+			{
+				inst = m_inv[book->invslot];
+			}
 
 			if(inst)
 				out->type = inst->GetItem()->Book;
@@ -2188,6 +2228,9 @@ void Client::ReadBook(BookRequest_Struct *book) {
 			out->type = book->type;
 		}
 		out->invslot = book->invslot;
+		out->target_id = book->target_id;
+		out->can_cast = 0; // todo: implement
+		out->can_scribe = 0; // todo: implement
 
 		memcpy(out->booktext, booktxt2.c_str(), length);
 
@@ -2219,10 +2262,10 @@ void Client::QuestReadBook(const char* text, uint8 type) {
 
 uint32 Client::GetCarriedPlatinum() {
 	return (
-		GetMoney(3, 0) +
-		(GetMoney(2, 0) / 10) +
-		(GetMoney(1, 0) / 100) +
-		(GetMoney(0, 0) / 1000)
+		GetMoney(MoneyTypes::Platinum, MoneySubtypes::Personal) +
+		(GetMoney(MoneyTypes::Gold, MoneySubtypes::Personal) / 10) +
+		(GetMoney(MoneyTypes::Silver, MoneySubtypes::Personal) / 100) +
+		(GetMoney(MoneyTypes::Copper, MoneySubtypes::Personal) / 1000)
 	);
 }
 
@@ -6546,24 +6589,30 @@ void Client::RemoveXTarget(Mob *m, bool OnlyAutoSlots)
 			XTargets[i].dirty = true;
 		}
 	}
+	auto r = GetRaid();
+	if (r) {
+		r->UpdateRaidXTargets();
+	}
 }
 
 void Client::UpdateXTargetType(XTargetType Type, Mob *m, const char *Name)
 {
-	if(!XTargettingAvailable())
+	if (!XTargettingAvailable()) {
 		return;
+	}
 
-	for(int i = 0; i < GetMaxXTargets(); ++i)
-	{
-		if(XTargets[i].Type == Type)
-		{
-			if(m)
+	for (int i = 0; i < GetMaxXTargets(); ++i) {
+		if (XTargets[i].Type == Type) {
+			if (m) {
 				XTargets[i].ID = m->GetID();
-			else
+			}
+			else {
 				XTargets[i].ID = 0;
+			}
 
-			if(Name)
+			if (Name) {
 				strncpy(XTargets[i].Name, Name, 64);
+			}
 
 			SendXTargetPacket(i, m);
 		}
@@ -6597,10 +6646,7 @@ void Client::SendXTargetPacket(uint32 Slot, Mob *m)
 		if (strlen(XTargets[Slot].Name) && ((XTargets[Slot].Type == CurrentTargetPC) ||
 			(XTargets[Slot].Type == GroupTank) ||
 			(XTargets[Slot].Type == GroupAssist) ||
-			(XTargets[Slot].Type == Puller) ||
-			(XTargets[Slot].Type == RaidAssist1) ||
-			(XTargets[Slot].Type == RaidAssist2) ||
-			(XTargets[Slot].Type == RaidAssist3)))
+			(XTargets[Slot].Type == Puller)))
 		{
 			outapp->WriteUInt8(2);
 		}
@@ -6664,13 +6710,7 @@ void Client::RemoveGroupXTargets()
 	{
 		if ((XTargets[i].Type == GroupTank) ||
 			(XTargets[i].Type == GroupAssist) ||
-			(XTargets[i].Type == Puller) ||
-			(XTargets[i].Type == RaidAssist1) ||
-			(XTargets[i].Type == RaidAssist2) ||
-			(XTargets[i].Type == RaidAssist3) ||
-			(XTargets[i].Type == GroupMarkTarget1) ||
-			(XTargets[i].Type == GroupMarkTarget2) ||
-			(XTargets[i].Type == GroupMarkTarget3))
+			(XTargets[i].Type == Puller))
 		{
 			XTargets[i].ID = 0;
 			XTargets[i].Name[0] = 0;
@@ -8079,16 +8119,17 @@ void Client::SendHPUpdateMarquee(){
 
 uint32 Client::GetMoney(uint8 type, uint8 subtype) {
 	uint32 value = 0;
+
 	switch (type) {
-		case 0: {
+		case MoneyTypes::Copper: {
 			switch (subtype) {
-				case 0:
+				case MoneySubtypes::Personal:
 					value = static_cast<uint32>(m_pp.copper);
 					break;
-				case 1:
+				case MoneySubtypes::Bank:
 					value = static_cast<uint32>(m_pp.copper_bank);
 					break;
-				case 2:
+				case MoneySubtypes::Cursor:
 					value = static_cast<uint32>(m_pp.copper_cursor);
 					break;
 				default:
@@ -8096,15 +8137,15 @@ uint32 Client::GetMoney(uint8 type, uint8 subtype) {
 			}
 			break;
 		}
-		case 1: {
+		case MoneyTypes::Silver: {
 			switch (subtype) {
-				case 0:
+				case MoneySubtypes::Personal:
 					value = static_cast<uint32>(m_pp.silver);
 					break;
-				case 1:
+				case MoneySubtypes::Bank:
 					value = static_cast<uint32>(m_pp.silver_bank);
 					break;
-				case 2:
+				case MoneySubtypes::Cursor:
 					value = static_cast<uint32>(m_pp.silver_cursor);
 					break;
 				default:
@@ -8112,15 +8153,15 @@ uint32 Client::GetMoney(uint8 type, uint8 subtype) {
 			}
 			break;
 		}
-		case 2: {
+		case MoneyTypes::Gold: {
 			switch (subtype) {
-				case 0:
+				case MoneySubtypes::Personal:
 					value = static_cast<uint32>(m_pp.gold);
 					break;
-				case 1:
+				case MoneySubtypes::Bank:
 					value = static_cast<uint32>(m_pp.gold_bank);
 					break;
-				case 2:
+				case MoneySubtypes::Cursor:
 					value = static_cast<uint32>(m_pp.gold_cursor);
 					break;
 				default:
@@ -8128,18 +8169,18 @@ uint32 Client::GetMoney(uint8 type, uint8 subtype) {
 			}
 			break;
 		}
-		case 3: {
+		case MoneyTypes::Platinum: {
 			switch (subtype) {
-				case 0:
+				case MoneySubtypes::Personal:
 					value = static_cast<uint32>(m_pp.platinum);
 					break;
-				case 1:
+				case MoneySubtypes::Bank:
 					value = static_cast<uint32>(m_pp.platinum_bank);
 					break;
-				case 2:
+				case MoneySubtypes::Cursor:
 					value = static_cast<uint32>(m_pp.platinum_cursor);
 					break;
-				case 3:
+				case MoneySubtypes::SharedBank:
 					value = static_cast<uint32>(m_pp.platinum_shared);
 					break;
 				default:
@@ -8150,6 +8191,7 @@ uint32 Client::GetMoney(uint8 type, uint8 subtype) {
 		default:
 			break;
 	}
+
 	return value;
 }
 
@@ -8834,7 +8876,8 @@ void Client::ShowDevToolsMenu()
 	menu_reload_two += Saylink::Silent("#reload commands", "Commands");
 	menu_reload_two += " | " + Saylink::Silent("#reload content_flags", "Content Flags");
 
-	menu_reload_three += Saylink::Silent("#reload doors", "Doors");
+	menu_reload_three += Saylink::Silent("#reload data_buckets_cache", "Databuckets");
+	menu_reload_three += " | " + Saylink::Silent("#reload doors", "Doors");
 	menu_reload_three += " | " + Saylink::Silent("#reload ground_spawns", "Ground Spawns");
 
 	menu_reload_four += Saylink::Silent("#reload logs", "Level Based Experience Modifiers");
@@ -10788,6 +10831,16 @@ void Client::SendReloadCommandMessages() {
 		).c_str()
 	);
 
+	auto data_buckets_link = Saylink::Silent("#reload data_buckets_cache");
+
+	Message(
+		Chat::White,
+		fmt::format(
+			"Usage: {} - Reloads data buckets cache globally",
+			data_buckets_link
+		).c_str()
+	);
+
 	auto dztemplates_link = Saylink::Silent("#reload dztemplates");
 	Message(Chat::White, fmt::format("Usage: {} - Reloads Dynamic Zone Templates globally", dztemplates_link).c_str());
 
@@ -11030,8 +11083,6 @@ void Client::SetTrackingID(uint32 entity_id)
 	}
 
 	TrackingID = entity_id;
-
-	MessageString(Chat::Skills, TRACKING_BEGIN, m->GetCleanName());
 }
 
 int Client::GetRecipeMadeCount(uint32 recipe_id)
@@ -11230,6 +11281,7 @@ std::vector<Mob*> Client::GetApplySpellList(
 void Client::ApplySpell(
 	int spell_id,
 	int duration,
+	int level,
 	ApplySpellType apply_type,
 	bool allow_pets,
 	bool is_raid_group_only,
@@ -11238,13 +11290,14 @@ void Client::ApplySpell(
 	const auto& l = GetApplySpellList(apply_type, allow_pets, is_raid_group_only, allow_bots);
 
 	for (const auto& m : l) {
-		m->ApplySpellBuff(spell_id, duration);
+		m->ApplySpellBuff(spell_id, duration, level);
 	}
 }
 
 void Client::SetSpellDuration(
 	int spell_id,
 	int duration,
+	int level,
 	ApplySpellType apply_type,
 	bool allow_pets,
 	bool is_raid_group_only,
@@ -11253,7 +11306,7 @@ void Client::SetSpellDuration(
 	const auto& l = GetApplySpellList(apply_type, allow_pets, is_raid_group_only, allow_bots);
 
 	for (const auto& m : l) {
-		m->SetBuffDuration(spell_id, duration);
+		m->SetBuffDuration(spell_id, duration, level);
 	}
 }
 
@@ -11690,7 +11743,7 @@ void Client::ShowSpells(Client* c, ShowSpellType show_spell_type)
 					"{}. {} ({})",
 					index,
 					GetSpellName(spell_id),
-					Strings::Commify(spell_id)
+					spell_id
 				).c_str()
 			);
 		}
@@ -11707,4 +11760,30 @@ void Client::ShowSpells(Client* c, ShowSpellType show_spell_type)
 		).c_str(),
 		spell_table.c_str()
 	);
+}
+
+std::string GetZoneModeString(ZoneMode mode)
+{
+	switch (mode) {
+		case ZoneToSafeCoords:
+			return "ZoneToSafeCoords";
+		case GMSummon:
+			return "GMSummon";
+		case ZoneToBindPoint:
+			return "ZoneToBindPoint";
+		case ZoneSolicited:
+			return "ZoneSolicited";
+		case ZoneUnsolicited:
+			return "ZoneUnsolicited";
+		case GateToBindPoint:
+			return "GateToBindPoint";
+		case SummonPC:
+			return "SummonPC";
+		case Rewind:
+			return "Rewind";
+		case EvacToSafeCoords:
+			return "EvacToSafeCoords";
+		default:
+			return "Unknown";
+	}
 }

@@ -706,11 +706,7 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 
 			case SE_AddFaction:
 			{
-#ifdef SPELL_EFFECT_SPAM
-				snprintf(effect_desc, _EDLEN, "Faction Mod: %+i", effect_value);
-#endif
-				// EverHood
-				if(caster && GetPrimaryFaction()>0) {
+				if (caster && !IsPet() && GetPrimaryFaction() > 0) {
 					caster->AddFactionBonus(GetPrimaryFaction(),effect_value);
 				}
 				break;
@@ -788,12 +784,22 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 				SetPetOrder(SPO_Follow);
 				SetAppearance(eaStanding);
 				// Client has saved previous pet sit/stand - make all new pets
-				// stand on charm.
+				// stand and follow on charm.
 				if (caster->IsClient()) {
-					caster->CastToClient()->SetPetCommandState(PET_BUTTON_SIT,0);
+					Client *cpet = caster->CastToClient();
+					cpet->SetPetCommandState(PET_BUTTON_SIT,0);
+					cpet->SetPetCommandState(PET_BUTTON_FOLLOW, 1);
+					cpet->SetPetCommandState(PET_BUTTON_GUARD, 0);
+					cpet->SetPetCommandState(PET_BUTTON_STOP, 0);
 				}
 
 				SetPetType(petCharmed);
+
+				// This was done in AddBuff, but we were not a pet yet, so
+				// the target windows didn't get updated.
+				EQApplicationPacket *outapp = MakeBuffsPacket();
+				entity_list.QueueClientsByTarget(this, outapp, false, nullptr, true, false, EQ::versions::maskSoDAndLater);
+				safe_delete(outapp);
 
 				if(caster->IsClient()){
 					auto app = new EQApplicationPacket(OP_Charm, sizeof(Charm_Struct));
@@ -1470,9 +1476,11 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 				if(caster && caster->GetTarget()){
 						SendIllusionPacket
 						(
-							caster->GetTarget()->GetRace(),
-							caster->GetTarget()->GetGender(),
-							caster->GetTarget()->GetTexture()
+							AppearanceStruct{
+								.gender_id = caster->GetTarget()->GetGender(),
+								.race_id = caster->GetTarget()->GetRace(),
+								.texture = caster->GetTarget()->GetTexture(),
+							}
 						);
 						caster->SendAppearancePacket(AT_Size, static_cast<uint32>(caster->GetTarget()->GetSize()));
 
@@ -2254,7 +2262,7 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 				if((spell_id != 6882) && (spell_id != 6884)) // Chaotic Jester/Steadfast Servant
 				{
 					char pet_name[64];
-					snprintf(pet_name, sizeof(pet_name), "%s`s pet", caster->GetCleanName());
+					snprintf(pet_name, sizeof(pet_name), "%s`s_pet", caster->GetCleanName());
 					caster->TemporaryPets(spell_id, this, pet_name);
 				}
 				else
@@ -2431,7 +2439,7 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 			{
 				if(caster && caster->IsClient()) {
 					char pet_name[64];
-					snprintf(pet_name, sizeof(pet_name), "%s`s doppelganger", caster->GetCleanName());
+					snprintf(pet_name, sizeof(pet_name), "%s`s_doppelganger", caster->GetCleanName());
 					int pet_count = spells[spell_id].base_value[i];
 					int pet_duration = spells[spell_id].max_value[i];
 					caster->CastToClient()->Doppelganger(spell_id, this, pet_name, pet_count, pet_duration);
@@ -3877,11 +3885,12 @@ void Mob::DoBuffTic(const Buffs_Struct &buff, int slot, Mob *caster)
 
 				if (IsDetrimentalSpell(buff.spellid)) {
 					if (caster->IsClient()) {
-						if (!caster->CastToClient()->GetFeigned())
+						if (!caster->CastToClient()->GetFeigned()) {
 							AddToHateList(caster, -effect_value);
-					} else if (!IsClient()) // Allow NPC's to generate hate if casted on other
-								// NPC's.
+						}
+					} else if (!IsClient()) { // Allow NPC's to generate hate if casted on other NPC's
 						AddToHateList(caster, -effect_value);
+					}
 				}
 
 				effect_value = caster->GetActDoTDamage(buff.spellid, effect_value, this);
@@ -3982,6 +3991,12 @@ void Mob::DoBuffTic(const Buffs_Struct &buff, int slot, Mob *caster)
 		case SE_Charm: {
 			if (!caster || !PassCharismaCheck(caster, buff.spellid)) {
 				BuffFadeByEffect(SE_Charm);
+				
+				// Remove from hate list of any NPC's hate list and remove all NPCs this hate list
+				if (IsNPC()) {
+					entity_list.RemoveFromHateLists(this);
+					WipeHateList(true);
+				}
 			}
 
 			break;
@@ -4261,7 +4276,7 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses)
 			case SE_IllusionCopy:
 			case SE_Illusion:
 			{
-				SendIllusionPacket(0, GetBaseGender());
+				SendIllusionPacket(AppearanceStruct{});
 				// The GetSize below works because the above setting race to zero sets size back.
 				SendAppearancePacket(AT_Size, GetSize());
 
@@ -4349,6 +4364,15 @@ void Mob::BuffFadeBySlot(int slot, bool iRecalcBonuses)
 				{
 					owner->SetPet(0);
 				}
+
+				// Any client that has a previous charmed pet targetted shouldo
+				// no longer see the buffs on the old pet.
+				// QueueClientsByTarget preserves GM and leadership cases.
+
+				EQApplicationPacket *outapp = MakeBuffsPacket(true, true);
+
+				entity_list.QueueClientsByTarget(this, outapp, false, nullptr, true, false, EQ::versions::maskSoDAndLater, true, true);
+
 				if (IsAIControlled())
 				{
 					//Remove damage over time effects on charmed pet and those applied by charmed pet.
@@ -10211,36 +10235,29 @@ void Mob::ApplySpellEffectIllusion(int32 spell_id, Mob *caster, int buffslot, in
 	if (base == -1) {
 		// Specific Gender Illusions
 		if (spell_id == SPELL_ILLUSION_MALE || spell_id == SPELL_ILLUSION_FEMALE) {
-			int specific_gender = -1;
-			// Male
-			if (spell_id == SPELL_ILLUSION_MALE)
-				specific_gender = 0;
-			// Female
-			else if (spell_id == SPELL_ILLUSION_FEMALE)
-				specific_gender = 1;
-			if (specific_gender > -1) {
-				if (caster && caster->GetTarget()) {
-					SendIllusionPacket
-					(
-						caster->GetTarget()->GetBaseRace(),
-						specific_gender,
-						caster->GetTarget()->GetTexture()
-					);
-				}
+			uint8 specific_gender = spell_id == SPELL_ILLUSION_MALE ? MALE : FEMALE;
+
+			if (caster && caster->GetTarget()) {
+				SendIllusionPacket(
+					AppearanceStruct{
+						.gender_id = specific_gender,
+						.race_id = caster->GetTarget()->GetBaseRace(),
+						.texture = caster->GetTarget()->GetTexture(),
+					}
+				);
 			}
 		}
-		// Change Gender Illusions
+			// Change Gender Illusions
 		else {
 			if (caster && caster->GetTarget()) {
-				int opposite_gender = 0;
-				if (caster->GetTarget()->GetGender() == 0)
-					opposite_gender = 1;
+				uint8 opposite_gender = caster->GetTarget()->GetGender() == MALE ? FEMALE : MALE;
 
-				SendIllusionPacket
-				(
-					caster->GetTarget()->GetRace(),
-					opposite_gender,
-					caster->GetTarget()->GetTexture()
+				SendIllusionPacket(
+					AppearanceStruct{
+						.gender_id = opposite_gender,
+						.race_id = caster->GetTarget()->GetRace(),
+						.texture = caster->GetTarget()->GetTexture(),
+					}
 				);
 			}
 		}
@@ -10262,50 +10279,78 @@ void Mob::ApplySpellEffectIllusion(int32 spell_id, Mob *caster, int buffslot, in
 			gender_id
 		);
 
-		if (base != RACE_ELEMENTAL_75) {
+		if (base != RACE_ELEMENTAL_75 && base != RACE_DRAKKIN_522) {
 			if (max > 0) {
 				if (limit == 0) {
 					SendIllusionPacket(
-						base,
-						gender_id
+						AppearanceStruct{
+							.gender_id = static_cast<uint8>(gender_id),
+							.race_id = static_cast<uint16>(base),
+						}
 					);
-				}
-				else {
+				} else {
 					if (max != 3) {
 						SendIllusionPacket(
-							base,
-							gender_id,
-							limit,
-							max
+							AppearanceStruct{
+								.gender_id = static_cast<uint8>(gender_id),
+								.helmet_texture = static_cast<uint8>(max),
+								.race_id = static_cast<uint16>(base),
+								.texture = static_cast<uint8>(limit),
+							}
 						);
-					}
-					else {
+					} else {
 						SendIllusionPacket(
-							base,
-							gender_id,
-							limit,
-							limit
+							AppearanceStruct{
+								.gender_id = static_cast<uint8>(gender_id),
+								.helmet_texture = static_cast<uint8>(limit),
+								.race_id = static_cast<uint16>(base),
+								.texture = static_cast<uint8>(limit),
+							}
 						);
 					}
 				}
-			}
-			else {
+			} else {
 				SendIllusionPacket(
-					base,
-					gender_id,
-					limit,
-					max
+					AppearanceStruct{
+						.gender_id = static_cast<uint8>(gender_id),
+						.helmet_texture = static_cast<uint8>(max),
+						.race_id = static_cast<uint16>(base),
+						.texture = static_cast<uint8>(limit),
+					}
 				);
 			}
-
-		}
-		else {
+		} else if (base == RACE_ELEMENTAL_75){
 			SendIllusionPacket(
-				base,
-				gender_id,
-				limit
+				AppearanceStruct{
+					.gender_id = static_cast<uint8>(gender_id),
+					.race_id = static_cast<uint16>(base),
+					.texture = static_cast<uint8>(limit),
+				}
 			);
+		} else if (base == RACE_DRAKKIN_522) {
+			FaceChange_Struct f{
+				.haircolor = GetHairColor(),
+				.beardcolor = GetBeardColor(),
+				.eyecolor1 = GetEyeColor1(),
+				.eyecolor2 = GetEyeColor2(),
+				.hairstyle = GetHairStyle(),
+				.beard = GetBeard(),
+				.face = GetLuclinFace(),
+				.drakkin_heritage = static_cast<uint32>(limit),
+				.drakkin_tattoo = GetDrakkinTattoo(),
+				.drakkin_details = GetDrakkinDetails(),
+			};
+
+			SendIllusionPacket(
+				AppearanceStruct{
+					.gender_id = static_cast<uint8>(gender_id),
+					.race_id = static_cast<uint16>(base),
+				}
+			);
+
+			SetFaceAppearance(f);
 		}
+
 		SendAppearancePacket(AT_Size, race_size);
 	}
 
@@ -10352,7 +10397,7 @@ bool Mob::HasPersistDeathIllusion(int32 spell_id) {
 	return false;
 }
 
-void Mob::SetBuffDuration(int spell_id, int duration) {
+void Mob::SetBuffDuration(int spell_id, int duration, int level) {
 
 	/*
 		Will refresh the buff with specified spell_id to the specified duration
@@ -10376,22 +10421,20 @@ void Mob::SetBuffDuration(int spell_id, int duration) {
 
 	int buff_count = GetMaxTotalSlots();
 	for (int slot = 0; slot < buff_count; slot++) {
-
 		if (!adjust_all_buffs) {
 			if (IsValidSpell(buffs[slot].spellid) && buffs[slot].spellid == spell_id) {
-				SpellOnTarget(buffs[slot].spellid, this, 0, false, 0, false, -1, duration, true);
+				SpellOnTarget(buffs[slot].spellid, this, 0, false, 0, false, level, duration, true);
 				return;
 			}
-		}
-		else {
+		} else {
 			if (IsValidSpell(buffs[slot].spellid)) {
-				SpellOnTarget(buffs[slot].spellid, this, 0, false, 0, false, -1, duration, true);
+				SpellOnTarget(buffs[slot].spellid, this, 0, false, 0, false, level, duration, true);
 			}
 		}
 	}
 }
 
-void Mob::ApplySpellBuff(int spell_id, int duration)
+void Mob::ApplySpellBuff(int spell_id, int duration, int level)
 {
 	/*
 		Used for quest command to apply a new buff with custom duration.
@@ -10409,7 +10452,7 @@ void Mob::ApplySpellBuff(int spell_id, int duration)
 		duration = PERMANENT_BUFF_DURATION;
 	}
 
-	SpellOnTarget(spell_id, this, 0, false, 0, false, -1, duration);
+	SpellOnTarget(spell_id, this, 0, false, 0, false, level, duration);
 }
 
 int Mob::GetBuffStatValueBySpell(int32 spell_id, const char* stat_identifier)

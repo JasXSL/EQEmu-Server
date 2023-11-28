@@ -130,6 +130,7 @@ public:
 	static std::string Random(size_t length);
 	static bool BeginsWith(const std::string& subject, const std::string& search);
 	static bool EndsWith(const std::string& subject, const std::string& search);
+	static std::string ZoneTime(const uint8 hours, const uint8 minutes);
 
 	template<typename T>
 	static std::string
@@ -184,7 +185,6 @@ public:
 		value = strtod(tmp_str.data(), nullptr);
 		return res;
 	}
-
 };
 
 const std::string StringFormat(const char *format, ...);

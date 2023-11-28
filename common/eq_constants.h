@@ -1052,4 +1052,27 @@ enum ScribeSpellActions
 	Unmemorize
 };
 
+enum SpellTimeRestrictions
+{
+	NoRestriction,
+	Day,
+	Night
+};
+
+enum MoneyTypes
+{
+	Copper,
+	Silver,
+	Gold,
+	Platinum
+};
+
+enum MoneySubtypes
+{
+	Personal,
+	Bank,
+	Cursor,
+	SharedBank // Platinum Only
+};
+
 #endif /*COMMON_EQ_CONSTANTS_H*/

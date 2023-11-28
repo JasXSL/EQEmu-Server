@@ -11,6 +11,7 @@
 #include "aa_ability.h"
 #include "event_codes.h"
 #include "../common/repositories/doors_repository.h"
+#include "../common/races.h"
 
 #include "bot_database.h"
 
@@ -339,7 +340,7 @@ namespace BeastlordPetData {
 		uint16 race_id = WOLF;
 		uint8 texture = 0;
 		uint8 helm_texture = 0;
-		uint8 gender = 2;
+		uint8 gender = NEUTER;
 		float size_modifier = 1.0f;
 		uint8 face = 0;
 	};
@@ -528,7 +529,7 @@ public:
 	bool		CreateSpawn2(Client *c, uint32 spawngroup, const char* zone, const glm::vec4& position, uint32 respawn, uint32 variance, uint16 condition, int16 cond_value);
 	void		UpdateRespawnTime(uint32 id, uint16 instance_id,uint32 timeleft);
 	uint32		GetSpawnTimeLeft(uint32 id, uint16 instance_id);
-	void		UpdateSpawn2Status(uint32 id, uint8 new_status);
+	void        UpdateSpawn2Status(uint32 id, uint8 new_status, uint32 instance_id);
 
 	/* Grids/Paths  */
 	uint32		GetFreeGrid(uint16 zoneid);
@@ -599,8 +600,8 @@ public:
 	void	DeleteMerchantTemp(uint32 npcid, uint32 slot, uint32 zone_id, uint32 instance_id);
 
 	/* Tradeskills  */
-	bool	GetTradeRecipe(const EQ::ItemInstance* container, uint8 c_type, uint32 some_id, uint32 char_id, DBTradeskillRecipe_Struct *spec);
-	bool	GetTradeRecipe(uint32 recipe_id, uint8 c_type, uint32 some_id, uint32 char_id, DBTradeskillRecipe_Struct *spec);
+	bool	GetTradeRecipe(const EQ::ItemInstance* container, uint8 c_type, uint32 some_id, Client* c, DBTradeskillRecipe_Struct* spec, bool* is_augmented);
+	bool	GetTradeRecipe(uint32 recipe_id, uint8 c_type, uint32 some_id, Client* c, DBTradeskillRecipe_Struct* spec);
 	uint32	GetZoneForage(uint32 ZoneID, uint8 skill); /* for foraging */
 	uint32	GetZoneFishing(uint32 ZoneID, uint8 skill, uint32 &npc_id, uint8 &npc_chance);
 	void	UpdateRecipeMadecount(uint32 recipe_id, uint32 char_id, uint32 madecount);
@@ -618,8 +619,8 @@ public:
 	int GetDoorsDBCountPlusOne(std::string zone_short_name, int16 version);
 
 	/* Blocked Spells   */
-	int32	GetBlockedSpellsCount(uint32 zoneid);
-	bool	LoadBlockedSpells(int32 blockedSpellsCount, ZoneSpellsBlocked* into, uint32 zoneid);
+	int64 GetBlockedSpellsCount(uint32 zone_id);
+	bool LoadBlockedSpells(int64 blocked_spells_count, ZoneSpellsBlocked* into, uint32 zone_id);
 
 	/* Traps   */
 	bool	LoadTraps(const char* zonename, int16 version);

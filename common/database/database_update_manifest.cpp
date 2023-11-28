@@ -4744,7 +4744,292 @@ ADD COLUMN `id` int(11) NOT NULL AUTO_INCREMENT FIRST,
 ADD PRIMARY KEY (`id`);
 )",
 	},
+	ManifestEntry{
+		.version = 9229,
+		.description = "2023_07_04_chatchannel_reserved_names_fix.sql",
+		.check = "SHOW TABLES LIKE 'chatchannel_reserved_names'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+CREATE TABLE `chatchannel_reserved_names`
+(
+`id`   int(11) NOT NULL AUTO_INCREMENT,
+`name` varchar(64) NOT NULL,
+PRIMARY KEY (`id`) USING BTREE,
+UNIQUE KEY `name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+)"
+	},
+	ManifestEntry{
+		.version = 9230,
+		.description = "2023_06_23_raid_feature_updates",
+		.check = "SHOW COLUMNS FROM `raid_members` LIKE 'is_assister'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+	ALTER TABLE `raid_members`
+	ADD COLUMN `is_marker` TINYINT UNSIGNED DEFAULT 0 NOT NULL AFTER `islooter`,
+	ADD COLUMN `is_assister` TINYINT UNSIGNED DEFAULT 0 NOT NULL AFTER `is_marker`,
+	ADD COLUMN `note` VARCHAR(64) DEFAULT '' NOT NULL AFTER `is_assister`;
 
+	ALTER TABLE `raid_details`
+	ADD COLUMN `marked_npc_1` SMALLINT UNSIGNED DEFAULT 0 NOT NULL AFTER `motd`,
+	ADD COLUMN `marked_npc_2` SMALLINT UNSIGNED DEFAULT 0 NOT NULL AFTER `marked_npc_1`,
+	ADD COLUMN `marked_npc_3` SMALLINT UNSIGNED DEFAULT 0 NOT NULL AFTER `marked_npc_2`;
+	)",
+	},
+	ManifestEntry{
+		.version = 9231,
+		.description = "2023_07_14_npc_unsigned_melee_texture.sql",
+		.check = "SHOW COLUMNS FROM `npc_types` LIKE 'd_melee_texture1'",
+		.condition = "contains",
+		.match = "int(11) signed",
+		.sql = R"(ALTER TABLE `npc_types`
+	MODIFY COLUMN `d_melee_texture1` int(11) UNSIGNED NOT NULL DEFAULT 0 AFTER `armortint_blue`,
+	MODIFY COLUMN `d_melee_texture2` int(11) UNSIGNED NOT NULL DEFAULT 0 AFTER `d_melee_texture1`;
+	)",
+	},
+	ManifestEntry{
+		.version = 9232,
+		.description = "2023_07_11_command_subsettings.sql",
+		.check = "SHOW TABLES LIKE 'command_subsettings'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(CREATE TABLE `command_subsettings` (
+`id` int UNSIGNED NOT NULL AUTO_INCREMENT,
+`parent_command` varchar(32) NOT NULL,
+`sub_command` varchar(32) NOT NULL,
+`access_level` int(11) UNSIGNED NOT NULL DEFAULT 0,
+`top_level_aliases` varchar(255) NOT NULL,
+PRIMARY KEY (`id`),
+UNIQUE INDEX `command`(`parent_command`, `sub_command`)
+)
+)"
+	},
+	ManifestEntry{
+		.version = 9233,
+		.description = "2023_07_16_scoped_data_buckets.sql",
+		.check = "SHOW COLUMNS FROM `data_buckets` LIKE 'character_id'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+
+ALTER TABLE `data_buckets`
+ADD COLUMN `character_id` bigint(11) NOT NULL DEFAULT 0 AFTER `expires`,
+ADD COLUMN `npc_id` bigint(11) NOT NULL DEFAULT 0 AFTER `character_id`,
+ADD COLUMN `bot_id` bigint(11) NOT NULL DEFAULT 0 AFTER `npc_id`,
+DROP INDEX `key_index`,
+ADD UNIQUE INDEX `keys`(`key`,`character_id`,`npc_id`,`bot_id`);
+
+UPDATE data_buckets SET character_id = SUBSTRING_INDEX(SUBSTRING_INDEX( `key`, '-', 2 ), '-', -1), `key` = SUBSTR(SUBSTRING_INDEX(`key`, SUBSTRING_INDEX( `key`, '-', 2 ), -1), 2) WHERE `key` LIKE 'character-%';
+UPDATE data_buckets SET npc_id = SUBSTRING_INDEX(SUBSTRING_INDEX( `key`, '-', 2 ), '-', -1), `key` = SUBSTR(SUBSTRING_INDEX(`key`, SUBSTRING_INDEX( `key`, '-', 2 ), -1), 2) WHERE `key` LIKE 'npc-%';
+UPDATE data_buckets SET bot_id = SUBSTRING_INDEX(SUBSTRING_INDEX( `key`, '-', 2 ), '-', -1), `key` = SUBSTR(SUBSTRING_INDEX(`key`, SUBSTRING_INDEX( `key`, '-', 2 ), -1), 2) WHERE `key` LIKE 'bot-%';
+
+)"
+	},
+	ManifestEntry{
+		.version = 9234,
+		.description = "2023_07_27_update_raid_details.sql",
+		.check = "SHOW COLUMNS FROM `raid_details` LIKE 'marked_npc_1_entity_id';",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(ALTER TABLE `raid_details`
+			CHANGE COLUMN `marked_npc_1` `marked_npc_1_entity_id` INT UNSIGNED NOT NULL DEFAULT '0' AFTER `motd`,
+			ADD COLUMN `marked_npc_1_zone_id` INT UNSIGNED NOT NULL DEFAULT '0' AFTER `marked_npc_1_entity_id`,
+			ADD COLUMN `marked_npc_1_instance_id` INT UNSIGNED NOT NULL DEFAULT '0' AFTER `marked_npc_1_zone_id`,
+			CHANGE COLUMN `marked_npc_2` `marked_npc_2_entity_id` INT UNSIGNED NOT NULL DEFAULT '0' AFTER `marked_npc_1_instance_id`,
+			ADD COLUMN `marked_npc_2_zone_id` INT UNSIGNED NOT NULL DEFAULT '0' AFTER `marked_npc_2_entity_id`,
+			ADD COLUMN `marked_npc_2_instance_id` INT UNSIGNED NOT NULL DEFAULT '0' AFTER `marked_npc_2_zone_id`,
+			CHANGE COLUMN `marked_npc_3` `marked_npc_3_entity_id` INT UNSIGNED NOT NULL DEFAULT '0' AFTER `marked_npc_2_instance_id`,
+			ADD COLUMN `marked_npc_3_zone_id` INT UNSIGNED NOT NULL DEFAULT '0' AFTER `marked_npc_3_entity_id`,
+			ADD COLUMN `marked_npc_3_instance_id` INT UNSIGNED NOT NULL DEFAULT '0' AFTER `marked_npc_3_zone_id`;
+		)"
+    },
+	ManifestEntry{
+		.version = 9235,
+		.description = "2023_07_31_character_stats_record.sql",
+		.check = "SHOW TABLES LIKE 'character_stats_record'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+
+CREATE TABLE `character_stats_record`  (
+  `character_id` int NOT NULL,
+  `name` varchar(100) NULL,
+  `status` int NULL DEFAULT 0,
+  `level` int NULL DEFAULT 0,
+  `class` int NULL DEFAULT 0,
+  `race` int NULL DEFAULT 0,
+  `aa_points` int NULL DEFAULT 0,
+  `hp` bigint NULL DEFAULT 0,
+  `mana` bigint NULL DEFAULT 0,
+  `endurance` bigint NULL DEFAULT 0,
+  `ac` int NULL DEFAULT 0,
+  `strength` int NULL DEFAULT 0,
+  `stamina` int NULL DEFAULT 0,
+  `dexterity` int NULL DEFAULT 0,
+  `agility` int NULL DEFAULT 0,
+  `intelligence` int NULL DEFAULT 0,
+  `wisdom` int NULL DEFAULT 0,
+  `charisma` int NULL DEFAULT 0,
+  `magic_resist` int NULL DEFAULT 0,
+  `fire_resist` int NULL DEFAULT 0,
+  `cold_resist` int NULL DEFAULT 0,
+  `poison_resist` int NULL DEFAULT 0,
+  `disease_resist` int NULL DEFAULT 0,
+  `corruption_resist` int NULL DEFAULT 0,
+  `heroic_strength` int NULL DEFAULT 0,
+  `heroic_stamina` int NULL DEFAULT 0,
+  `heroic_dexterity` int NULL DEFAULT 0,
+  `heroic_agility` int NULL DEFAULT 0,
+  `heroic_intelligence` int NULL DEFAULT 0,
+  `heroic_wisdom` int NULL DEFAULT 0,
+  `heroic_charisma` int NULL DEFAULT 0,
+  `heroic_magic_resist` int NULL DEFAULT 0,
+  `heroic_fire_resist` int NULL DEFAULT 0,
+  `heroic_cold_resist` int NULL DEFAULT 0,
+  `heroic_poison_resist` int NULL DEFAULT 0,
+  `heroic_disease_resist` int NULL DEFAULT 0,
+  `heroic_corruption_resist` int NULL DEFAULT 0,
+  `haste` int NULL DEFAULT 0,
+  `accuracy` int NULL DEFAULT 0,
+  `attack` int NULL DEFAULT 0,
+  `avoidance` int NULL DEFAULT 0,
+  `clairvoyance` int NULL DEFAULT 0,
+  `combat_effects` int NULL DEFAULT 0,
+  `damage_shield_mitigation` int NULL DEFAULT 0,
+  `damage_shield` int NULL DEFAULT 0,
+  `dot_shielding` int NULL DEFAULT 0,
+  `hp_regen` int NULL DEFAULT 0,
+  `mana_regen` int NULL DEFAULT 0,
+  `endurance_regen` int NULL DEFAULT 0,
+  `shielding` int NULL DEFAULT 0,
+  `spell_damage` int NULL DEFAULT 0,
+  `spell_shielding` int NULL DEFAULT 0,
+  `strikethrough` int NULL DEFAULT 0,
+  `stun_resist` int NULL DEFAULT 0,
+  `backstab` int NULL DEFAULT 0,
+  `wind` int NULL DEFAULT 0,
+  `brass` int NULL DEFAULT 0,
+  `string` int NULL DEFAULT 0,
+  `percussion` int NULL DEFAULT 0,
+  `singing` int NULL DEFAULT 0,
+  `baking` int NULL DEFAULT 0,
+  `alchemy` int NULL DEFAULT 0,
+  `tailoring` int NULL DEFAULT 0,
+  `blacksmithing` int NULL DEFAULT 0,
+  `fletching` int NULL DEFAULT 0,
+  `brewing` int NULL DEFAULT 0,
+  `jewelry` int NULL DEFAULT 0,
+  `pottery` int NULL DEFAULT 0,
+  `research` int NULL DEFAULT 0,
+  `alcohol` int NULL DEFAULT 0,
+  `fishing` int NULL DEFAULT 0,
+  `tinkering` int NULL DEFAULT 0,
+  `created_at` datetime DEFAULT NULL,
+  `updated_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`character_id`)
+);
+)"
+	},
+	ManifestEntry{
+		.version = 9236,
+		.description = "2023_08_24_aa_ability_auto_grant.sql",
+		.check = "SHOW COLUMNS FROM `aa_ability` LIKE 'auto_grant_enabled';",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `aa_ability` ADD COLUMN `auto_grant_enabled` TINYINT(4) NOT NULL DEFAULT '0' AFTER `reset_on_death`;
+UPDATE `aa_ability` SET `auto_grant_enabled` = 1 WHERE `grant_only` = 0 AND `charges` = 0 AND `category` = -1;
+)"
+	},
+	ManifestEntry{
+		.version = 9237,
+		.description = "2023_10_15_import_13th_floor.sql",
+		.check = "SHOW COLUMNS FROM `items` LIKE 'bardeffect';",
+		.condition = "contains",
+		.match = "mediumint",
+		.sql = R"(
+ALTER TABLE `items`
+ MODIFY COLUMN `scriptfileid`        MEDIUMINT(6)     NOT NULL DEFAULT 0,
+ MODIFY COLUMN `powersourcecapacity` MEDIUMINT(7)     NOT NULL DEFAULT 0,
+ MODIFY COLUMN `augdistiller`        INT(11) UNSIGNED NOT NULL DEFAULT 0,
+ MODIFY COLUMN `scrollunk1`          INT(11) UNSIGNED NOT NULL DEFAULT 0,
+ MODIFY COLUMN `bardeffect`          MEDIUMINT(6)     NOT NULL DEFAULT 0;
+)"
+	},
+	ManifestEntry{
+		.version = 9238,
+		.description = "2023_10_18_tradeskill_add_learned_by_item_id.sql",
+		.check = "SHOW COLUMNS FROM `tradeskill_recipe` LIKE 'learned_by_item_id'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `tradeskill_recipe`
+	ADD COLUMN `learned_by_item_id` int(11) NOT NULL DEFAULT 0 AFTER `must_learn`;
+)"
+	},
+	ManifestEntry{
+		.version = 9239,
+		.description = "2023_10_18_blocked_spells_expansions_content_flags.sql",
+		.check = "SHOW COLUMNS FROM `blocked_spells` LIKE 'min_expansion'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `blocked_spells`
+ADD COLUMN `min_expansion` tinyint(4) NOT NULL DEFAULT -1 AFTER `description`,
+ADD COLUMN `max_expansion` tinyint(4) NOT NULL DEFAULT -1 AFTER `min_expansion`,
+ADD COLUMN `content_flags` varchar(100) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL AFTER `max_expansion`,
+ADD COLUMN `content_flags_disabled` varchar(100) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL AFTER `content_flags`;
+)"
+	},
+	ManifestEntry{
+		.version = 9240,
+		.description = "2023_10_29_variables_id.sql",
+		.check = "SHOW COLUMNS FROM `variables` LIKE 'id'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+ALTER TABLE `variables`
+ADD COLUMN `id` int(11) NOT NULL AUTO_INCREMENT FIRST,
+DROP PRIMARY KEY,
+ADD PRIMARY KEY (`id`) USING BTREE,
+ADD UNIQUE INDEX(`varname`);
+)"
+	},
+	ManifestEntry{
+		.version = 9241,
+		.description = "2023_10_29_split_spawn2_enabled.sql",
+		.check = "SHOW TABLES LIKE 'spawn2_disabled'",
+		.condition = "empty",
+		.match = "",
+		.sql = R"(
+CREATE TABLE `spawn2_backup_2023_10_29` LIKE `spawn2`;
+INSERT INTO `spawn2_backup_2023_10_29` SELECT * FROM `spawn2`;
+CREATE TABLE `spawn2_disabled` (
+  `id` bigint(11) NOT NULL AUTO_INCREMENT,
+  `spawn2_id` int(11) DEFAULT NULL,
+  `instance_id` int(11) DEFAULT 0,
+  `disabled` smallint(11) DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `spawn2_id` (`spawn2_id`,`instance_id`) USING BTREE
+) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4;
+INSERT INTO spawn2_disabled (spawn2_id, disabled) SELECT id, 1 FROM spawn2 WHERE enabled = 0;
+ALTER TABLE `spawn2` DROP COLUMN `enabled`;
+)"
+	},
+	ManifestEntry{
+	  .version = 9242,
+	  .description = "2023_11_7_mintime_maxtime_spawnentry.sql",
+	  .check = "SHOW COLUMNS FROM `spawnentry` LIKE 'min_time'",
+	  .condition = "empty",
+	  .match = "",
+	  .sql = R"(
+ALTER TABLE `spawnentry`
+ADD COLUMN `min_time` smallint(4) NOT NULL DEFAULT 0 AFTER `condition_value_filter`,
+ADD COLUMN `max_time` smallint(4) NOT NULL DEFAULT 0 AFTER `min_time`;
+)"
+  },
 // -- template; copy/paste this when you need to create a new entry
 //	ManifestEntry{
 //		.version = 9228,

@@ -356,6 +356,7 @@ namespace EQ
 	struct ItemData {
 		// Non packet based fields
 		uint8	MinStatus {};
+		char	Comment[255] {};
 
 		// Packet based fields
 		uint8	ItemClass {};		// Item Type: 0=common, 1=container, 2=book
@@ -546,6 +547,7 @@ namespace EQ
 		bool IsType1HWeapon() const;
 		bool IsType2HWeapon() const;
 		bool IsTypeShield() const;
+		bool IsQuestItem() const;
 
 		static bool CheckLoreConflict(const ItemData* l_item, const ItemData* r_item);
 		bool CheckLoreConflict(const ItemData* item) const { return CheckLoreConflict(this, item); }

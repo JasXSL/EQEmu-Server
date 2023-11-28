@@ -72,14 +72,27 @@ void command_find(Client *c, const Seperator *sep)
 
 				// skip the first arg
 				for (auto i = 1; i <= arguments; i++) {
-					args.emplace_back(sep->arg[i]);
+					if (sep->arg[i]) {
+						args.emplace_back(sep->arg[i]);
+					}
 				}
 
 				// build the rewrite string
 				std::string rewrite = fmt::format("#find {} {}", cmd.cmd, Strings::Join(args, " "));
 
-				// rewrite to #find <sub-command <args>
+				// rewrite to #find <sub-command <args>>
 				c->SendGMCommand(rewrite);
+
+				c->Message(
+					Chat::Gray,
+					fmt::format(
+						"{} is now located under {}, using {}.",
+						sep->arg[0],
+						Saylink::Silent("#find"),
+						Saylink::Silent(rewrite)
+					).c_str()
+				);
+
 				return;
 			}
 		}

@@ -302,6 +302,7 @@ public:
 	void SpawnConditionChanged(const SpawnCondition &c, int16 old_value);
 	void StartShutdownTimer(uint32 set_time = (RuleI(Zone, AutoShutdownDelay)));
 	void ResetShutdownTimer();
+	void StopShutdownTimer();
 	void UpdateQGlobal(uint32 qid, QGlobal newGlobal);
 	void weatherSend(Client *client = nullptr);
 	void ClearSpawnTimers();
@@ -394,6 +395,8 @@ public:
 	double GetMaxMovementUpdateRange() const { return max_movement_update_range; }
 
 	void SetIsHotzone(bool is_hotzone);
+
+	void ReloadContentFlags();
 
 private:
 	bool      allow_mercs;

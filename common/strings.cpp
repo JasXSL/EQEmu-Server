@@ -42,9 +42,31 @@
 #include <stdio.h>
 #include <iostream>
 
+#include <random>
+#include <string>
+
 //Const char based
 #include "strings_legacy.cpp" // legacy c functions
 #include "strings_misc.cpp" // anything non "Strings" scoped
+
+std::string Strings::Random(size_t length)
+{
+	static auto &chrs = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+	thread_local static std::mt19937 rg{std::random_device{}()};
+
+	thread_local static std::uniform_int_distribution<std::string::size_type> pick(0, sizeof(chrs) - 2);
+
+	std::string s;
+
+	s.reserve(length);
+
+	while (length--) {
+		s += chrs[pick(rg)];
+	}
+
+	return s;
+}
 
 std::vector<std::string> Strings::Split(const std::string &str, const char delim)
 {
@@ -64,7 +86,7 @@ std::vector<std::string> Strings::Split(const std::string &str, const char delim
 }
 
 // this one takes delimiter length into consideration
-std::vector<std::string> Strings::Split(const std::string& s, const std::string& delimiter)
+std::vector<std::string> Strings::Split(const std::string &s, const std::string &delimiter)
 {
 	size_t                   pos_start = 0, pos_end, delim_len = delimiter.length();
 	std::string              token;
@@ -376,7 +398,7 @@ std::string Strings::Money(uint64 platinum, uint64 gold, uint64 silver, uint64 c
 	std::string money_string = "Unknown";
 	if (copper && silver && gold && platinum) { // CSGP
 		money_string = fmt::format(
-			"{} Platinum, {} Gold, {} Silver, and {} Copper",
+			"{} platinum, {} gold, {} silver, and {} copper",
 			Strings::Commify(std::to_string(platinum)),
 			Strings::Commify(std::to_string(gold)),
 			Strings::Commify(std::to_string(silver)),
@@ -385,7 +407,7 @@ std::string Strings::Money(uint64 platinum, uint64 gold, uint64 silver, uint64 c
 	}
 	else if (copper && silver && !gold && platinum) { // CSP
 		money_string = fmt::format(
-			"{} Platinum, {} Silver, and {} Copper",
+			"{} platinum, {} silver, and {} copper",
 			Strings::Commify(std::to_string(platinum)),
 			Strings::Commify(std::to_string(silver)),
 			Strings::Commify(std::to_string(copper))
@@ -393,7 +415,7 @@ std::string Strings::Money(uint64 platinum, uint64 gold, uint64 silver, uint64 c
 	}
 	else if (copper && silver && gold && !platinum) { // CSG
 		money_string = fmt::format(
-			"{} Gold, {} Silver, and {} Copper",
+			"{} gold, {} silver, and {} copper",
 			Strings::Commify(std::to_string(gold)),
 			Strings::Commify(std::to_string(silver)),
 			Strings::Commify(std::to_string(copper))
@@ -401,21 +423,21 @@ std::string Strings::Money(uint64 platinum, uint64 gold, uint64 silver, uint64 c
 	}
 	else if (copper && !silver && !gold && platinum) { // CP
 		money_string = fmt::format(
-			"{} Platinum and {} Copper",
+			"{} platinum and {} copper",
 			Strings::Commify(std::to_string(platinum)),
 			Strings::Commify(std::to_string(copper))
 		);
 	}
 	else if (copper && silver && !gold && !platinum) { // CS
 		money_string = fmt::format(
-			"{} Silver and {} Copper",
+			"{} silver and {} copper",
 			Strings::Commify(std::to_string(silver)),
 			Strings::Commify(std::to_string(copper))
 		);
 	}
 	else if (!copper && silver && gold && platinum) { // SGP
 		money_string = fmt::format(
-			"{} Platinum, {} Gold, and {} Silver",
+			"{} platinum, {} gold, and {} silver",
 			Strings::Commify(std::to_string(platinum)),
 			Strings::Commify(std::to_string(gold)),
 			Strings::Commify(std::to_string(silver))
@@ -423,21 +445,21 @@ std::string Strings::Money(uint64 platinum, uint64 gold, uint64 silver, uint64 c
 	}
 	else if (!copper && silver && !gold && platinum) { // SP
 		money_string = fmt::format(
-			"{} Platinum and {} Silver",
+			"{} platinum and {} silver",
 			Strings::Commify(std::to_string(platinum)),
 			Strings::Commify(std::to_string(silver))
 		);
 	}
 	else if (!copper && silver && gold && !platinum) { // SG
 		money_string = fmt::format(
-			"{} Gold and {} Silver",
+			"{} gold and {} silver",
 			Strings::Commify(std::to_string(gold)),
 			Strings::Commify(std::to_string(silver))
 		);
 	}
 	else if (copper && !silver && gold && platinum) { // CGP
 		money_string = fmt::format(
-			"{} Platinum, {} Gold, and {} Copper",
+			"{} platinum, {} gold, and {} copper",
 			Strings::Commify(std::to_string(platinum)),
 			Strings::Commify(std::to_string(gold)),
 			Strings::Commify(std::to_string(copper))
@@ -445,39 +467,39 @@ std::string Strings::Money(uint64 platinum, uint64 gold, uint64 silver, uint64 c
 	}
 	else if (copper && !silver && gold && !platinum) { // CG
 		money_string = fmt::format(
-			"{} Gold and {} Copper",
+			"{} gold and {} copper",
 			Strings::Commify(std::to_string(gold)),
 			Strings::Commify(std::to_string(copper))
 		);
 	}
 	else if (!copper && !silver && gold && platinum) { // GP
 		money_string = fmt::format(
-			"{} Platinum and {} Gold",
+			"{} platinum and {} gold",
 			Strings::Commify(std::to_string(platinum)),
 			Strings::Commify(std::to_string(gold))
 		);
 	}
 	else if (!copper && !silver && !gold && platinum) { // P
 		money_string = fmt::format(
-			"{} Platinum",
+			"{} platinum",
 			Strings::Commify(std::to_string(platinum))
 		);
 	}
 	else if (!copper && !silver && gold && !platinum) { // G
 		money_string = fmt::format(
-			"{} Gold",
+			"{} gold",
 			Strings::Commify(std::to_string(gold))
 		);
 	}
 	else if (!copper && silver && !gold && !platinum) { // S
 		money_string = fmt::format(
-			"{} Silver",
+			"{} silver",
 			Strings::Commify(std::to_string(silver))
 		);
 	}
 	else if (copper && !silver && !gold && !platinum) { // C
 		money_string = fmt::format(
-			"{} Copper",
+			"{} copper",
 			Strings::Commify(std::to_string(copper))
 		);
 	}
@@ -783,21 +805,6 @@ bool Strings::ToBool(const std::string& bool_string)
 	return false;
 }
 
-// returns a random string of specified length
-std::string Strings::Random(size_t length)
-{
-	auto        randchar = []() -> char {
-		const char   charset[] = "0123456789"
-								 "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-								 "abcdefghijklmnopqrstuvwxyz";
-		const size_t max_index = (sizeof(charset) - 1);
-		return charset[static_cast<size_t>(std::rand()) % max_index];
-	};
-	std::string str(length, 0);
-	std::generate_n(str.begin(), length, randchar);
-	return str;
-}
-
 // a wrapper for stoi which will return a fallback if the string
 // fails to cast to a number
 int Strings::ToInt(const std::string &s, int fallback)
@@ -881,4 +888,18 @@ std::string Strings::RemoveNumbers(std::string s)
 	}
 
 	return s.substr(0, current);
+}
+
+std::string Strings::ZoneTime(const uint8 hours, const uint8 minutes)
+{
+	return fmt::format(
+		"{:02}:{:02} {}",
+		(
+			(hours % 12) == 0 ?
+			12 :
+			(hours % 12)
+		),
+		minutes,
+		hours >= 13 ? "PM" : "AM"
+	);
 }

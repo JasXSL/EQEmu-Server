@@ -11,6 +11,7 @@
 #include "zone.h"
 #include "zonedb.h"
 #include "aura.h"
+#include "../common/repositories/blocked_spells_repository.h"
 #include "../common/repositories/character_tribute_repository.h"
 #include "../common/repositories/character_disciplines_repository.h"
 #include "../common/repositories/npc_types_repository.h"
@@ -19,6 +20,8 @@
 #include "../common/repositories/character_pet_inventory_repository.h"
 #include "../common/repositories/character_pet_info_repository.h"
 #include "../common/repositories/character_buffs_repository.h"
+#include "../common/repositories/criteria/content_filter_criteria.h"
+#include "../common/repositories/spawn2_disabled_repository.h"
 
 #include <ctime>
 #include <iostream>
@@ -169,10 +172,26 @@ uint32 ZoneDatabase::GetSpawnTimeLeft(uint32 id, uint16 instance_id)
 
 }
 
-void ZoneDatabase::UpdateSpawn2Status(uint32 id, uint8 new_status)
+void ZoneDatabase::UpdateSpawn2Status(uint32 id, uint8 new_status, uint32 instance_id)
 {
-	std::string query = StringFormat("UPDATE spawn2 SET enabled = %i WHERE id = %lu", new_status, (unsigned long)id);
-	QueryDatabase(query);
+	auto spawns = Spawn2DisabledRepository::GetWhere(
+		*this,
+		fmt::format("spawn2_id = {} and instance_id = {}", id, instance_id)
+	);
+	if (!spawns.empty()) {
+		auto spawn = spawns[0];
+		// 1 = enabled 0 = disabled
+		spawn.disabled    = new_status ? 0 : 1;
+		spawn.instance_id = instance_id;
+		Spawn2DisabledRepository::UpdateOne(*this, spawn);
+		return;
+	}
+
+	auto spawn = Spawn2DisabledRepository::NewEntity();
+	spawn.spawn2_id   = id;
+	spawn.instance_id = instance_id;
+	spawn.disabled    = new_status ? 0 : 1;
+	Spawn2DisabledRepository::InsertOne(*this, spawn);
 }
 
 bool ZoneDatabase::SetSpecialAttkFlag(uint8 id, const char* flag) {
@@ -687,7 +706,7 @@ bool ZoneDatabase::LoadCharacterData(uint32 character_id, PlayerProfile_Struct* 
 		pp->ldon_points_ruj = Strings::ToInt(row[r]); r++;								 // "ldon_points_ruj,           "
 		pp->ldon_points_tak = Strings::ToInt(row[r]); r++;								 // "ldon_points_tak,           "
 		pp->ldon_points_available = Strings::ToInt(row[r]); r++;							 // "ldon_points_available,     "
-		pp->tribute_time_remaining = Strings::ToInt(row[r]); r++;							 // "tribute_time_remaining,    "
+		pp->tribute_time_remaining = Strings::ToUnsignedInt(row[r]); r++;					 // "tribute_time_remaining,    "
 		pp->showhelm = Strings::ToInt(row[r]); r++;										 // "show_helm,                 "
 		pp->career_tribute_points = Strings::ToInt(row[r]); r++;							 // "career_tribute_points,     "
 		pp->tribute_points = Strings::ToInt(row[r]); r++;									 // "tribute_points,            "
@@ -1927,6 +1946,8 @@ const NPCType *ZoneDatabase::LoadNPCTypesData(uint32 npc_type_id, bool bulk_load
 		);
 	}
 
+	std::vector<uint32> npc_ids;
+
 	for (NpcTypesRepository::NpcTypes &n : NpcTypesRepository::GetWhere((Database &) content_db, filter)) {
 		NPCType *t;
 		t = new NPCType;
@@ -1989,6 +2010,7 @@ const NPCType *ZoneDatabase::LoadNPCTypesData(uint32 npc_type_id, bool bulk_load
 		t->ranged_type     = n.ranged_type;
 		t->runspeed        = n.runspeed;
 		t->findable        = n.findable != 0;
+		t->is_quest_npc    = n.isquest != 0;
 		t->trackable       = n.trackable != 0;
 		t->hp_regen        = n.hp_regen_rate;
 		t->mana_regen      = n.mana_regen_rate;
@@ -2137,7 +2159,14 @@ const NPCType *ZoneDatabase::LoadNPCTypesData(uint32 npc_type_id, bool bulk_load
 
 		zone->npctable[t->npc_id] = t;
 		npc = t;
+
+		// If NPC ID is not in npc_ids, add to vector
+		if (!std::count(npc_ids.begin(), npc_ids.end(), t->npc_id)) {
+			npc_ids.emplace_back(t->npc_id);
+		}
 	}
+
+	DataBucket::BulkLoadEntities(DataBucketLoadType::NPC, npc_ids);
 
 	return npc;
 }
@@ -2269,8 +2298,8 @@ const NPCType* ZoneDatabase::GetMercType(uint32 id, uint16 raceid, uint32 client
 		else
 			tmpNPCType->special_abilities[0] = '\0';
 
-		tmpNPCType->d_melee_texture1 = Strings::ToInt(row[28]);
-		tmpNPCType->d_melee_texture2 = Strings::ToInt(row[29]);
+		tmpNPCType->d_melee_texture1 = Strings::ToUnsignedInt(row[28]);
+		tmpNPCType->d_melee_texture2 = Strings::ToUnsignedInt(row[29]);
 		tmpNPCType->prim_melee_type = Strings::ToInt(row[30]);
 		tmpNPCType->sec_melee_type = Strings::ToInt(row[31]);
 		tmpNPCType->runspeed = Strings::ToFloat(row[32]);
@@ -2835,50 +2864,55 @@ uint8 ZoneDatabase::RaidGroupCount(uint32 raidid, uint32 groupid) {
 	return Strings::ToInt(row[0]);
  }
 
-int32 ZoneDatabase::GetBlockedSpellsCount(uint32 zoneid)
+int64 ZoneDatabase::GetBlockedSpellsCount(uint32 zone_id)
 {
-	std::string query = StringFormat("SELECT count(*) FROM blocked_spells WHERE zoneid = %d", zoneid);
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
-		return -1;
-	}
-
-	if (results.RowCount() == 0)
-        return -1;
-
-    auto& row = results.begin();
-
-	return Strings::ToInt(row[0]);
+	return BlockedSpellsRepository::Count(
+		*this,
+		fmt::format(
+			"zoneid = {} {}",
+			zone_id,
+			ContentFilterCriteria::apply()
+		)
+	);
 }
 
-bool ZoneDatabase::LoadBlockedSpells(int32 blockedSpellsCount, ZoneSpellsBlocked* into, uint32 zoneid)
+bool ZoneDatabase::LoadBlockedSpells(int64 blocked_spells_count, ZoneSpellsBlocked* into, uint32 zone_id)
 {
-	LogInfo("Loading Blocked Spells from database");
+	LogInfo("Loading Blocked Spells from database for {} ({}).", zone_store.GetZoneName(zone_id, true), zone_id);
 
-	std::string query = StringFormat("SELECT id, spellid, type, x, y, z, x_diff, y_diff, z_diff, message "
-                                    "FROM blocked_spells WHERE zoneid = %d ORDER BY id ASC", zoneid);
-    auto results = QueryDatabase(query);
-    if (!results.Success()) {
-		return false;
-    }
+	const auto& l = BlockedSpellsRepository::GetWhere(
+		*this,
+		fmt::format(
+			"zoneid = {} {} ORDER BY id ASC",
+			zone_id,
+			ContentFilterCriteria::apply()
+		)
+	);
 
-    if (results.RowCount() == 0)
+	if (l.empty()) {
 		return true;
+	}
 
-    int32 index = 0;
-    for(auto& row = results.begin(); row != results.end(); ++row, ++index) {
-        if(index >= blockedSpellsCount) {
-            std::cerr << "Error, Blocked Spells Count of " << blockedSpellsCount << " exceeded." << std::endl;
-            break;
-        }
+	int64 i = 0;
 
-        memset(&into[index], 0, sizeof(ZoneSpellsBlocked));
-        into[index].spellid = Strings::ToInt(row[1]);
-        into[index].type = Strings::ToInt(row[2]);
-        into[index].m_Location = glm::vec3(Strings::ToFloat(row[3]), Strings::ToFloat(row[4]), Strings::ToFloat(row[5]));
-        into[index].m_Difference = glm::vec3(Strings::ToFloat(row[6]), Strings::ToFloat(row[7]), Strings::ToFloat(row[8]));
-        strn0cpy(into[index].message, row[9], 255);
-    }
+	for (const auto& e : l) {
+		if (i >= blocked_spells_count) {
+			LogError(
+				"Blocked spells count of {} exceeded for {} ({}).",
+				blocked_spells_count,
+				zone_store.GetZoneName(zone_id, true),
+				zone_id
+			);
+			break;
+		}
+
+		memset(&into[i], 0, sizeof(ZoneSpellsBlocked));
+		into[i].spellid      = e.spellid;
+		into[i].type         = e.type;
+		into[i].m_Location   = glm::vec3(e.x, e.y, e.z);
+		into[i].m_Difference = glm::vec3(e.x_diff, e.y_diff, e.z_diff);
+		strn0cpy(into[i].message, e.message.c_str(), sizeof(into[i].message));
+	}
 
 	return true;
 }
@@ -3303,7 +3337,8 @@ void ZoneDatabase::SavePetInfo(Client *client)
 
 		// build pet buffs into struct
 		int pet_buff_count = 0;
-		int max_slots = RuleI(Spells, MaxTotalSlotsPET);
+		// Guard against setting the maximum pet slots above the client allowed maximum.
+		int max_slots = RuleI(Spells, MaxTotalSlotsPET) > PET_BUFF_COUNT ? PET_BUFF_COUNT : RuleI(Spells, MaxTotalSlotsPET);
 
 		// count pet buffs
 		for (int index = 0; index < max_slots; index++) {
@@ -4620,8 +4655,6 @@ void ZoneDatabase::SaveCharacterBinds(Client *c)
 			bind_count++;
 		}
 	}
-
-	LogInfo("bind count is [{}]", bind_count);
 
 	// allocate memory for binds
 	binds.reserve(bind_count);

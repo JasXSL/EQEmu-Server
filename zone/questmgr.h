@@ -201,13 +201,14 @@ public:
 	void forcedoorclose(uint32 doorid, bool altmode);
 	void toggledoorstate(uint32 doorid);
 	bool isdooropen(uint32 doorid);
-	void npcrace(int race_id);
-	void npcgender(int gender_id);	void npcsize(int newsize);
-	void npctexture(int newtexture);
-	void playerrace(int race_id);
-	void playergender(int gender_id);
-	void playersize(int newsize);
-	void playertexture(int newtexture);
+	void npcrace(uint16 race_id);
+	void npcgender(uint8 gender_id);
+	void npcsize(float size);
+	void npctexture(uint8 texture);
+	void playerrace(uint16 race_id);
+	void playergender(uint8 gender_id);
+	void playersize(float size);
+	void playertexture(uint8 texture);
 	void playerfeature(const char* feature, int setting);
 	void npcfeature(const char* feature, int setting);
 	void popup(const char *title, const char *text, uint32 popupid, uint32 buttons, uint32 Duration);
@@ -249,6 +250,8 @@ public:
 	int collectitems_processSlot(int16 slot_id, uint32 item_id, bool remove);
 	int countitem(uint32 item_id);
 	void removeitem(uint32 item_id, uint32 quantity = 1);
+	std::string getitemcomment(uint32 item_id);
+	std::string getitemlore(uint32 item_id);
 	std::string getitemname(uint32 item_id);
 	void enabletitle(int titleset);
 	bool checktitle(int titlecheck);
@@ -298,7 +301,7 @@ public:
 	bool IsRunning();
 	void FlyMode(GravityBehavior flymode);
 	uint8 FactionValue();
-	void wearchange(uint8 slot, uint16 texture, uint32 hero_forge_model = 0, uint32 elite_material = 0);
+	void wearchange(uint8 slot, uint32 texture, uint32 hero_forge_model = 0, uint32 elite_material = 0);
 	void voicetell(const char *str, int macronum, int racenum, int gendernum);
 	void LearnRecipe(uint32 recipe_id);
 	void SendMail(const char *to, const char *from, const char *subject, const char *message);
@@ -311,7 +314,7 @@ public:
 	void CrossZoneLDoNUpdate(uint8 update_type, uint8 update_subtype, int update_identifier, uint32 theme_id, int points = 1, const char* client_name = "");
 	void CrossZoneMarquee(uint8 update_type, int update_identifier, uint32 type, uint32 priority, uint32 fade_in, uint32 fade_out, uint32 duration, const char* message, const char* client_name = "");
 	void CrossZoneMessage(uint8 update_type, int update_identifier, uint32 type, const char* message, const char* client_name = "");
-	void CrossZoneMove(uint8 update_type, uint8 update_subtype, int update_identifier, const char* zone_short_name, uint16 instance_id, const char* client_name = "");
+	void CrossZoneMove(const CZMove_Struct& m);
 	void CrossZoneSetEntityVariable(uint8 update_type, int update_identifier, const char* variable_name, const char* variable_value, const char* client_name = "");
 	void CrossZoneSignal(uint8 update_type, int update_identifier, int signal_id, const char* client_name = "");
 	void CrossZoneSpell(uint8 update_type, uint8 update_subtype, int update_identifier, uint32 spell_id, const char* client_name = "");
