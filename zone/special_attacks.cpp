@@ -24,6 +24,7 @@
 #include "mob.h"
 #include "string_ids.h"
 #include "lua_parser.h"
+#include "npc.h"
 
 #include <string.h>
 
@@ -136,12 +137,16 @@ int Mob::GetBaseSkillDamage(EQ::skills::SkillType skill, Mob *target)
 				if (HasShieldEquipped()) {
 					inst = CastToClient()->GetInv().GetItem(EQ::invslot::slotSecondary);
 				} else if (HasTwoHanderEquipped()) {
-					inst = CastToClient()->GetInv().GetItem(EQ::invslot::slotPrimary);
+					if (RuleB(Combat, BashTwoHanderUseShoulderAC)) {
+						inst = CastToClient()->GetInv().GetItem(EQ::invslot::slotShoulders);
+					} else {
+						inst = CastToClient()->GetInv().GetItem(EQ::invslot::slotPrimary);
+					}
 				}
 			}
 
 			if (inst) {
-				ac_bonus = inst->GetItemArmorClass(true) / 25.0f;
+				ac_bonus = inst->GetItemArmorClass(true) / RuleR(Combat, BashACBonusDivisor);
 			} else {
 				return 0;
 			} // return 0 in cases where we don't have an item
@@ -182,7 +187,7 @@ int Mob::GetBaseSkillDamage(EQ::skills::SkillType skill, Mob *target)
 				}
 			} else if (IsNPC()) {
 				auto *npc = CastToNPC();
-				base = std::max(base, npc->GetBaseDamage());
+				base = round((npc->GetMaxDMG() - npc->GetMinDMG()) / RuleR(NPC, NPCBackstabMod));
 				// parses show relatively low BS mods from lots of NPCs, so either their BS skill is super low
 				// or their mod is divided again, this is probably not the right mod, but it's better
 				skill_bonus /= 3.0f;
@@ -287,7 +292,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 
 	// make sure were actually able to use such an attack. (Bards can throw while casting. ~Kayen confirmed on live 1/22)
 	if (
-		(spellend_timer.Enabled() && GetClass() != BARD) ||
+		(spellend_timer.Enabled() && GetClass() != Class::Bard) ||
 		IsFeared() ||
 		IsStunned() ||
 		IsMezzed() ||
@@ -420,7 +425,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 		CheckIncreaseSkill(EQ::skills::SkillFrenzy, GetTarget(), 10);
 		DoAnim(anim1HWeapon, 0, false);
 
-		if (GetClass() == BERSERKER) {
+		if (GetClass() == Class::Berserker) {
 			int chance = GetLevel() * 2 + GetSkill(EQ::skills::SkillFrenzy);
 
 			if (zone->random.Roll0(450) < chance) {
@@ -461,11 +466,11 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 	const uint32 allowed_kick_classes = RuleI(Combat, ExtraAllowedKickClassesBitmask);
 
 	const bool can_use_kick = (
-		class_id == WARRIOR ||
-		class_id == RANGER ||
-		class_id == MONK ||
-		class_id == BEASTLORD ||
-		class_id == BERSERKER ||
+		class_id == Class::Warrior ||
+		class_id == Class::Ranger ||
+		class_id == Class::Monk ||
+		class_id == Class::Beastlord ||
+		class_id == Class::Berserker ||
 		allowed_kick_classes & GetPlayerClassBit(class_id)
 	);
 
@@ -494,7 +499,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 		}
 	}
 
-	if (class_id == MONK) {
+	if (class_id == Class::Monk) {
 		reuse_time = MonkSpecialAttack(GetTarget(), ca_atk->m_skill) - 1 - skill_reduction;
 
 		// Live AA - Technique of Master Wu
@@ -559,7 +564,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 	if (
 		ca_atk->m_atk == 100 &&
 		ca_atk->m_skill == EQ::skills::SkillBackstab &&
-		class_id == ROGUE
+		class_id == Class::Rogue
 	) {
 		reuse_time = BackstabReuseTime - 1 - skill_reduction;
 		TryBackstab(GetTarget(), reuse_time);
@@ -653,8 +658,14 @@ int Mob::MonkSpecialAttack(Mob *other, uint8 unchecked_type)
 	}
 
 	int32 ht = 0;
-	if (max_dmg > 0)
+	if (max_dmg > 0) {
 		ht = max_dmg;
+	}
+
+	// aggro should never be negative else it does massive aggro
+	if (ht < 0)	{
+		ht = 0;
+	}
 
 	DoSpecialAttackDamage(other, skill_type, max_dmg, min_dmg, ht, reuse);
 
@@ -1495,7 +1506,7 @@ void Client::ThrowingAttack(Mob* other, bool CanDoubleAttack) { //old was 51
 	}
 
 	if(!IsAttackAllowed(other) ||
-		(IsCasting() && GetClass() != BARD) ||
+		(IsCasting() && GetClass() != Class::Bard) ||
 		IsSitting() ||
 		(DivineAura() && !GetGM()) ||
 		IsStunned() ||
@@ -1779,13 +1790,13 @@ void NPC::DoClassAttacks(Mob *target) {
 		int knightreuse = 1000; //lets give it a small cooldown actually.
 
 		switch(GetClass()){
-			case SHADOWKNIGHT: case SHADOWKNIGHTGM:{
+			case Class::ShadowKnight: case Class::ShadowKnightGM:{
 				if (CastSpell(SPELL_NPC_HARM_TOUCH, target->GetID())) {
 					knightreuse = HarmTouchReuseTime * 1000;
 					}
 				break;
 			}
-			case PALADIN: case PALADINGM:{
+			case Class::Paladin: case Class::PaladinGM:{
 				if(GetHPRatio() < 20) {
 					if (CastSpell(SPELL_LAY_ON_HANDS, GetID())) {
 						knightreuse = LayOnHandsReuseTime * 1000;
@@ -1806,14 +1817,18 @@ void NPC::DoClassAttacks(Mob *target) {
 		HasOwner() &&
 		target->IsNPC() &&
 		target->GetBodyType() != BT_Undead &&
-		taunt_time
+		taunt_time &&
+		type_of_pet &&
+		type_of_pet != petTargetLock &&
+		DistanceSquared(GetPosition(), target->GetPosition()) <= (RuleI(Pets, PetTauntRange) * RuleI(Pets, PetTauntRange))
 	) {
 		GetOwner()->MessageString(Chat::PetResponse, PET_TAUNTING);
 		Taunt(target->CastToNPC(), false);
 	}
 
-	if(!ca_time)
+	if(!ca_time) {
 		return;
+	}
 
 	float HasteModifier = GetHaste() * 0.01f;
 
@@ -1822,14 +1837,14 @@ void NPC::DoClassAttacks(Mob *target) {
 	bool did_attack = false;
 	//class specific stuff...
 	switch(GetClass()) {
-		case ROGUE: case ROGUEGM:
+		case Class::Rogue: case Class::RogueGM:
 			if(level >= 10) {
 				reuse = BackstabReuseTime * 1000;
 				TryBackstab(target, reuse);
 				did_attack = true;
 			}
 			break;
-		case MONK: case MONKGM: {
+		case Class::Monk: case Class::MonkGM: {
 			uint8 satype = EQ::skills::SkillKick;
 			if (level > 29) { satype = EQ::skills::SkillFlyingKick; }
 			else if (level > 24) { satype = EQ::skills::SkillDragonPunch; }
@@ -1842,7 +1857,7 @@ void NPC::DoClassAttacks(Mob *target) {
 			did_attack = true;
 			break;
 		}
-		case WARRIOR: case WARRIORGM:{
+		case Class::Warrior: case Class::WarriorGM:{
 			if(level >= RuleI(Combat, NPCBashKickLevel)){
 				if(zone->random.Roll(75)) { //tested on live, warrior mobs both kick and bash, kick about 75% of the time, casting doesn't seem to make a difference.
 					DoAnim(animKick, 0, false);
@@ -1870,12 +1885,12 @@ void NPC::DoClassAttacks(Mob *target) {
 			}
 			break;
 		}
-		case BERSERKER: case BERSERKERGM:{
+		case Class::Berserker: case Class::BerserkerGM:{
 			int AtkRounds = 1;
 			int32 max_dmg = GetBaseSkillDamage(EQ::skills::SkillFrenzy);
 			DoAnim(anim2HSlashing, 0, false);
 
-			if (GetClass() == BERSERKER) {
+			if (GetClass() == Class::Berserker) {
 				int chance = GetLevel() * 2 + GetSkill(EQ::skills::SkillFrenzy);
 				if (zone->random.Roll0(450) < chance)
 					AtkRounds++;
@@ -1892,8 +1907,8 @@ void NPC::DoClassAttacks(Mob *target) {
 			did_attack = true;
 			break;
 		}
-		case RANGER: case RANGERGM:
-		case BEASTLORD: case BEASTLORDGM: {
+		case Class::Ranger: case Class::RangerGM:
+		case Class::Beastlord: case Class::BeastlordGM: {
 			//kick
 			if(level >= RuleI(Combat, NPCBashKickLevel)){
 				DoAnim(animKick, 0, false);
@@ -1908,9 +1923,9 @@ void NPC::DoClassAttacks(Mob *target) {
 			}
 			break;
 		}
-		case CLERIC: case CLERICGM: //clerics can bash too.
-		case SHADOWKNIGHT: case SHADOWKNIGHTGM:
-		case PALADIN: case PALADINGM:{
+		case Class::Cleric: case Class::ClericGM: //clerics can bash too.
+		case Class::ShadowKnight: case Class::ShadowKnightGM:
+		case Class::Paladin: case Class::PaladinGM:{
 			if(level >= RuleI(Combat, NPCBashKickLevel)){
 				DoAnim(animTailRake, 0, false);
 				int64 dmg = GetBaseSkillDamage(EQ::skills::SkillBash);
@@ -1957,19 +1972,19 @@ void Client::DoClassAttacks(Mob *ca_target, uint16 skill, bool IsRiposte)
 
 	if (skill == -1){
 		switch(GetClass()){
-		case WARRIOR:
-		case RANGER:
-		case BEASTLORD:
+		case Class::Warrior:
+		case Class::Ranger:
+		case Class::Beastlord:
 			skill_to_use = EQ::skills::SkillKick;
 			break;
-		case BERSERKER:
+		case Class::Berserker:
 			skill_to_use = EQ::skills::SkillFrenzy;
 			break;
-		case SHADOWKNIGHT:
-		case PALADIN:
+		case Class::ShadowKnight:
+		case Class::Paladin:
 			skill_to_use = EQ::skills::SkillBash;
 			break;
-		case MONK:
+		case Class::Monk:
 			if(GetLevel() >= 30)
 			{
 				skill_to_use = EQ::skills::SkillFlyingKick;
@@ -1995,7 +2010,7 @@ void Client::DoClassAttacks(Mob *ca_target, uint16 skill, bool IsRiposte)
 				skill_to_use = EQ::skills::SkillKick;
 			}
 			break;
-		case ROGUE:
+		case Class::Rogue:
 			skill_to_use = EQ::skills::SkillBackstab;
 			break;
 		}
@@ -2035,7 +2050,7 @@ void Client::DoClassAttacks(Mob *ca_target, uint16 skill, bool IsRiposte)
 		ReuseTime = (FrenzyReuseTime - 1) / HasteMod;
 
 		// bards can do riposte frenzy for some reason
-		if (!IsRiposte && GetClass() == BERSERKER) {
+		if (!IsRiposte && GetClass() == Class::Berserker) {
 			int chance = GetLevel() * 2 + GetSkill(EQ::skills::SkillFrenzy);
 			if (zone->random.Roll0(450) < chance)
 				AtkRounds++;
@@ -2119,120 +2134,171 @@ void Client::DoClassAttacks(Mob *ca_target, uint16 skill, bool IsRiposte)
 	}
 }
 
-void Mob::Taunt(NPC *who, bool always_succeed, int chance_bonus, bool FromSpell, int32 bonus_hate)
+	/* Classic Taunt Methodology
+	* This is not how Sony did it.  This is a guess that fits the very limited data available.
+	* Low level players with maxed taunt for their level taunted about 50% on white cons.
+	* A 65 ranger with 150 taunt skill (max) taunted about 50% on level 60 and under NPCs.
+	* A 65 warrior with maxed taunt (230) was taunting around 50% on SSeru NPCs.		*/
+
+	/* Rashere in 2006: "your taunt skill was irrelevant if you were above level 60 and taunting
+	* something that was also above level 60."
+	* Also: "The chance to taunt an NPC higher level than yourself dropped off at double the rate
+	* if you were above level 60 than if you were below level 60 making it very hard to taunt creature
+	* higher level than yourself if you were above level 60."
+	* 
+	* See http://www.elitegamerslounge.com/home/soearchive/viewtopic.php?t=81156 */
+void Mob::Taunt(NPC *who, bool always_succeed, int chance_bonus, bool from_spell, int32 bonus_hate)
 {
-	if (who == nullptr)
+	if (!who || DivineAura() || (!from_spell && !CombatRange(who)) || (IsNPC() && IsCharmed())) {
 		return;
+	}
 
-	if (DivineAura())
-		return;
-
-	if (!FromSpell && !CombatRange(who))
-		return;
-
-	if (!always_succeed && IsClient())
+	if (!always_succeed && IsClient()) {
 		CastToClient()->CheckIncreaseSkill(EQ::skills::SkillTaunt, who, 10);
+	}
 
-	Mob *hate_top = who->GetHateMost();
-
+	Mob *hate_top        = who->GetHateMost();
 	int level_difference = GetLevel() - who->GetLevel();
-	bool success = false;
+	bool success         = false;
+	int taunt_chance     = 0;
 
 	// Support for how taunt worked pre 2000 on LIVE - Can not taunt NPC over your level.
-	if ((RuleB(Combat, TauntOverLevel) == false) && (level_difference < 0) ||
-	    who->GetSpecialAbility(IMMUNE_TAUNT)) {
+	if (
+		!RuleB(Combat, TauntOverLevel) &&
+		level_difference < 0 ||
+		who->GetSpecialAbility(IMMUNE_TAUNT)
+	) {
 		MessageString(Chat::SpellFailure, FAILED_TAUNT);
 		return;
 	}
 
-	// All values used based on live parses after taunt was updated in 2006.
-	if ((hate_top && hate_top->GetHPRatio() >= 20) || hate_top == nullptr || chance_bonus) {
-		// SE_Taunt this is flat chance
-		if (chance_bonus) {
-			success = zone->random.Roll(chance_bonus);
+	if (always_succeed) {
+		taunt_chance = 100;
+	}
+		
+	// Modern Taunt
+	if (!RuleB(Combat, ClassicTauntSystem)) {
+		if (
+			(hate_top && hate_top->GetHPRatio() >= 20) ||
+			!hate_top ||
+			chance_bonus
+		) {
+			if (chance_bonus) {
+				taunt_chance = chance_bonus;
+			} else {
+				taunt_chance = 50;
+			}
 		} else {
-			float tauntchance = 50.0f;
-
-			if (always_succeed)
-				tauntchance = 101.0f;
-
-			else {
-
-				if (level_difference < 0) {
-					tauntchance += static_cast<float>(level_difference) * 3.0f;
-					if (tauntchance < 20)
-						tauntchance = 20.0f;
+			if (level_difference < 0) {
+				taunt_chance += level_difference * 3;
+				if (taunt_chance < 20) {
+					taunt_chance = 20;
 				}
-
-				else {
-					tauntchance += static_cast<float>(level_difference) * 5.0f;
-					if (tauntchance > 65)
-						tauntchance = 65.0f;
+			} else {
+				taunt_chance += level_difference * 5;
+				if (taunt_chance > 65) {
+					taunt_chance = 65;
 				}
 			}
 
-			// TauntSkillFalloff rate is not based on any real data. Default of 33% gives a reasonable
-			// result.
-			if (IsClient() && !always_succeed)
-				tauntchance -= (RuleR(Combat, TauntSkillFalloff) *
-						(CastToClient()->MaxSkill(EQ::skills::SkillTaunt) -
-						 GetSkill(EQ::skills::SkillTaunt)));
+			if (IsClient() && !always_succeed) {
+				taunt_chance -= (RuleR(Combat, TauntSkillFalloff) *
+					(CastToClient()->MaxSkill(EQ::skills::SkillTaunt) -
+					GetSkill(EQ::skills::SkillTaunt)));
+			}
 
-			if (tauntchance < 1)
-				tauntchance = 1.0f;
+			if (taunt_chance < 1) {
+				taunt_chance = 1;
+			}
+		}
+	} else { // Classic Taunt
+		if (GetLevel() >= 60 && level_difference < 0) {
+			if (level_difference < -5) {
+				taunt_chance = 0;
+			} else if (level_difference == -5) {
+				taunt_chance = 10;
+			} else {
+				taunt_chance = 50 + level_difference * 10;
+			}
+		} else {
+			// this will make the skill difference between the tank classes actually affect success rates
+			// but only for NPCs near the player's level.  Mid to low blues will start to taunt at 50%
+			// even with lower skill
+			taunt_chance = 50 * GetSkill(EQ::skills::SkillTaunt) / (who->GetLevel() * 5 + 5);
+			taunt_chance += level_difference * 5;
 
-			tauntchance /= 100.0f;
+			if (taunt_chance > 50) {
+				taunt_chance = 50;
+			} else if (taunt_chance < 10) {
+				taunt_chance = 10;
+			}
+		}
 
-			success = tauntchance > zone->random.Real(0, 1);
+		// Taunt Chance Rule Bonus
+		taunt_chance += RuleI(Combat, TauntChanceBonus);
+	}
+
+	//success roll
+	success = zone->random.Roll(taunt_chance);
+
+	// Log result
+	LogHate(
+		"Taunter mob [{}] target npc [{}] taunt_chance [{}] success [{}] hate_top [{}]",
+		GetMobDescription(),
+		who->GetMobDescription(),
+		taunt_chance,
+		success ? "true" : "false",
+		hate_top ? hate_top->GetMobDescription() : "not found"
+	);
+
+	// Actual Taunting
+	if (success) {
+		if (hate_top && hate_top != this) {
+			int64 new_hate = (
+				(who->GetNPCHate(hate_top) - who->GetNPCHate(this)) +
+				bonus_hate +
+				RuleI(Combat, TauntOverAggro) +
+				1
+			);
 
 			LogHate(
-				"Taunter mob {} target npc {} tauntchance [{}] success [{}] hate_top [{}]",
+				"Not Top Hate - Taunter [{}] Target [{}] Hated Top [{}] Hate Top Amt [{}] This Character Amt [{}] Bonus_Hate Amt [{}] TauntOverAggro Amt [{}] - Total [{}]",
 				GetMobDescription(),
 				who->GetMobDescription(),
-				tauntchance,
-				success ? "true" : "false",
-				hate_top ? hate_top->GetMobDescription() : "not found"
+				hate_top->GetMobDescription(),
+				who->GetNPCHate(hate_top),
+				who->GetNPCHate(this),
+				bonus_hate,
+				RuleI(Combat, TauntOverAggro),
+				new_hate
 			);
-		}
 
-		if (success) {
-			if (hate_top && hate_top != this) {
-				int64 newhate = (who->GetNPCHate(hate_top) - who->GetNPCHate(this)) + 1 + bonus_hate;
-
-				LogHate(
-					"Taunter mob {} target npc {} newhate [{}] hated_top {} hate_of_top [{}] this_hate [{}] bonus_hate [{}]",
-					GetMobDescription(),
-					who->GetMobDescription(),
-					newhate,
-					hate_top->GetMobDescription(),
-					who->GetNPCHate(hate_top),
-					who->GetNPCHate(this),
-					bonus_hate
-				);
-
-				who->CastToNPC()->AddToHateList(this, newhate);
-				success = true;
-			} else {
-				who->CastToNPC()->AddToHateList(this, 12);
-			}
-
-			if (who->CanTalk())
-				who->SayString(SUCCESSFUL_TAUNT, GetCleanName());
+			who->CastToNPC()->AddToHateList(this, new_hate);
 		} else {
-			MessageString(Chat::SpellFailure, FAILED_TAUNT);
+			LogHate("Already Hate Top");
+			who->CastToNPC()->AddToHateList(this, 12);
 		}
+
+		if (who->CanTalk()) {
+			who->SayString(SUCCESSFUL_TAUNT, GetCleanName());
+		}
+
+		MessageString(Chat::Skills, TAUNT_SUCCESS, who->GetCleanName());
 	} else {
-		MessageString(Chat::SpellFailure, FAILED_TAUNT);
+		MessageString(Chat::Skills, FAILED_TAUNT);
 	}
 
-	TryCastOnSkillUse(who, EQ::skills::SkillTaunt);
+	// Modern Abilities
+	if (!RuleB(Combat, ClassicTauntSystem)) {
+		TryCastOnSkillUse(who, EQ::skills::SkillTaunt);
 
-	if (HasSkillProcs()) {
-		TrySkillProc(who, EQ::skills::SkillTaunt, TauntReuseTime * 1000);
-	}
+		if (HasSkillProcs()) {
+			TrySkillProc(who, EQ::skills::SkillTaunt, TauntReuseTime * 1000);
+		}
 
-	if (success && HasSkillProcSuccess()) {
-		TrySkillProc(who, EQ::skills::SkillTaunt, TauntReuseTime * 1000, true);
+		if (success && HasSkillProcSuccess()) {
+			TrySkillProc(who, EQ::skills::SkillTaunt, TauntReuseTime * 1000, true);
+		}
 	}
 }
 
@@ -2385,7 +2451,7 @@ int Mob::TryAssassinate(Mob *defender, EQ::skills::SkillType skillInUse)
 }
 
 void Mob::DoMeleeSkillAttackDmg(Mob *other, int32 weapon_damage, EQ::skills::SkillType skillinuse, int16 chance_mod,
-				int16 focus, bool CanRiposte, int ReuseTime)
+				int16 focus, bool can_riposte, int ReuseTime)
 {
 	if (!CanDoSpecialAttack(other)) {
 		return;
@@ -2425,15 +2491,14 @@ void Mob::DoMeleeSkillAttackDmg(Mob *other, int32 weapon_damage, EQ::skills::Ski
 		}
 
 		DamageHitInfo my_hit {};
-		my_hit.base_damage = weapon_damage;
-		my_hit.min_damage = 0;
-		my_hit.damage_done = 1;
 
-		my_hit.skill = skillinuse;
-		my_hit.offense = offense(my_hit.skill);
-		my_hit.tohit = GetTotalToHit(my_hit.skill, chance_mod);
-		// slot range exclude ripe etc ...
-		my_hit.hand = CanRiposte ? EQ::invslot::slotRange : EQ::invslot::slotPrimary;
+		my_hit.base_damage = weapon_damage;
+		my_hit.min_damage  = 0;
+		my_hit.damage_done = 1;
+		my_hit.skill       = skillinuse;
+		my_hit.offense     = offense(my_hit.skill);
+		my_hit.tohit       = GetTotalToHit(my_hit.skill, chance_mod);
+		my_hit.hand        = can_riposte ? EQ::invslot::slotPrimary : EQ::invslot::slotRange;
 
 		if (IsNPC()) {
 			my_hit.min_damage = CastToNPC()->GetMinDamage();

@@ -20,6 +20,9 @@
 #include "../common/spdat.h"
 #include "../common/strings.h"
 
+#include "../common/repositories/pets_repository.h"
+#include "../common/repositories/pets_beastlord_data_repository.h"
+
 #include "entity.h"
 #include "client.h"
 #include "mob.h"
@@ -194,15 +197,18 @@ void Mob::MakePoweredPet(uint16 spell_id, const char* pettype, int16 petpower,
 	}
 
 	// Beastlord Pets
-	if(record.petnaming == 2) {
+	if (record.petnaming == 2) {
 		uint16 race_id = GetBaseRace();
-		auto beastlord_pet_data = content_db.GetBeastlordPetData(race_id);
-		npc_type->race = beastlord_pet_data.race_id;
-		npc_type->texture = beastlord_pet_data.texture;
-		npc_type->helmtexture = beastlord_pet_data.helm_texture;
-		npc_type->gender = beastlord_pet_data.gender;
-		npc_type->size *= beastlord_pet_data.size_modifier;
-		npc_type->luclinface = beastlord_pet_data.face;
+
+		auto d = content_db.GetBeastlordPetData(race_id);
+
+		npc_type->race        = d.race_id;
+		npc_type->texture     = d.texture;
+		npc_type->helmtexture = d.helm_texture;
+		npc_type->gender      = d.gender;
+		npc_type->luclinface  = d.face;
+
+		npc_type->size *= d.size_modifier;
 	}
 
 	// handle monster summoning pet appearance
@@ -265,7 +271,7 @@ void Mob::MakePoweredPet(uint16 spell_id, const char* pettype, int16 petpower,
 		for (int i = EQ::invslot::EQUIPMENT_BEGIN; i <= EQ::invslot::EQUIPMENT_END; i++)
 			if (petinv[i]) {
 				item = database.GetItem(petinv[i]);
-				npc->AddLootDrop(item, &npc->itemlist, NPC::NewLootDropEntry(), true);
+				npc->AddLootDrop(item, LootdropEntriesRepository::NewNpcEntity(), true);
 			}
 	}
 
@@ -369,38 +375,35 @@ Pet::Pet(NPCType *type_data, Mob *owner, PetType type, uint16 spell_id, int16 po
 	// Class should use npc constructor to set light properties
 }
 
-bool ZoneDatabase::GetPetEntry(const char *pet_type, PetRecord *into) {
-	return GetPoweredPetEntry(pet_type, 0, into);
+bool ZoneDatabase::GetPetEntry(const std::string& pet_type, PetRecord *p)
+{
+	return GetPoweredPetEntry(pet_type, 0, p);
 }
 
-bool ZoneDatabase::GetPoweredPetEntry(const char *pet_type, int16 petpower, PetRecord *into) {
-	std::string query;
+bool ZoneDatabase::GetPoweredPetEntry(const std::string& pet_type, int16 pet_power, PetRecord* r)
+{
+	const auto& l = PetsRepository::GetWhere(
+		*this,
+		fmt::format(
+			"`type` = '{}' AND `petpower` <= {} ORDER BY `petpower` DESC LIMIT 1",
+			pet_type,
+			pet_power <= 0 ? 0 : pet_power
+		)
+	);
 
-	if (petpower <= 0)
-		query = StringFormat("SELECT npcID, temp, petpower, petcontrol, petnaming, monsterflag, equipmentset "
-							"FROM pets WHERE type='%s' AND petpower<=0", pet_type);
-	else
-		query = StringFormat("SELECT npcID, temp, petpower, petcontrol, petnaming, monsterflag, equipmentset "
-							"FROM pets WHERE type='%s' AND petpower<=%d ORDER BY petpower DESC LIMIT 1",
-							pet_type, petpower);
-
-	auto results = content_db.QueryDatabase(query);
-	if (!results.Success()) {
+	if (l.empty()) {
 		return false;
 	}
 
-	if (results.RowCount() != 1)
-		return false;
+	auto e = l.front();
 
-	auto row = results.begin();
-
-	into->npc_type = Strings::ToInt(row[0]);
-	into->temporary = Strings::ToInt(row[1]);
-	into->petpower = Strings::ToInt(row[2]);
-	into->petcontrol = Strings::ToInt(row[3]);
-	into->petnaming = Strings::ToInt(row[4]);
-	into->monsterflag = Strings::ToInt(row[5]);
-	into->equipmentset = Strings::ToInt(row[6]);
+	r->npc_type     = e.npcID;
+	r->temporary    = e.temp;
+	r->petpower     = e.petpower;
+	r->petcontrol   = e.petcontrol;
+	r->petnaming    = e.petnaming;
+	r->monsterflag  = e.monsterflag;
+	r->equipmentset = e.equipmentset;
 
 	return true;
 }
@@ -577,7 +580,7 @@ void NPC::SetPetState(SpellBuff_Struct *pet_buffs, uint32 *items) {
 			bool petCanHaveNoDrop = (RuleB(Pets, CanTakeNoDrop) && _CLIENTPET(this) && GetPetType() <= petOther);
 
 			if (!noDrop || petCanHaveNoDrop) {
-				AddLootDrop(item2, &itemlist, NPC::NewLootDropEntry(), true);
+				AddLootDrop(item2, LootdropEntriesRepository::NewNpcEntity(), true);
 			}
 		}
 	}
@@ -656,27 +659,20 @@ bool Pet::CheckSpellLevelRestriction(Mob *caster, uint16 spell_id)
 }
 
 BeastlordPetData::PetStruct ZoneDatabase::GetBeastlordPetData(uint16 race_id) {
-	BeastlordPetData::PetStruct beastlord_pet_data;
-	std::string query = fmt::format(
-		SQL(
-			SELECT
-			`pet_race`, `texture`, `helm_texture`, `gender`, `size_modifier`, `face`
-			FROM `pets_beastlord_data`
-			WHERE `player_race` = {}
-		),
-		race_id
-	);
-	auto results = QueryDatabase(query);
-	if (!results.Success() || results.RowCount() != 1) {
-		return beastlord_pet_data;
+	BeastlordPetData::PetStruct d;
+
+	const auto& e = PetsBeastlordDataRepository::FindOne(*this, race_id);
+
+	if (!e.player_race) {
+		return d;
 	}
 
-	auto row = results.begin();
-	beastlord_pet_data.race_id = Strings::ToInt(row[0]);
-	beastlord_pet_data.texture = Strings::ToInt(row[1]);
-	beastlord_pet_data.helm_texture = Strings::ToInt(row[2]);
-	beastlord_pet_data.gender = Strings::ToInt(row[3]);
-	beastlord_pet_data.size_modifier = Strings::ToFloat(row[4]);
-	beastlord_pet_data.face = Strings::ToInt(row[5]);
-	return beastlord_pet_data;
+	d.race_id       = e.pet_race;
+	d.texture       = e.texture;
+	d.helm_texture  = e.helm_texture;
+	d.gender        = e.gender;
+	d.size_modifier = e.size_modifier;
+	d.face          = e.face;
+
+	return d;
 }

@@ -74,7 +74,7 @@ public:
 	void DoAnim(int animation_id, int animation_speed, bool ackreq);
 	void DoAnim(int animation_id, int animation_speed, bool ackreq, int filter);
 	void ChangeSize(double in_size);
-	void ChangeSize(double in_size, bool no_restriction);
+	void ChangeSize(double in_size, bool unrestricted);
 	bool RandomizeFeatures();
 	bool RandomizeFeatures(bool send_illusion);
 	bool RandomizeFeatures(bool send_illusion, bool save_variables);
@@ -186,11 +186,11 @@ public:
 	void Message(uint32 type, const char *message);
 	void MessageString(uint32 type, uint32 string_id, uint32 distance);
 	void Say(const char *message);
-	void Say(const char* message, int language);
+	void Say(const char* message, uint8 language_id);
 	void QuestSay(Lua_Client client, const char *message);
 	void QuestSay(Lua_Client client, const char *message, luabind::adl::object opts);
 	void Shout(const char *message);
-	void Shout(const char* message, int language);
+	void Shout(const char* message, uint8 language_id);
 	void Emote(const char *message);
 	void InterruptSpell();
 	void InterruptSpell(int spell_id);
@@ -225,6 +225,9 @@ public:
 	Lua_HateList GetHateListByDistance();
 	Lua_HateList GetHateListByDistance(uint32 distance);
 	Lua_Mob GetHateTop();
+	Lua_Bot GetHateTopBot();
+	Lua_Client GetHateTopClient();
+	Lua_NPC GetHateTopNPC();
 	Lua_Mob GetHateDamageTop(Lua_Mob other);
 	Lua_Mob GetHateRandom();
 	Lua_Bot GetHateRandomBot();
@@ -563,6 +566,17 @@ public:
 	std::string GetRacePlural();
 	bool IsTemporaryPet();
 	uint32 GetMobTypeIdentifier();
+	uint32 GetHateListCount();
+	uint32 GetHateListBotCount();
+	uint32 GetHateListClientCount();
+	uint32 GetHateListNPCCount();
+	bool IsAnimation();
+	bool IsCharmed();
+	bool IsFamiliar();
+	bool IsTargetLockPet();
+	bool IsPetOwnerBot();
+	bool IsPetOwnerClient();
+	bool IsPetOwnerNPC();
 };
 
 #endif

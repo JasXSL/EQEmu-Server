@@ -1273,7 +1273,7 @@ int EQ::ItemInstance::GetItemBaneDamageBody(bool augments) const
 
 int EQ::ItemInstance::GetItemBaneDamageRace(bool augments) const
 {
-	int race = RACE_DOUG_0;
+	int race = Race::Doug;
 	const auto item = GetItem();
 	if (item) {
 		race = item->BaneDmgRace;
@@ -1789,6 +1789,27 @@ int EQ::ItemInstance::RemoveTaskDeliveredItems()
 	}
 	SetTaskDeliveredCount(0);
 	return count;
+}
+
+uint32 EQ::ItemInstance::GetItemGuildFavor() const
+{
+	uint32 total = 0;
+	const auto item = GetItem();
+	if (item) {
+		return total = item->GuildFavor;
+	}
+	return 0;
+}
+
+std::vector<uint32> EQ::ItemInstance::GetAugmentIDs() const
+{
+	std::vector<uint32> augments;
+
+	for (uint8 slot_id = invaug::SOCKET_BEGIN; slot_id <= invaug::SOCKET_END; slot_id++) {
+		augments.push_back(GetAugment(slot_id) ? GetAugmentItemID(slot_id) : 0);
+	}
+
+	return augments;
 }
 
 //

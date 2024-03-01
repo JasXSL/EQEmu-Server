@@ -202,7 +202,7 @@ namespace RoF
 		unsigned char *emu_buffer = in->pBuffer;
 		uint32 opcode = *((uint32*)emu_buffer);
 
-		if (opcode == 8) {
+		if (opcode == AlternateCurrencyMode::Populate) {
 			AltCurrencyPopulate_Struct *populate = (AltCurrencyPopulate_Struct*)emu_buffer;
 
 			auto outapp = new EQApplicationPacket(
@@ -1308,13 +1308,13 @@ namespace RoF
 				PutFieldN(class_);
 
 				/* Translate older ranks to new values */
-				switch (emu_e->rank) {
-				case 0: { e->rank = htonl(5); break; }  // GUILD_MEMBER	0
-				case 1: { e->rank = htonl(3); break; }  // GUILD_OFFICER 1
-				case 2: { e->rank = htonl(1); break; }  // GUILD_LEADER	2
-				default: { e->rank = htonl(emu_e->rank); break; } // GUILD_NONE
-				}
-
+				//switch (emu_e->rank) {
+				//case 0: { e->rank = htonl(5); break; }  // GUILD_MEMBER	0
+				//case 1: { e->rank = htonl(3); break; }  // GUILD_OFFICER 1
+				//case 2: { e->rank = htonl(1); break; }  // GUILD_LEADER	2
+				//default: { e->rank = htonl(emu_e->rank); break; } // GUILD_NONE
+				//}
+				PutFieldN(rank);
 				PutFieldN(time_last_on);
 				PutFieldN(tribute_enable);
 				e->unknown01 = 0;
@@ -2621,7 +2621,7 @@ namespace RoF
 		general->parameter = RaidCommandAcceptInvite;
 		strn0cpy(general->leader_name, emu->leader_name, sizeof(emu->leader_name));
 		strn0cpy(general->player_name, emu->leader_name, sizeof(emu->leader_name));
-		
+
 		dest->FastQueuePacket(&outapp);
 
 		safe_delete(inapp);
@@ -3051,19 +3051,12 @@ namespace RoF
 		ENCODE_LENGTH_EXACT(GuildSetRank_Struct);
 		SETUP_DIRECT_ENCODE(GuildSetRank_Struct, structs::GuildSetRank_Struct);
 
-		eq->GuildID = emu->Unknown00;
+		eq->guild_id = emu->Unknown00;
+		eq->rank = emu->rank;
 
-		/* Translate older ranks to new values */
-		switch (emu->Rank) {
-		case 0: { eq->Rank = 5; break; }  // GUILD_MEMBER	0
-		case 1: { eq->Rank = 3; break; }  // GUILD_OFFICER	1
-		case 2: { eq->Rank = 1; break; }  // GUILD_LEADER	2
-		default: { eq->Rank = emu->Rank; break; }
-		}
-
-		memcpy(eq->MemberName, emu->MemberName, sizeof(eq->MemberName));
-		OUT(Banker);
-		eq->Unknown76 = 1;
+		memcpy(eq->member_name, emu->member_name, sizeof(eq->member_name));
+		OUT(banker);
+		eq->unknown76 = 1;
 
 		FINISH_ENCODE();
 	}
@@ -3165,7 +3158,7 @@ namespace RoF
 
 		SpawnAppearance_Struct *sas = (SpawnAppearance_Struct *)emu_buffer;
 
-		if (sas->type != AT_Size)
+		if (sas->type != AppearanceType::Size)
 		{
 			dest->FastQueuePacket(&in, ack_req);
 			return;
@@ -3868,8 +3861,8 @@ namespace RoF
 			}
 
 			float SpawnSize = emu->size;
-			if (!((emu->NPC == 0) || (emu->race <= RACE_GNOME_12) || (emu->race == RACE_IKSAR_128) ||
-					(emu->race == RACE_VAH_SHIR_130) || (emu->race == RACE_FROGLOK_330) || (emu->race == RACE_DRAKKIN_522))
+			if (!((emu->NPC == 0) || (emu->race <= Race::Gnome) || (emu->race == Race::Iksar) ||
+					(emu->race == Race::VahShir) || (emu->race == Race::Froglok2) || (emu->race == Race::Drakkin))
 				)
 			{
 				PacketSize += 60;
@@ -3973,10 +3966,22 @@ namespace RoF
 
 				/* Translate older ranks to new values */
 				switch (emu->guildrank) {
-				case 0: { VARSTRUCT_ENCODE_TYPE(uint32, Buffer, 5);  break; }  // GUILD_MEMBER	0
-				case 1: { VARSTRUCT_ENCODE_TYPE(uint32, Buffer, 3);  break; }  // GUILD_OFFICER	1
-				case 2: { VARSTRUCT_ENCODE_TYPE(uint32, Buffer, 1);  break; }  // GUILD_LEADER	2
-				default: { VARSTRUCT_ENCODE_TYPE(uint32, Buffer, emu->guildrank); break; }  //
+					case 0: {
+						VARSTRUCT_ENCODE_TYPE(uint32, Buffer, 5);
+						break;
+					}  // GUILD_MEMBER	0
+					case 1: {
+						VARSTRUCT_ENCODE_TYPE(uint32, Buffer, 3);
+						break;
+					}  // GUILD_OFFICER	1
+					case 2: {
+						VARSTRUCT_ENCODE_TYPE(uint32, Buffer, 1);
+						break;
+					}  // GUILD_LEADER	2
+					default: {
+						VARSTRUCT_ENCODE_TYPE(uint32, Buffer, emu->guildrank);
+						break;
+					}  //
 				}
 			}
 
@@ -4002,8 +4007,8 @@ namespace RoF
 			VARSTRUCT_ENCODE_TYPE(uint32, Buffer, 0xffffffff); // unknown18
 			VARSTRUCT_ENCODE_TYPE(uint32, Buffer, 0xffffffff); // unknown19
 
-			if ((emu->NPC == 0) || (emu->race <= RACE_GNOME_12) || (emu->race == RACE_IKSAR_128) ||
-					(emu->race == RACE_VAH_SHIR_130) || (emu->race == RACE_FROGLOK_330) || (emu->race == RACE_DRAKKIN_522)
+			if ((emu->NPC == 0) || (emu->race <= Race::Gnome) || (emu->race == Race::Iksar) ||
+					(emu->race == Race::VahShir) || (emu->race == Race::Froglok2) || (emu->race == Race::Drakkin)
 				)
 			{
 				for (k = EQ::textures::textureBegin; k < EQ::textures::materialCount; ++k)

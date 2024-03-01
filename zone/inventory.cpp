@@ -25,6 +25,7 @@
 #include "zonedb.h"
 #include "../common/events/player_event_logs.h"
 #include "bot.h"
+#include "../common/repositories/character_corpse_items_repository.h"
 
 extern WorldServer worldserver;
 
@@ -1104,7 +1105,7 @@ void Client::DeleteItemInInventory(int16 slot_id, int16 quantity, bool client_up
 		if(update_db)
 			database.SaveInventory(character_id, inst, slot_id);
 	}
-
+	
 	if(client_update && IsValidSlot(slot_id)) {
 		EQApplicationPacket* outapp = nullptr;
 		if(inst) {
@@ -1184,7 +1185,7 @@ bool Client::PutItemInInventory(int16 slot_id, const EQ::ItemInstance& inst, boo
 	// a lot of wasted checks and calls coded above...
 }
 
-void Client::PutLootInInventory(int16 slot_id, const EQ::ItemInstance &inst, ServerLootItem_Struct** bag_item_data)
+void Client::PutLootInInventory(int16 slot_id, const EQ::ItemInstance &inst, LootItem** bag_item_data)
 {
 	LogInventory("Putting loot item [{}] ([{}]) into slot [{}]", inst.GetItem()->Name, inst.GetItem()->ID, slot_id);
 
@@ -1296,7 +1297,7 @@ bool Client::TryStacking(EQ::ItemInstance* item, uint8 type, bool try_worn, bool
 // Locate an available space in inventory to place an item
 // and then put the item there
 // The change will be saved to the database
-bool Client::AutoPutLootInInventory(EQ::ItemInstance& inst, bool try_worn, bool try_cursor, ServerLootItem_Struct** bag_item_data)
+bool Client::AutoPutLootInInventory(EQ::ItemInstance& inst, bool try_worn, bool try_cursor, LootItem** bag_item_data)
 {
 	// #1: Try to auto equip
 	if (try_worn && inst.IsEquipable(GetBaseRace(), GetClass()) && inst.GetItem()->ReqLevel <= level && (!inst.GetItem()->Attuneable || inst.IsAttuned()) && inst.GetItem()->ItemType != EQ::item::ItemTypeAugmentation) {
@@ -1673,6 +1674,7 @@ bool Client::IsValidSlot(uint32 slot) {
 		(slot == (uint32)EQ::invslot::slotCursor) ||
 		(slot <= EQ::invbag::CURSOR_BAG_END && slot >= EQ::invbag::CURSOR_BAG_BEGIN) ||
 		(slot <= EQ::invslot::TRIBUTE_END && slot >= EQ::invslot::TRIBUTE_BEGIN) ||
+		(slot <= EQ::invslot::GUILD_TRIBUTE_END && slot >= EQ::invslot::GUILD_TRIBUTE_BEGIN) ||
 		(slot <= EQ::invslot::SHARED_BANK_END && slot >= EQ::invslot::SHARED_BANK_BEGIN) ||
 		(slot <= EQ::invbag::SHARED_BANK_BAGS_END && slot >= EQ::invbag::SHARED_BANK_BAGS_BEGIN) ||
 		(slot <= EQ::invslot::TRADE_END && slot >= EQ::invslot::TRADE_BEGIN) ||
@@ -3577,6 +3579,11 @@ bool Client::InterrogateInventory(Client* requester, bool log, bool silent, bool
 		if (inst == nullptr) { continue; }
 		instmap[index] = inst;
 	}
+	for (int16 index = EQ::invslot::GUILD_TRIBUTE_BEGIN; index <= EQ::invslot::GUILD_TRIBUTE_END; ++index) {
+		auto inst = m_inv[index];
+		if (inst == nullptr) { continue; }
+		instmap[index] = inst;
+	}
 	for (int16 index = EQ::invslot::BANK_BEGIN; index <= EQ::invslot::BANK_END; ++index) {
 		auto inst = m_inv[index];
 		if (inst == nullptr) { continue; }
@@ -3713,6 +3720,7 @@ bool Client::InterrogateInventory_error(int16 head, int16 index, const EQ::ItemI
 	if (
 		(head >= EQ::invslot::EQUIPMENT_BEGIN && head <= EQ::invslot::EQUIPMENT_END) ||
 		(head >= EQ::invslot::TRIBUTE_BEGIN && head <= EQ::invslot::TRIBUTE_END) ||
+		(head >= EQ::invslot::GUILD_TRIBUTE_BEGIN && head <= EQ::invslot::GUILD_TRIBUTE_END) ||
 		(head >= EQ::invslot::WORLD_BEGIN && head <= EQ::invslot::WORLD_END) ||
 		(head >= 8000 && head <= 8101)) {
 		switch (depth)
@@ -4735,6 +4743,87 @@ bool Client::IsAugmentRestricted(uint8 item_type, uint32 augment_restriction)
 		case EQ::item::AugRestrictionUnknown3:
 		default:
 			return true;
+	}
+
+	return false;
+}
+
+void Client::SummonItemIntoInventory(
+	uint32 item_id,
+	int16 charges,
+	uint32 aug1,
+	uint32 aug2,
+	uint32 aug3,
+	uint32 aug4,
+	uint32 aug5,
+	uint32 aug6,
+	bool is_attuned
+)
+{
+	auto *inst = database.CreateItem(
+		item_id,
+		charges,
+		aug1,
+		aug2,
+		aug3,
+		aug4,
+		aug5,
+		aug6,
+		is_attuned
+	);
+
+	if (!inst) {
+		return;
+	}
+
+	const bool  is_arrow = inst->GetItem()->ItemType == EQ::item::ItemTypeArrow;
+	const int16 slot_id  = m_inv.FindFreeSlot(
+		inst->IsClassBag(),
+		true,
+		inst->GetItem()->Size,
+		is_arrow
+	);
+
+	SummonItem(
+		item_id,
+		charges,
+		aug1,
+		aug2,
+		aug3,
+		aug4,
+		aug5,
+		aug6,
+		is_attuned,
+		slot_id
+	);
+}
+
+bool Client::HasItemOnCorpse(uint32 item_id)
+{
+	auto corpses = CharacterCorpsesRepository::GetWhere(database, fmt::format("charid = {}", CharacterID()));
+	if (corpses.empty()) {
+		return false;
+	}
+
+	std::vector<uint32> corpse_ids;
+	corpse_ids.reserve(corpses.size());
+
+	for (auto &corpse : corpses) {
+		corpse_ids.push_back(corpse.id);
+	}
+
+	auto items = CharacterCorpseItemsRepository::GetWhere(
+		database,
+		fmt::format(
+			"corpse_id IN ({})",
+			Strings::Join(corpse_ids, ",")
+		)
+	);
+
+	for (auto &item : items) {
+		if (item.item_id == item_id) {
+			return true;
+		}
 	}
 
 	return false;

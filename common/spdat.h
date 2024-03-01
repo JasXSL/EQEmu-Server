@@ -202,6 +202,20 @@
 #define SPELL_GUIDE_LEVITATION 39852
 #define SPELL_GUIDE_SPELL_HASTE 39853
 #define SPELL_GUIDE_HASTE 39854
+#define SPELL_VAMPIRIC_EMBRACE 821
+#define SPELL_VAMPIRIC_EMBRACE_OF_SHADOW 822
+#define SPELL_BATTLE_CRY 5027
+#define SPELL_WAR_CRY 5028
+#define SPELL_BATTLE_CRY_OF_DRAVEL 5029
+#define SPELL_WAR_CRY_OF_DRAVEL 5030
+#define SPELL_BATTLE_CRY_OF_THE_MASTRUQ 5031
+#define SPELL_ANCIENT_CRY_OF_CHAOS 5032
+#define SPELL_BLOODTHIRST 8476
+#define SPELL_AMPLIFICATION 2603
+#define SPELL_DIVINE_REZ 2738
+
+// discipline IDs.
+#define DISC_UNHOLY_AURA 4520
 
 //spellgroup ids
 #define SPELLGROUP_FRENZIED_BURNOUT 2754
@@ -1375,7 +1389,7 @@ struct SPDat_Spell_Struct
 /* 101 */	int8 zone_type; // 01=Outdoors, 02=dungeons, ff=Any -- ZONETYPE
 /* 102 */	int8 environment_type; // -- ENVIRONMENTTYPE
 /* 103 */	int8 time_of_day; // -- TIMEOFDAY
-/* 104 */	uint8 classes[PLAYER_CLASS_COUNT]; // Classes, and their min levels -- WARRIORMIN ... BERSERKERMIN
+/* 104 */	uint8 classes[Class::PLAYER_CLASS_COUNT]; // Classes, and their min levels -- WARRIORMIN ... BERSERKERMIN
 /* 120 */	uint8 casting_animation; // -- CASTINGANIM
 /* 121 */	//uint8 TargetAnim; // -- TARGETANIM
 /* 122 */	//uint32 TravelType; // -- TRAVELTYPE
@@ -1540,6 +1554,7 @@ bool IsSummonSpell(uint16 spell_id);
 bool IsDamageSpell(uint16 spell_id);
 bool IsFearSpell(uint16 spell_id);
 bool IsCureSpell(uint16 spell_id);
+bool IsHarmTouchSpell(uint16 spell_id);
 int GetSpellEffectIndex(uint16 spell_id, int effect_id);
 uint8 GetSpellMinimumLevel(uint16 spell_id);
 uint8 GetSpellLevel(uint16 spell_id, uint8 class_id);

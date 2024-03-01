@@ -6,7 +6,7 @@
  * Any modifications to base repositories are to be made by the generator only
  *
  * @generator ./utils/scripts/generators/repository-generator.pl
- * @docs https://eqemu.gitbook.io/server/in-development/developer-area/repositories
+ * @docs https://docs.eqemu.io/developer/repositories
  */
 
 #ifndef EQEMU_BASE_GROUND_SPAWNS_REPOSITORY_H
@@ -33,6 +33,7 @@ public:
 		uint32_t    max_allowed;
 		std::string comment;
 		uint32_t    respawn_timer;
+		uint8_t     fix_z;
 		int8_t      min_expansion;
 		int8_t      max_expansion;
 		std::string content_flags;
@@ -61,6 +62,7 @@ public:
 			"max_allowed",
 			"comment",
 			"respawn_timer",
+			"fix_z",
 			"min_expansion",
 			"max_expansion",
 			"content_flags",
@@ -85,6 +87,7 @@ public:
 			"max_allowed",
 			"comment",
 			"respawn_timer",
+			"fix_z",
 			"min_expansion",
 			"max_expansion",
 			"content_flags",
@@ -143,6 +146,7 @@ public:
 		e.max_allowed            = 1;
 		e.comment                = "";
 		e.respawn_timer          = 300;
+		e.fix_z                  = 1;
 		e.min_expansion          = -1;
 		e.max_expansion          = -1;
 		e.content_flags          = "";
@@ -172,8 +176,9 @@ public:
 	{
 		auto results = db.QueryDatabase(
 			fmt::format(
-				"{} WHERE id = {} LIMIT 1",
+				"{} WHERE {} = {} LIMIT 1",
 				BaseSelect(),
+				PrimaryKey(),
 				ground_spawns_id
 			)
 		);
@@ -182,24 +187,25 @@ public:
 		if (results.RowCount() == 1) {
 			GroundSpawns e{};
 
-			e.id                     = static_cast<uint32_t>(strtoul(row[0], nullptr, 10));
-			e.zoneid                 = static_cast<uint32_t>(strtoul(row[1], nullptr, 10));
-			e.version                = static_cast<int16_t>(atoi(row[2]));
-			e.max_x                  = strtof(row[3], nullptr);
-			e.max_y                  = strtof(row[4], nullptr);
-			e.max_z                  = strtof(row[5], nullptr);
-			e.min_x                  = strtof(row[6], nullptr);
-			e.min_y                  = strtof(row[7], nullptr);
-			e.heading                = strtof(row[8], nullptr);
+			e.id                     = row[0] ? static_cast<uint32_t>(strtoul(row[0], nullptr, 10)) : 0;
+			e.zoneid                 = row[1] ? static_cast<uint32_t>(strtoul(row[1], nullptr, 10)) : 0;
+			e.version                = row[2] ? static_cast<int16_t>(atoi(row[2])) : 0;
+			e.max_x                  = row[3] ? strtof(row[3], nullptr) : 2000;
+			e.max_y                  = row[4] ? strtof(row[4], nullptr) : 2000;
+			e.max_z                  = row[5] ? strtof(row[5], nullptr) : 10000;
+			e.min_x                  = row[6] ? strtof(row[6], nullptr) : -2000;
+			e.min_y                  = row[7] ? strtof(row[7], nullptr) : -2000;
+			e.heading                = row[8] ? strtof(row[8], nullptr) : 0;
 			e.name                   = row[9] ? row[9] : "";
-			e.item                   = static_cast<uint32_t>(strtoul(row[10], nullptr, 10));
-			e.max_allowed            = static_cast<uint32_t>(strtoul(row[11], nullptr, 10));
+			e.item                   = row[10] ? static_cast<uint32_t>(strtoul(row[10], nullptr, 10)) : 0;
+			e.max_allowed            = row[11] ? static_cast<uint32_t>(strtoul(row[11], nullptr, 10)) : 1;
 			e.comment                = row[12] ? row[12] : "";
-			e.respawn_timer          = static_cast<uint32_t>(strtoul(row[13], nullptr, 10));
-			e.min_expansion          = static_cast<int8_t>(atoi(row[14]));
-			e.max_expansion          = static_cast<int8_t>(atoi(row[15]));
-			e.content_flags          = row[16] ? row[16] : "";
-			e.content_flags_disabled = row[17] ? row[17] : "";
+			e.respawn_timer          = row[13] ? static_cast<uint32_t>(strtoul(row[13], nullptr, 10)) : 300;
+			e.fix_z                  = row[14] ? static_cast<uint8_t>(strtoul(row[14], nullptr, 10)) : 1;
+			e.min_expansion          = row[15] ? static_cast<int8_t>(atoi(row[15])) : -1;
+			e.max_expansion          = row[16] ? static_cast<int8_t>(atoi(row[16])) : -1;
+			e.content_flags          = row[17] ? row[17] : "";
+			e.content_flags_disabled = row[18] ? row[18] : "";
 
 			return e;
 		}
@@ -246,10 +252,11 @@ public:
 		v.push_back(columns[11] + " = " + std::to_string(e.max_allowed));
 		v.push_back(columns[12] + " = '" + Strings::Escape(e.comment) + "'");
 		v.push_back(columns[13] + " = " + std::to_string(e.respawn_timer));
-		v.push_back(columns[14] + " = " + std::to_string(e.min_expansion));
-		v.push_back(columns[15] + " = " + std::to_string(e.max_expansion));
-		v.push_back(columns[16] + " = '" + Strings::Escape(e.content_flags) + "'");
-		v.push_back(columns[17] + " = '" + Strings::Escape(e.content_flags_disabled) + "'");
+		v.push_back(columns[14] + " = " + std::to_string(e.fix_z));
+		v.push_back(columns[15] + " = " + std::to_string(e.min_expansion));
+		v.push_back(columns[16] + " = " + std::to_string(e.max_expansion));
+		v.push_back(columns[17] + " = '" + Strings::Escape(e.content_flags) + "'");
+		v.push_back(columns[18] + " = '" + Strings::Escape(e.content_flags_disabled) + "'");
 
 		auto results = db.QueryDatabase(
 			fmt::format(
@@ -285,6 +292,7 @@ public:
 		v.push_back(std::to_string(e.max_allowed));
 		v.push_back("'" + Strings::Escape(e.comment) + "'");
 		v.push_back(std::to_string(e.respawn_timer));
+		v.push_back(std::to_string(e.fix_z));
 		v.push_back(std::to_string(e.min_expansion));
 		v.push_back(std::to_string(e.max_expansion));
 		v.push_back("'" + Strings::Escape(e.content_flags) + "'");
@@ -332,6 +340,7 @@ public:
 			v.push_back(std::to_string(e.max_allowed));
 			v.push_back("'" + Strings::Escape(e.comment) + "'");
 			v.push_back(std::to_string(e.respawn_timer));
+			v.push_back(std::to_string(e.fix_z));
 			v.push_back(std::to_string(e.min_expansion));
 			v.push_back(std::to_string(e.max_expansion));
 			v.push_back("'" + Strings::Escape(e.content_flags) + "'");
@@ -369,24 +378,25 @@ public:
 		for (auto row = results.begin(); row != results.end(); ++row) {
 			GroundSpawns e{};
 
-			e.id                     = static_cast<uint32_t>(strtoul(row[0], nullptr, 10));
-			e.zoneid                 = static_cast<uint32_t>(strtoul(row[1], nullptr, 10));
-			e.version                = static_cast<int16_t>(atoi(row[2]));
-			e.max_x                  = strtof(row[3], nullptr);
-			e.max_y                  = strtof(row[4], nullptr);
-			e.max_z                  = strtof(row[5], nullptr);
-			e.min_x                  = strtof(row[6], nullptr);
-			e.min_y                  = strtof(row[7], nullptr);
-			e.heading                = strtof(row[8], nullptr);
+			e.id                     = row[0] ? static_cast<uint32_t>(strtoul(row[0], nullptr, 10)) : 0;
+			e.zoneid                 = row[1] ? static_cast<uint32_t>(strtoul(row[1], nullptr, 10)) : 0;
+			e.version                = row[2] ? static_cast<int16_t>(atoi(row[2])) : 0;
+			e.max_x                  = row[3] ? strtof(row[3], nullptr) : 2000;
+			e.max_y                  = row[4] ? strtof(row[4], nullptr) : 2000;
+			e.max_z                  = row[5] ? strtof(row[5], nullptr) : 10000;
+			e.min_x                  = row[6] ? strtof(row[6], nullptr) : -2000;
+			e.min_y                  = row[7] ? strtof(row[7], nullptr) : -2000;
+			e.heading                = row[8] ? strtof(row[8], nullptr) : 0;
 			e.name                   = row[9] ? row[9] : "";
-			e.item                   = static_cast<uint32_t>(strtoul(row[10], nullptr, 10));
-			e.max_allowed            = static_cast<uint32_t>(strtoul(row[11], nullptr, 10));
+			e.item                   = row[10] ? static_cast<uint32_t>(strtoul(row[10], nullptr, 10)) : 0;
+			e.max_allowed            = row[11] ? static_cast<uint32_t>(strtoul(row[11], nullptr, 10)) : 1;
 			e.comment                = row[12] ? row[12] : "";
-			e.respawn_timer          = static_cast<uint32_t>(strtoul(row[13], nullptr, 10));
-			e.min_expansion          = static_cast<int8_t>(atoi(row[14]));
-			e.max_expansion          = static_cast<int8_t>(atoi(row[15]));
-			e.content_flags          = row[16] ? row[16] : "";
-			e.content_flags_disabled = row[17] ? row[17] : "";
+			e.respawn_timer          = row[13] ? static_cast<uint32_t>(strtoul(row[13], nullptr, 10)) : 300;
+			e.fix_z                  = row[14] ? static_cast<uint8_t>(strtoul(row[14], nullptr, 10)) : 1;
+			e.min_expansion          = row[15] ? static_cast<int8_t>(atoi(row[15])) : -1;
+			e.max_expansion          = row[16] ? static_cast<int8_t>(atoi(row[16])) : -1;
+			e.content_flags          = row[17] ? row[17] : "";
+			e.content_flags_disabled = row[18] ? row[18] : "";
 
 			all_entries.push_back(e);
 		}
@@ -411,24 +421,25 @@ public:
 		for (auto row = results.begin(); row != results.end(); ++row) {
 			GroundSpawns e{};
 
-			e.id                     = static_cast<uint32_t>(strtoul(row[0], nullptr, 10));
-			e.zoneid                 = static_cast<uint32_t>(strtoul(row[1], nullptr, 10));
-			e.version                = static_cast<int16_t>(atoi(row[2]));
-			e.max_x                  = strtof(row[3], nullptr);
-			e.max_y                  = strtof(row[4], nullptr);
-			e.max_z                  = strtof(row[5], nullptr);
-			e.min_x                  = strtof(row[6], nullptr);
-			e.min_y                  = strtof(row[7], nullptr);
-			e.heading                = strtof(row[8], nullptr);
+			e.id                     = row[0] ? static_cast<uint32_t>(strtoul(row[0], nullptr, 10)) : 0;
+			e.zoneid                 = row[1] ? static_cast<uint32_t>(strtoul(row[1], nullptr, 10)) : 0;
+			e.version                = row[2] ? static_cast<int16_t>(atoi(row[2])) : 0;
+			e.max_x                  = row[3] ? strtof(row[3], nullptr) : 2000;
+			e.max_y                  = row[4] ? strtof(row[4], nullptr) : 2000;
+			e.max_z                  = row[5] ? strtof(row[5], nullptr) : 10000;
+			e.min_x                  = row[6] ? strtof(row[6], nullptr) : -2000;
+			e.min_y                  = row[7] ? strtof(row[7], nullptr) : -2000;
+			e.heading                = row[8] ? strtof(row[8], nullptr) : 0;
 			e.name                   = row[9] ? row[9] : "";
-			e.item                   = static_cast<uint32_t>(strtoul(row[10], nullptr, 10));
-			e.max_allowed            = static_cast<uint32_t>(strtoul(row[11], nullptr, 10));
+			e.item                   = row[10] ? static_cast<uint32_t>(strtoul(row[10], nullptr, 10)) : 0;
+			e.max_allowed            = row[11] ? static_cast<uint32_t>(strtoul(row[11], nullptr, 10)) : 1;
 			e.comment                = row[12] ? row[12] : "";
-			e.respawn_timer          = static_cast<uint32_t>(strtoul(row[13], nullptr, 10));
-			e.min_expansion          = static_cast<int8_t>(atoi(row[14]));
-			e.max_expansion          = static_cast<int8_t>(atoi(row[15]));
-			e.content_flags          = row[16] ? row[16] : "";
-			e.content_flags_disabled = row[17] ? row[17] : "";
+			e.respawn_timer          = row[13] ? static_cast<uint32_t>(strtoul(row[13], nullptr, 10)) : 300;
+			e.fix_z                  = row[14] ? static_cast<uint8_t>(strtoul(row[14], nullptr, 10)) : 1;
+			e.min_expansion          = row[15] ? static_cast<int8_t>(atoi(row[15])) : -1;
+			e.max_expansion          = row[16] ? static_cast<int8_t>(atoi(row[16])) : -1;
+			e.content_flags          = row[17] ? row[17] : "";
+			e.content_flags_disabled = row[18] ? row[18] : "";
 
 			all_entries.push_back(e);
 		}
@@ -487,6 +498,98 @@ public:
 		return (results.Success() && results.begin()[0] ? strtoll(results.begin()[0], nullptr, 10) : 0);
 	}
 
+	static std::string BaseReplace()
+	{
+		return fmt::format(
+			"REPLACE INTO {} ({}) ",
+			TableName(),
+			ColumnsRaw()
+		);
+	}
+
+	static int ReplaceOne(
+		Database& db,
+		const GroundSpawns &e
+	)
+	{
+		std::vector<std::string> v;
+
+		v.push_back(std::to_string(e.id));
+		v.push_back(std::to_string(e.zoneid));
+		v.push_back(std::to_string(e.version));
+		v.push_back(std::to_string(e.max_x));
+		v.push_back(std::to_string(e.max_y));
+		v.push_back(std::to_string(e.max_z));
+		v.push_back(std::to_string(e.min_x));
+		v.push_back(std::to_string(e.min_y));
+		v.push_back(std::to_string(e.heading));
+		v.push_back("'" + Strings::Escape(e.name) + "'");
+		v.push_back(std::to_string(e.item));
+		v.push_back(std::to_string(e.max_allowed));
+		v.push_back("'" + Strings::Escape(e.comment) + "'");
+		v.push_back(std::to_string(e.respawn_timer));
+		v.push_back(std::to_string(e.fix_z));
+		v.push_back(std::to_string(e.min_expansion));
+		v.push_back(std::to_string(e.max_expansion));
+		v.push_back("'" + Strings::Escape(e.content_flags) + "'");
+		v.push_back("'" + Strings::Escape(e.content_flags_disabled) + "'");
+
+		auto results = db.QueryDatabase(
+			fmt::format(
+				"{} VALUES ({})",
+				BaseReplace(),
+				Strings::Implode(",", v)
+			)
+		);
+
+		return (results.Success() ? results.RowsAffected() : 0);
+	}
+
+	static int ReplaceMany(
+		Database& db,
+		const std::vector<GroundSpawns> &entries
+	)
+	{
+		std::vector<std::string> insert_chunks;
+
+		for (auto &e: entries) {
+			std::vector<std::string> v;
+
+			v.push_back(std::to_string(e.id));
+			v.push_back(std::to_string(e.zoneid));
+			v.push_back(std::to_string(e.version));
+			v.push_back(std::to_string(e.max_x));
+			v.push_back(std::to_string(e.max_y));
+			v.push_back(std::to_string(e.max_z));
+			v.push_back(std::to_string(e.min_x));
+			v.push_back(std::to_string(e.min_y));
+			v.push_back(std::to_string(e.heading));
+			v.push_back("'" + Strings::Escape(e.name) + "'");
+			v.push_back(std::to_string(e.item));
+			v.push_back(std::to_string(e.max_allowed));
+			v.push_back("'" + Strings::Escape(e.comment) + "'");
+			v.push_back(std::to_string(e.respawn_timer));
+			v.push_back(std::to_string(e.fix_z));
+			v.push_back(std::to_string(e.min_expansion));
+			v.push_back(std::to_string(e.max_expansion));
+			v.push_back("'" + Strings::Escape(e.content_flags) + "'");
+			v.push_back("'" + Strings::Escape(e.content_flags_disabled) + "'");
+
+			insert_chunks.push_back("(" + Strings::Implode(",", v) + ")");
+		}
+
+		std::vector<std::string> v;
+
+		auto results = db.QueryDatabase(
+			fmt::format(
+				"{} VALUES {}",
+				BaseReplace(),
+				Strings::Implode(",", insert_chunks)
+			)
+		);
+
+		return (results.Success() ? results.RowsAffected() : 0);
+	}
 };
 
 #endif //EQEMU_BASE_GROUND_SPAWNS_REPOSITORY_H

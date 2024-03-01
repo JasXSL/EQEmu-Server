@@ -22,7 +22,6 @@
 #include "data_verification.h"
 #include "eqemu_logsys.h"
 #include "eqemu_logsys_log_aliases.h"
-#include "languages.h"
 #include "rulesys.h"
 
 int16 EQ::invtype::GetInvTypeSize(int16 inv_type) {
@@ -159,45 +158,45 @@ int EQ::constants::ConvertStanceTypeToIndex(StanceType stance_type) {
 	return 0;
 }
 
-const std::map<int, std::string>& EQ::constants::GetLanguageMap()
+const std::map<uint8, std::string>& EQ::constants::GetLanguageMap()
 {
-	static const std::map<int, std::string> language_map = {
-		{ LANG_COMMON_TONGUE, "Common Tongue" },
-		{ LANG_BARBARIAN, "Barbarian" },
-		{ LANG_ERUDIAN, "Erudian" },
-		{ LANG_ELVISH, "Elvish" },
-		{ LANG_DARK_ELVISH, "Dark Elvish" },
-		{ LANG_DWARVISH, "Dwarvish" },
-		{ LANG_TROLL, "Troll" },
-		{ LANG_OGRE, "Ogre" },
-		{ LANG_GNOMISH, "Gnomish" },
-		{ LANG_HALFLING, "Halfling" },
-		{ LANG_THIEVES_CANT, "Thieves Cant" },
-		{ LANG_OLD_ERUDIAN, "Old Erudian" },
-		{ LANG_ELDER_ELVISH, "Elder Elvish" },
-		{ LANG_FROGLOK, "Froglok" },
-		{ LANG_GOBLIN, "Goblin" },
-		{ LANG_GNOLL, "Gnoll" },
-		{ LANG_COMBINE_TONGUE, "Combine Tongue" },
-		{ LANG_ELDER_TEIRDAL, "Elder Teirdal" },
-		{ LANG_LIZARDMAN, "Lizardman" },
-		{ LANG_ORCISH, "Orcish" },
-		{ LANG_FAERIE, "Faerie" },
-		{ LANG_DRAGON, "Dragon" },
-		{ LANG_ELDER_DRAGON, "Elder Dragon" },
-		{ LANG_DARK_SPEECH, "Dark Speech" },
-		{ LANG_VAH_SHIR, "Vah Shir" },
-		{ LANG_ALARAN, "Alaran" },
-		{ LANG_HADAL, "Hadal" },
-		{ LANG_UNKNOWN, "Unknown" }
+	static const std::map<uint8, std::string> language_map = {
+		{ Language::CommonTongue,  "Common Tongue" },
+		{ Language::Barbarian,     "Barbarian" },
+		{ Language::Erudian,       "Erudian" },
+		{ Language::Elvish,        "Elvish" },
+		{ Language::DarkElvish,    "Dark Elvish" },
+		{ Language::Dwarvish,      "Dwarvish" },
+		{ Language::Troll,         "Troll" },
+		{ Language::Ogre,          "Ogre" },
+		{ Language::Gnomish,       "Gnomish" },
+		{ Language::Halfling,      "Halfling" },
+		{ Language::ThievesCant,   "Thieves Cant" },
+		{ Language::OldErudian,    "Old Erudian" },
+		{ Language::ElderElvish,   "Elder Elvish" },
+		{ Language::Froglok,       "Froglok" },
+		{ Language::Goblin,        "Goblin" },
+		{ Language::Gnoll,         "Gnoll" },
+		{ Language::CombineTongue, "Combine Tongue" },
+		{ Language::ElderTeirDal,  "Elder Teir'Dal" },
+		{ Language::Lizardman,     "Lizardman" },
+		{ Language::Orcish,        "Orcish" },
+		{ Language::Faerie,        "Faerie" },
+		{ Language::Dragon,        "Dragon" },
+		{ Language::ElderDragon,   "Elder Dragon" },
+		{ Language::DarkSpeech,    "Dark Speech" },
+		{ Language::VahShir,       "Vah Shir" },
+		{ Language::Alaran,        "Alaran" },
+		{ Language::Hadal,         "Hadal" },
+		{ Language::Unknown27,     "Unknown" }
 	};
 
 	return language_map;
 }
 
-std::string EQ::constants::GetLanguageName(int language_id)
+std::string EQ::constants::GetLanguageName(uint8 language_id)
 {
-	if (!EQ::ValueWithin(language_id, LANG_COMMON_TONGUE, LANG_UNKNOWN)) {
+	if (!EQ::ValueWithin(language_id, Language::CommonTongue, Language::Unknown27)) {
 		return std::string();
 	}
 
@@ -509,7 +508,6 @@ std::string EQ::constants::GetObjectTypeName(int object_type)
 {
 	if (!EQ::ValueWithin(object_type, ObjectTypes::SmallBag, ObjectTypes::NoDeposit)) {
 		return std::string();
-
 	}
 
 	return EQ::constants::GetObjectTypeMap().find(object_type)->second;
@@ -564,6 +562,7 @@ std::string EQ::constants::GetEmoteEventTypeName(uint8 emote_event_type)
 const std::map<uint8, std::string> &EQ::constants::GetEmoteTypeMap()
 {
 	static const std::map<uint8, std::string> emote_type_map = {
+		{ EmoteTypes::Say, "Say" },
 		{ EmoteTypes::Emote, "Emote" },
 		{ EmoteTypes::Shout, "Shout" },
 		{ EmoteTypes::Proximity, "Proximity" }
@@ -574,9 +573,142 @@ const std::map<uint8, std::string> &EQ::constants::GetEmoteTypeMap()
 
 std::string EQ::constants::GetEmoteTypeName(uint8 emote_type)
 {
-	if (!EQ::ValueWithin(emote_type, EmoteTypes::Emote, EmoteTypes::Proximity)) {
+	if (!EQ::ValueWithin(emote_type, EmoteTypes::Say, EmoteTypes::Proximity)) {
 		return std::string();
 	}
 
 	return EQ::constants::GetEmoteTypeMap().find(emote_type)->second;
+}
+
+const std::map<uint32, std::string>& EQ::constants::GetAppearanceTypeMap()
+{
+	static const std::map<uint32, std::string> appearance_type_map = {
+		{ AppearanceType::Die, "Die" },
+		{ AppearanceType::WhoLevel, "Who Level" },
+		{ AppearanceType::MaxHealth, "Max Health" },
+		{ AppearanceType::Invisibility, "Invisibility" },
+		{ AppearanceType::PVP, "PVP" },
+		{ AppearanceType::Light, "Light" },
+		{ AppearanceType::Animation, "Animation" },
+		{ AppearanceType::Sneak, "Sneak" },
+		{ AppearanceType::SpawnID, "Spawn ID" },
+		{ AppearanceType::Health, "Health" },
+		{ AppearanceType::Linkdead, "Linkdead" },
+		{ AppearanceType::FlyMode, "Fly Mode" },
+		{ AppearanceType::GM, "GM" },
+		{ AppearanceType::Anonymous, "Anonymous" },
+		{ AppearanceType::GuildID, "Guild ID" },
+		{ AppearanceType::GuildRank, "Guild Rank" },
+		{ AppearanceType::AFK, "AFK" },
+		{ AppearanceType::Pet, "Pet" },
+		{ AppearanceType::Summoned, "Summoned" },
+		{ AppearanceType::Split, "Split" },
+		{ AppearanceType::Size, "Size" },
+		{ AppearanceType::SetType, "Set Type" },
+		{ AppearanceType::NPCName, "NPCName" },
+		{ AppearanceType::AARank, "AARank" },
+		{ AppearanceType::CancelSneakHide, "Cancel Sneak Hide" },
+		{ AppearanceType::AreaHealthRegen, "Area Health Regeneration" },
+		{ AppearanceType::AreaManaRegen, "Area Mana Regeneration" },
+		{ AppearanceType::AreaEnduranceRegen, "Area Endurance Regeneration" },
+		{ AppearanceType::FreezeBeneficialBuffs, "Freeze Beneficial Buffs" },
+		{ AppearanceType::NPCTintIndex, "NPC Tint Index" },
+		{ AppearanceType::GroupAutoConsent, "Group Auto Consent" },
+		{ AppearanceType::RaidAutoConsent, "Raid Auto Consent" },
+		{ AppearanceType::GuildAutoConsent, "Guild Auto Consent" },
+		{ AppearanceType::ShowHelm, "Show Helm" },
+		{ AppearanceType::DamageState, "Damage State" },
+		{ AppearanceType::EQPlayers, "EQ Players" },
+		{ AppearanceType::FindBits, "Find Bits" },
+		{ AppearanceType::TextureType, "Texture Type" },
+		{ AppearanceType::FacePick, "Face Pick" },
+		{ AppearanceType::AntiCheat, "Anti Cheat" },
+		{ AppearanceType::GuildShow, "Guild Show" },
+		{ AppearanceType::OfflineMode, "Offline Mode" }
+	};
+
+	return appearance_type_map;
+}
+
+std::string EQ::constants::GetAppearanceTypeName(uint32 appearance_type)
+{
+	const auto& a = EQ::constants::GetAppearanceTypeMap().find(appearance_type);
+	if (a != EQ::constants::GetAppearanceTypeMap().end()) {
+		return a->second;
+	}
+
+	return std::string();
+}
+
+const std::map<uint32, std::string>& EQ::constants::GetSpecialAbilityMap()
+{
+	static const std::map<uint32, std::string> special_ability_map = {
+		{ SPECATK_SUMMON,            "Summon" },
+		{ SPECATK_ENRAGE,            "Enrage" },
+		{ SPECATK_RAMPAGE,           "Rampage" },
+		{ SPECATK_AREA_RAMPAGE,      "Area Rampage" },
+		{ SPECATK_FLURRY,            "Flurry" },
+		{ SPECATK_TRIPLE,            "Triple Attack" },
+		{ SPECATK_QUAD,              "Quadruple Attack" },
+		{ SPECATK_INNATE_DW,         "Dual Wield" },
+		{ SPECATK_BANE,              "Bane Attack" },
+		{ SPECATK_MAGICAL,           "Magical Attack" },
+		{ SPECATK_RANGED_ATK,        "Ranged Attack" },
+		{ UNSLOWABLE,                "Immune to Slow" },
+		{ UNMEZABLE,                 "Immune to Mesmerize" },
+		{ UNCHARMABLE,               "Immune to Charm" },
+		{ UNSTUNABLE,                "Immune to Stun" },
+		{ UNSNAREABLE,               "Immune to Snare" },
+		{ UNFEARABLE,                "Immune to Fear" },
+		{ UNDISPELLABLE,             "Immune to Dispell" },
+		{ IMMUNE_MELEE,              "Immune to Melee" },
+		{ IMMUNE_MAGIC,              "Immune to Magic" },
+		{ IMMUNE_FLEEING,            "Immune to Fleeing" },
+		{ IMMUNE_MELEE_EXCEPT_BANE,  "Immune to Melee except Bane" },
+		{ IMMUNE_MELEE_NONMAGICAL,   "Immune to Non-Magical Melee" },
+		{ IMMUNE_AGGRO,              "Immune to Aggro" },
+		{ IMMUNE_AGGRO_ON,           "Immune to Being Aggro" },
+		{ IMMUNE_CASTING_FROM_RANGE, "Immune to Ranged Spells" },
+		{ IMMUNE_FEIGN_DEATH,        "Immune to Feign Death" },
+		{ IMMUNE_TAUNT,              "Immune to Taunt" },
+		{ NPC_TUNNELVISION,          "Tunnel Vision" },
+		{ NPC_NO_BUFFHEAL_FRIENDS,   "Does Not Heal of Buff Allies" },
+		{ IMMUNE_PACIFY,             "Immune to Pacify" },
+		{ LEASH,                     "Leashed" },
+		{ TETHER,                    "Tethered" },
+		{ DESTRUCTIBLE_OBJECT,       "Destructible Object" },
+		{ NO_HARM_FROM_CLIENT,       "Immune to Harm from Client" },
+		{ ALWAYS_FLEE,               "Always Flees" },
+		{ FLEE_PERCENT,              "Flee Percentage" },
+		{ ALLOW_BENEFICIAL,          "Allows Beneficial Spells" },
+		{ DISABLE_MELEE,             "Melee is Disabled" },
+		{ NPC_CHASE_DISTANCE,        "Chase Distance" },
+		{ ALLOW_TO_TANK,             "Allowed to Tank" },
+		{ IGNORE_ROOT_AGGRO_RULES,   "Ignores Root Aggro" },
+		{ CASTING_RESIST_DIFF,       "Casting Resist Difficulty" },
+		{ COUNTER_AVOID_DAMAGE,      "Counter Damage Avoidance" },
+		{ PROX_AGGRO,                "Proximity Aggro" },
+		{ IMMUNE_RANGED_ATTACKS,     "Immune to Ranged Attacks" },
+		{ IMMUNE_DAMAGE_CLIENT,      "Immune to Client Damage" },
+		{ IMMUNE_DAMAGE_NPC,         "Immune to NPC Damage" },
+		{ IMMUNE_AGGRO_CLIENT,       "Immune to Client Aggro" },
+		{ IMMUNE_AGGRO_NPC,          "Immune to NPC Aggro" },
+		{ MODIFY_AVOID_DAMAGE,       "Modify Damage Avoidance" },
+		{ IMMUNE_FADING_MEMORIES,    "Immune to Memory Fades" },
+		{ IMMUNE_OPEN,               "Immune to Open" },
+		{ IMMUNE_ASSASSINATE,        "Immune to Assassinate" },
+		{ IMMUNE_HEADSHOT,           "Immune to Headshot" },
+	};
+
+	return special_ability_map;
+}
+
+std::string EQ::constants::GetSpecialAbilityName(uint32 ability_id)
+{
+	const auto& a = EQ::constants::GetSpecialAbilityMap().find(ability_id);
+	if (a != EQ::constants::GetSpecialAbilityMap().end()) {
+		return a->second;
+	}
+
+	return std::string();
 }

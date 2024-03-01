@@ -125,7 +125,7 @@ public:
 	uint32	GetAccountIDByChar(const char* charname, uint32* oCharID = 0);
 	uint32	GetAccountIDByChar(uint32 char_id);
 	uint32	GetAccountIDByName(std::string account_name, std::string loginserver, int16* status = 0, uint32* lsid = 0);
-	uint32	GetCharacterID(const char *name);
+	uint32	GetCharacterID(const std::string& name);
 	uint32	GetCharacterInfo(std::string character_name, uint32 *account_id, uint32 *zone_id, uint32 *instance_id);
 	uint32	GetGuildIDByCharID(uint32 char_id);
 	uint32  GetGroupIDByCharID(uint32 char_id);
@@ -166,6 +166,7 @@ public:
 	void GetCharactersInInstance(uint16 instance_id, std::list<uint32> &character_ids);
 	void PurgeExpiredInstances();
 	void SetInstanceDuration(uint16 instance_id, uint32 new_duration);
+	void CleanupInstanceCorpses();
 
 	/* Adventure related. */
 
@@ -226,11 +227,6 @@ public:
 
 	void    PurgeAllDeletedDataBuckets();
 
-	/* Database Conversions 'database_conversions.cpp' */
-
-	bool	CheckDatabaseConversions();
-	bool	CheckDatabaseConvertCorpseDeblob();
-	bool	CheckDatabaseConvertPPDeblob();
 
 	/* Database Variables */
 

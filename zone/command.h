@@ -35,6 +35,8 @@ void SendNPCEditSubCommands(Client *c);
 void SendRuleSubCommands(Client *c);
 void SendGuildSubCommands(Client *c);
 void SendShowInventorySubCommands(Client *c);
+void SendFixMobSubCommands(Client *c);
+void SendDataBucketsSubCommands(Client *c);
 
 // Commands
 void command_acceptrules(Client *c, const Seperator *sep);
@@ -51,6 +53,7 @@ void command_bugs(Client *c, const Seperator *sep);
 void command_camerashake(Client *c, const Seperator *sep);
 void command_castspell(Client *c, const Seperator *sep);
 void command_chat(Client *c, const Seperator *sep);
+void command_clearxtargets(Client *c, const Seperator *sep);
 void command_copycharacter(Client *c, const Seperator *sep);
 void command_corpse(Client *c, const Seperator *sep);
 void command_corpsefix(Client *c, const Seperator *sep);
@@ -80,8 +83,10 @@ void command_faction(Client *c, const Seperator *sep);
 void command_faction_association(Client *c, const Seperator *sep);
 void command_feature(Client *c, const Seperator *sep);
 void command_find(Client *c, const Seperator *sep);
+void command_fish(Client* c, const Seperator* sep);
 void command_fixmob(Client *c, const Seperator *sep);
 void command_flagedit(Client *c, const Seperator *sep);
+void command_forage(Client* c, const Seperator* sep);
 void command_gearup(Client *c, const Seperator *sep);
 void command_giveitem(Client *c, const Seperator *sep);
 void command_givemoney(Client *c, const Seperator *sep);

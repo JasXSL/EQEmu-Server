@@ -32,6 +32,10 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include "fastmath.h"
 #include "mob_movement_manager.h"
 
+#include "../common/repositories/grid_repository.h"
+#include "../common/repositories/grid_entries_repository.h"
+#include "../common/repositories/spawn2_repository.h"
+
 #include <math.h>
 
 extern FastMath g_Math;
@@ -880,118 +884,118 @@ float Mob::GetZOffset() const {
 	float offset = 3.125f;
 
 	switch (GetModel()) {
-		case RACE_BASILISK_436:
+		case Race::Basilisk:
 			offset = 0.577f;
 			break;
-		case RACE_DRAKE_430:
+		case Race::Drake2:
 			offset = 0.5f;
 			break;
-		case RACE_DRAKE_432:
+		case Race::Drake3:
 			offset = 1.9f;
 			break;
-		case RACE_DRAGON_435:
+		case Race::Dragon:
 			offset = 0.93f;
 			break;
-		case RACE_LAVA_SPIDER_450:
+		case Race::LavaSpider:
 			offset = 0.938f;
 			break;
-		case RACE_ALLIGATOR_479:
+		case Race::Alligator2:
 			offset = 0.8f;
 			break;
-		case RACE_LAVA_SPIDER_QUEEN_451:
+		case Race::LavaSpiderQueen:
 			offset = 0.816f;
 			break;
-		case RACE_DRAGON_437:
+		case Race::Dragon2:
 			offset = 0.527f;
 			break;
-		case RACE_PUMA_439:
+		case Race::Puma2:
 			offset = 1.536f;
 			break;
-		case RACE_RAT_415:
+		case Race::Rat:
 			offset = 1.0f;
 			break;
-		case RACE_DRAGON_438:
-		case RACE_DRAGON_452:
+		case Race::Dragon3:
+		case Race::Dragon4:
 			offset = 0.776f;
 			break;
-		case RACE_SPIDER_QUEEN_441:
+		case Race::SpiderQueen:
 			offset = 0.816f;
 			break;
-		case RACE_SPIDER_440:
+		case Race::Spider:
 			offset = 0.938f;
 			break;
-		case RACE_IMP_46:
-		case RACE_SNAKE_468:
-		case RACE_CORATHUS_459:
+		case Race::Imp:
+		case Race::Snake:
+		case Race::Corathus:
 			offset = 1.0f;
 			break;
-		case RACE_DRACHNID_COCOON_462:
+		case Race::DrachnidCocoon:
 			offset = 1.5f;
 			break;
-		case RACE_DRAGON_530:
+		case Race::Dragon5:
 			offset = 1.2f;
 			break;
-		case RACE_GOO_549:
-		case RACE_GOO_548:
+		case Race::Goo4:
+		case Race::Goo3:
 			offset = 0.5f;
 			break;
-		case RACE_GOO_547:
+		case Race::Goo2:
 			offset = 0.5f;
 			break;
-		case RACE_DRACOLICH_604:
+		case Race::Dracolich:
 			offset = 1.2f;
 			break;
-		case RACE_TELMIRA_653:
+		case Race::Telmira:
 			offset = 5.9f;
 			break;
-		case RACE_MORELL_THULE_658:
+		case Race::MorellThule:
 			offset = 4.0f;
 			break;
-		case RACE_ARMOR_OF_MARR_323:
-		case RACE_AMYGDALAN_663:
+		case Race::AnimatedArmor:
+		case Race::Amygdalan:
 			offset = 5.0f;
 			break;
-		case RACE_SPECTRAL_IKSAR_147:
-		case RACE_SANDMAN_664:
+		case Race::IksarSpirit:
+		case Race::Sandman:
 			offset = 4.0f;
 			break;
-		case RACE_LAVA_DRAGON_49:
-		case RACE_ALARAN_SENTRY_STONE_703:
+		case Race::LavaDragon:
+		case Race::AlaranSentryStone:
 			offset = 9.0f;
 			break;
-		case RACE_RABBIT_668:
+		case Race::Rabbit:
 			offset = 5.0f;
 			break;
-		case RACE_WURM_158:
-		case RACE_BLIND_DREAMER_669:
+		case Race::Wurm:
+		case Race::BlindDreamer:
 			offset = 7.0f;
 			break;
-		case RACE_SIREN_187:
-		case RACE_HALAS_CITIZEN_90:
-		case RACE_OTTERMAN_190:
+		case Race::Siren:
+		case Race::HalasCitizen:
+		case Race::Othmir:
 			offset = .5f;
 			break;
-		case RACE_COLDAIN_183:
+		case Race::Coldain:
 			offset = .6f;
 			break;
-		case RACE_WEREWOLF_14:
+		case Race::Werewolf:
 			offset = 1.2f;
 			break;
-		case RACE_DWARF_8:
+		case Race::Dwarf:
 			offset = .7f;
 			break;
-		case RACE_HORSE_216:
+		case Race::Horse:
 			offset = 1.4f;
 			break;
-		case RACE_ENCHANTED_ARMOR_175:
-		case RACE_TIGER_63:
+		case Race::EnchantedArmor:
+		case Race::Tiger:
 			offset = 1.75f;
 			break;
-		case RACE_STATUE_OF_RALLOS_ZEK_66:
+		case Race::StatueOfRallosZek:
 			offset = 1.0f;
 			break;
-		case RACE_GORAL_687:
-		case RACE_SELYRAH_686:
+		case Race::Goral:
+		case Race::Selyrah:
 			offset = 2.0f;
 			break;
 		default:
@@ -1052,304 +1056,198 @@ glm::vec4 Mob::TryMoveAlong(const glm::vec4 &start, float distance, float angle)
 	return {new_pos.x, new_pos.y, new_pos.z, start.w};
 }
 
-int	ZoneDatabase::GetHighestGrid(uint32 zoneid) {
-
-	std::string query = StringFormat("SELECT COALESCE(MAX(id), 0) FROM grid WHERE zoneid = %i", zoneid);
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
-		return 0;
-	}
-
-	if (results.RowCount() != 1)
-		return 0;
-
-	auto row = results.begin();
-	return Strings::ToInt(row[0]);
+int	ZoneDatabase::GetHighestGrid(uint32 zone_id)
+{
+	return GridRepository::GetHighestGrid(*this, zone_id);
 }
 
-uint8 ZoneDatabase::GetGridType2(uint32 grid, uint16 zoneid) {
+void ZoneDatabase::ModifyGrid(
+	Client* c,
+	bool remove,
+	uint32 grid_id,
+	uint8 type,
+	uint8 type2,
+	uint32 zone_id
+)
+{
+	if (!remove) {
+		GridRepository::InsertOne(
+			*this,
+			GridRepository::Grid{
+				.id = static_cast<int32_t>(grid_id),
+				.zoneid = static_cast<int32_t>(zone_id),
+				.type = type,
+				.type2 = type2
+			}
+		);
 
-	int type2 = 0;
-	std::string query = StringFormat("SELECT type2 FROM grid WHERE id = %i AND zoneid = %i", grid, zoneid);
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
-		return 0;
+		return;
 	}
 
-	if (results.RowCount() != 1)
-		return 0;
+	GridRepository::DeleteWhere(
+		*this,
+		fmt::format(
+			"`id` = {} AND `zoneid` = {}",
+			grid_id,
+			zone_id
+		)
+	);
 
-	auto row = results.begin();
-
-	return Strings::ToInt(row[0]);
+	GridEntriesRepository::DeleteWhere(
+		*this,
+		fmt::format(
+			"`gridid` = {} AND `zoneid` = {}",
+			grid_id,
+			zone_id
+		)
+	);
 }
 
-bool ZoneDatabase::GetWaypoints(uint32 grid, uint16 zoneid, uint32 num, wplist* wp) {
+bool ZoneDatabase::GridExistsInZone(uint32 zone_id, uint32 grid_id)
+{
+	const auto& l = GridRepository::GetWhere(
+		*this,
+		fmt::format(
+			"`id` = {} AND `zoneid` = {}",
+			grid_id,
+			zone_id
+		)
+	);
 
-	if (wp == nullptr)
-		return false;
-
-	std::string query = StringFormat("SELECT x, y, z, pause, heading FROM grid_entries "
-		"WHERE gridid = %i AND number = %i AND zoneid = %i", grid, num, zoneid);
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
+	if (l.empty()) {
 		return false;
 	}
-
-	if (results.RowCount() != 1)
-		return false;
-
-	auto row = results.begin();
-
-	wp->x = Strings::ToFloat(row[0]);
-	wp->y = Strings::ToFloat(row[1]);
-	wp->z = Strings::ToFloat(row[2]);
-	wp->pause = Strings::ToInt(row[3]);
-	wp->heading = Strings::ToFloat(row[4]);
 
 	return true;
 }
 
-void ZoneDatabase::AssignGrid(Client *client, uint32 grid_id, uint32 entity_id) {
-	auto target_npc = entity_list.GetNPCByID(entity_id);
-	auto spawn2_id = target_npc ? target_npc->GetSpawnPointID() : 0;
-	if (spawn2_id) {
-		std::string query = fmt::format(
-			"UPDATE spawn2 SET pathgrid = {} WHERE id = {}",
-			grid_id,
-			spawn2_id
-		);
-		auto results = QueryDatabase(query);
-
-		if (!results.Success() || results.RowsAffected() != 1) {
-			return;
+void ZoneDatabase::AddWaypoint(
+	Client* c,
+	uint32 grid_id,
+	uint32 number,
+	const glm::vec4& position,
+	uint32 pause,
+	uint32 zone_id
+)
+{
+	GridEntriesRepository::InsertOne(
+		*this,
+		GridEntriesRepository::GridEntries{
+			.gridid = static_cast<int32_t>(grid_id),
+			.zoneid = static_cast<int32_t>(zone_id),
+			.number = static_cast<int32_t>(number),
+			.x = position.x,
+			.y = position.y,
+			.z = position.z,
+			.heading = position.w,
+			.pause = static_cast<int32_t>(pause)
 		}
-
-		client->Message(
-			Chat::White,
-			fmt::format(
-				"{} (Spawn2 ID {}) will now use Grid ID {}.",
-				target_npc->GetCleanName(),
-				spawn2_id,
-				grid_id
-			).c_str()
-		);
-	}
-}
-
-
-/******************
-* ModifyGrid - Either adds an empty grid, or removes a grid and all its waypoints, for a particular zone.
-*	remove:		TRUE if we are deleting the specified grid, FALSE if we are adding it
-*	id:		The ID# of the grid to add or delete
-*	type,type2:	The type and type2 values for the grid being created (ignored if grid is being deleted)
-*	zoneid:		The ID number of the zone the grid is being created/deleted in
-*/
-void ZoneDatabase::ModifyGrid(Client *client, bool remove, uint32 id, uint8 type, uint8 type2, uint16 zoneid) {
-
-	if (!remove)
-	{
-		std::string query = StringFormat("INSERT INTO grid(id, zoneid, type, type2) "
-			"VALUES (%i, %i, %i, %i)", id, zoneid, type, type2);
-		auto results = QueryDatabase(query);
-		if (!results.Success()) {
-			return;
-		}
-
-		return;
-	}
-
-	std::string query = StringFormat("DELETE FROM grid where id=%i and zoneid=%i", id, zoneid);
-	auto results = QueryDatabase(query);
-
-	query = StringFormat("DELETE FROM grid_entries WHERE zoneid = %i AND gridid = %i", zoneid, id);
-	results = QueryDatabase(query);
-}
-
-bool ZoneDatabase::GridExistsInZone(uint32 zone_id, uint32 grid_id) {
-	bool grid_exists = false;
-	std::string query = fmt::format(
-		"SELECT * FROM `grid` WHERE `id` = {} AND `zoneid` = {}",
-		grid_id,
-		zone_id
 	);
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
-		return grid_exists;
-	}
-
-	if (results.RowCount() == 1) {
-		grid_exists = true;
-	}
-	return grid_exists;
 }
 
-/**************************************
-* AddWP - Adds a new waypoint to a specific grid for a specific zone.
-*/
-void ZoneDatabase::AddWP(Client *client, uint32 gridid, uint32 wpnum, const glm::vec4& position, uint32 pause, uint16 zoneid)
+void ZoneDatabase::DeleteWaypoint(Client* c, uint32 grid_id, uint32 number, uint32 zone_id)
 {
-	std::string query = StringFormat("INSERT INTO grid_entries (gridid, zoneid, `number`, x, y, z, pause, heading) "
-		"VALUES (%i, %i, %i, %f, %f, %f, %i, %f)",
-		gridid, zoneid, wpnum, position.x, position.y, position.z, pause, position.w);
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
-		return;
-	}
+	GridEntriesRepository::DeleteWhere(
+		*this,
+		fmt::format(
+			"`gridid` = {} AND `zoneid` = {} AND `number` = {}",
+			grid_id,
+			zone_id,
+			number
+		)
+	);
 }
 
-
-/**********
-* ModifyWP() has been obsoleted. The #wp command either uses AddWP() or DeleteWaypoint()
-***********/
-
-/******************
-* DeleteWaypoint - Removes a specific waypoint from the grid
-*	grid_id:	The ID number of the grid whose wp is being deleted
-*	wp_num:		The number of the waypoint being deleted
-*	zoneid:		The ID number of the zone that Contains the waypoint being deleted
-*/
-void ZoneDatabase::DeleteWaypoint(Client *client, uint32 grid_num, uint32 wp_num, uint16 zoneid)
+uint32 ZoneDatabase::AddWaypointForSpawn(
+	Client* c,
+	uint32 spawn2_id,
+	const glm::vec4& position,
+	uint32 pause,
+	int type,
+	int type2,
+	uint32 zone_id
+)
 {
-	std::string query = StringFormat("DELETE FROM grid_entries WHERE "
-		"gridid = %i AND zoneid = %i AND `number` = %i",
-		grid_num, zoneid, wp_num);
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
-		return;
+	uint32 grid_id = Spawn2Repository::GetPathGridBySpawn2ID(*this, spawn2_id);    // The grid number the spawn is assigned to (if spawn has no grid, will be the grid number we end up creating)
+	bool   created;       // Did we create a new grid in this function?
+
+	if (!grid_id) { // Our spawn doesn't have a grid assigned to it -- we need to create a new grid and assign it to the spawn
+		created = true;
+		grid_id = GetFreeGrid(zone_id);
+
+		if (grid_id == 0) { // There are no grids for the current zone -- create Grid #1
+			grid_id = 1;
+		}
+
+		GridRepository::InsertOne(
+			*this,
+			GridRepository::Grid{
+				.id = static_cast<int32_t>(grid_id),
+				.zoneid = static_cast<int32_t>(zone_id),
+				.type = type,
+				.type2 = type2
+			}
+		);
+
+		Spawn2Repository::SetPathGridBySpawn2ID(*this, spawn2_id, grid_id);
+	} else { // NPC had a grid assigned to it
+		created = false;
 	}
+
+	int next_waypoint = GridEntriesRepository::GetNextWaypoint(*this, zone_id, grid_id); // The waypoint number we should be assigning to the new waypoint
+
+	GridEntriesRepository::InsertOne(
+		*this,
+		GridEntriesRepository::GridEntries{
+			.gridid = static_cast<int32_t>(grid_id),
+			.zoneid = static_cast<int32_t>(zone_id),
+			.number = next_waypoint,
+			.x = position.x,
+			.y = position.y,
+			.z = position.z,
+			.heading = position.w,
+			.pause = static_cast<int32_t>(pause)
+		}
+	);
+
+	return created ? grid_id : 0;
 }
 
-
-/******************
-* AddWPForSpawn - Used by the #wpadd command - for a given spawn, this will add a new waypoint to whatever grid that spawn is assigned to.
-* If there is currently no grid assigned to the spawn, a new grid will be created using the next available Grid ID number for the zone
-* the spawn is in.
-* Returns 0 if the function didn't have to create a new grid. If the function had to create a new grid for the spawn, then the ID of
-* the created grid is returned.
-*/
-uint32 ZoneDatabase::AddWPForSpawn(Client *client, uint32 spawn2id, const glm::vec4& position, uint32 pause, int type1, int type2, uint16 zoneid) {
-
-	uint32 grid_num;	 // The grid number the spawn is assigned to (if spawn has no grid, will be the grid number we end up creating)
-	uint32 next_wp_num;	 // The waypoint number we should be assigning to the new waypoint
-	bool createdNewGrid; // Did we create a new grid in this function?
-
-						 // See what grid number our spawn is assigned
-	std::string query = StringFormat("SELECT pathgrid FROM spawn2 WHERE id = %i", spawn2id);
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
-		// Query error
-		return 0;
-	}
-
-	if (results.RowCount() == 0)
-		return 0;
-
-	auto row = results.begin();
-	grid_num = Strings::ToInt(row[0]);
-
-	if (grid_num == 0)
-	{ // Our spawn doesn't have a grid assigned to it -- we need to create a new grid and assign it to the spawn
-		createdNewGrid = true;
-		grid_num = GetFreeGrid(zoneid);
-		if (grid_num == 0)	// There are no grids for the current zone -- create Grid #1
-			grid_num = 1;
-
-		query = StringFormat("INSERT INTO grid SET id = '%i', zoneid = %i, type ='%i', type2 = '%i'",
-			grid_num, zoneid, type1, type2);
-		QueryDatabase(query);
-
-		query = StringFormat("UPDATE spawn2 SET pathgrid = '%i' WHERE id = '%i'", grid_num, spawn2id);
-		QueryDatabase(query);
-
-	}
-	else	// NPC had a grid assigned to it
-		createdNewGrid = false;
-
-	// Find out what the next waypoint is for this grid
-	query = StringFormat("SELECT max(`number`) FROM grid_entries WHERE zoneid = '%i' AND gridid = '%i'", zoneid, grid_num);
-
-	results = QueryDatabase(query);
-	if (!results.Success()) { // Query error
-		return 0;
-	}
-
-	row = results.begin();
-	if (row[0] != 0)
-		next_wp_num = Strings::ToInt(row[0]) + 1;
-	else	// No waypoints in this grid yet
-		next_wp_num = 1;
-
-	query = StringFormat("INSERT INTO grid_entries(gridid, zoneid, `number`, x, y, z, pause, heading) "
-		"VALUES (%i, %i, %i, %f, %f, %f, %i, %f)",
-		grid_num, zoneid, next_wp_num, position.x, position.y, position.z, pause, position.w);
-	results = QueryDatabase(query);
-
-	return createdNewGrid ? grid_num : 0;
+uint32 ZoneDatabase::GetFreeGrid(uint32 zone_id)
+{
+	return GridRepository::GetHighestGrid(*this, zone_id) + 1;
 }
 
-uint32 ZoneDatabase::GetFreeGrid(uint16 zoneid) {
-
-	std::string query = StringFormat("SELECT max(id) FROM grid WHERE zoneid = %i", zoneid);
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
-		return 0;
-	}
-
-	if (results.RowCount() != 1)
-		return 0;
-
-	auto row = results.begin();
-	uint32 freeGridID = row[0] ? Strings::ToInt(row[0]) + 1 : 1;
-
-	return freeGridID;
+int ZoneDatabase::GetHighestWaypoint(uint32 zone_id, uint32 grid_id)
+{
+	return GridEntriesRepository::GetHighestWaypoint(*this, zone_id, grid_id);
 }
 
-int ZoneDatabase::GetHighestWaypoint(uint32 zoneid, uint32 gridid) {
-
-	std::string query = StringFormat("SELECT COALESCE(MAX(number), 0) FROM grid_entries "
-		"WHERE zoneid = %i AND gridid = %i", zoneid, gridid);
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
-		return 0;
-	}
-
-	if (results.RowCount() != 1)
-		return 0;
-
-	auto row = results.begin();
-	return Strings::ToInt(row[0]);
-}
-
-int ZoneDatabase::GetRandomWaypointLocFromGrid(glm::vec4 &loc, uint16 zoneid, int grid)
+int ZoneDatabase::GetRandomWaypointFromGrid(glm::vec4 &loc, uint32 zone_id, uint32 grid_id)
 {
 	loc.x = loc.y = loc.z = loc.w = 0.0f;
 
-	std::string query = StringFormat("SELECT `x`,`y`,`z`,`heading` "
-		"FROM grid_entries WHERE `gridid` = %i AND `zoneid` = %u ORDER BY `number`", grid, zone->GetZoneID());
-	auto results = content_db.QueryDatabase(query);
-	if (!results.Success()) {
-		Log(Logs::General, Logs::Error, "MySQL Error while trying get random waypoint loc from grid %i in zoneid %u;  %s", grid, zoneid, results.ErrorMessage().c_str());
+	const auto& l = GridEntriesRepository::GetWhere(
+		*this,
+		fmt::format(
+			"`zoneid` = {} AND `gridid` = {} ORDER BY RAND() LIMIT 1",
+			zone_id,
+			grid_id
+		)
+	);
+
+	if (l.empty()) {
 		return 0;
 	}
 
-	if (results.RowCount() > 0)
-	{
-		int roll = zone->random.Int(0, results.RowCount() - 1);
-		int i = 0;
-		auto row = results.begin();
-		while (i < roll)
-		{
-			row++;
-			i++;
-		}
-		loc.x = Strings::ToFloat(row[0]);
-		loc.y = Strings::ToFloat(row[1]);
-		loc.z = Strings::ToFloat(row[2]);
-		loc.w = Strings::ToFloat(row[3]);
-		return i;
-	}
-	return 0;
+	auto e = l.front();
+
+	loc.x = e.x;
+	loc.y = e.y;
+	loc.z = e.z;
+	loc.w = e.heading;
+
+	return e.number;
 }
 
 void NPC::SaveGuardSpotCharm()

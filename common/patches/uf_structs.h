@@ -1670,6 +1670,15 @@ struct Surname_Struct
 /*0100*/
 };
 
+struct GuildSetRank_Struct
+{
+	/*00*/	uint32	unknown00;
+	/*04*/	uint32	unknown04;
+	/*08*/	uint32	rank;
+	/*72*/	char	member_name[64];
+	/*76*/	uint32	banker;
+};
+
 struct GuildsListEntry_Struct {
 	char name[64];
 };
@@ -1683,6 +1692,27 @@ struct GuildsList_Struct {
 struct GuildUpdate_Struct {
 	uint32	guildID;
 	GuildsListEntry_Struct entry;
+};
+
+struct GuildMemberAdd_Struct {
+	/*000*/ uint32 guild_id;
+	/*004*/ uint32 unknown04;
+	/*008*/ uint32 unknown08;
+	/*012*/ uint32 unknown12;
+	/*016*/ uint32 level;
+	/*020*/ uint32 class_;
+	/*024*/ uint32 rank_;
+	/*028*/ uint32 zone_id;
+	/*032*/ uint32 last_on;
+	/*036*/ char   player_name[64];
+};
+
+struct GuildMemberRank_Struct {
+	/*000*/ uint32 guild_id;
+	/*004*/ uint32 unknown_004;
+	/*008*/ uint32 rank_;
+	/*012*/ char   player_name[64];
+	/*076*/ uint32 alt_banker; //Banker/Alt bit 00 - none 10 - Alt 11 - Alt and Banker 01 - Banker.  Banker not functional for RoF2+
 };
 
 /*
@@ -3067,6 +3097,23 @@ struct GuildMakeLeader{
 	char	target[64];
 };
 
+struct GuildTributeDonateItemRequest_Struct {
+/*000*/ uint32 	slot;
+/*004*/ uint32 	quantity;
+/*008*/ uint32	tribute_master_id;
+/*012*/ uint32 	unknown12;
+/*016*/ uint32	guild_id;
+/*020*/ uint32 	unknown20;
+/*024*/ uint32	unknown24;
+};
+
+struct GuildTributeDonateItemReply_Struct {
+/*000*/ uint32	slot;
+/*004*/ uint32	quantity;
+/*008*/ uint32	unknown8;
+/*012*/	uint32	favor;
+};
+
 struct Make_Pet_Struct { //Simple struct for getting pet info
 	uint8 level;
 	uint8 class_;
@@ -3078,7 +3125,7 @@ struct Make_Pet_Struct { //Simple struct for getting pet info
 	uint32 min_dmg;
 	uint32 max_dmg;
 };
-struct Ground_Spawn{
+struct GroundSpawn{
 	float max_x;
 	float max_y;
 	float min_x;
@@ -3090,8 +3137,8 @@ struct Ground_Spawn{
 	uint32 max_allowed;
 	uint32 respawntimer;
 };
-struct Ground_Spawns {
-	struct Ground_Spawn spawn[50]; //Assigned max number to allow
+struct GroundSpawns {
+	struct GroundSpawn spawn[50]; //Assigned max number to allow
 };
 
 //struct PetitionBug_Struct{

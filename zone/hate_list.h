@@ -36,25 +36,29 @@ struct struct_HateList {
 	uint32 last_modified; // we need to remove this if it gets higher than 10 mins
 };
 
+enum class HateListCountType {
+	Bot    = 0,
+	Client = 1,
+	NPC    = 2,
+	All    = 3,
+};
+
 class HateList {
 public:
 	HateList();
 	~HateList();
 
-	Mob *GetClosestEntOnHateList(Mob *hater, bool skip_mezzed = false, EntityFilterType entity_type = EntityFilterType::All);
+	Mob *GetClosestEntOnHateList(Mob *hater, bool skip_mezzed = false, EntityFilterType filter_type = EntityFilterType::All);
 	Mob *GetDamageTopOnHateList(Mob *hater); // didn't add 'skip_mezzed' due to calls being in ::Death()
-	Mob *GetEntWithMostHateOnList(Mob *center, Mob *skip = nullptr, bool skip_mezzed = false);
-	Mob *GetRandomEntOnHateList(bool skip_mezzed = false);
-	Mob *GetEntWithMostHateOnList(bool skip_mezzed = false);
-	Mob *GetEscapingEntOnHateList(Mob *center, float range = 0.0f, bool first = false);
+	Mob *GetMobWithMostHateOnList(Mob *center, Mob *skip = nullptr, bool skip_mezzed = false, EntityFilterType filter_type = EntityFilterType::All);
+	Mob *GetRandomMobOnHateList(EntityFilterType filter_type = EntityFilterType::All);
+	Mob *GetMobWithMostHateOnList(bool skip_mezzed = false);
+	Mob *GetEscapingMobOnHateList(Mob *center, float range = 0.0f, bool first = false);
 
-	Bot* GetRandomBotOnHateList(bool skip_mezzed = false);
-	Client *GetRandomClientOnHateList(bool skip_mezzed = false);
-	NPC *GetRandomNPCOnHateList(bool skip_mezzed = false);
-
-	bool IsEntOnHateList(Mob *mob);
+	bool IsEntOnHateList(Mob* m);
 	bool IsHateListEmpty();
 	bool RemoveEntFromHateList(Mob *ent);
+	uint32 GetHateListCount(HateListCountType count_type = HateListCountType::All);
 
 	int AreaRampage(Mob *caster, Mob *target, int count, ExtraAttackOptions *opts);
 	int GetSummonedPetCountOnHateList();
@@ -93,7 +97,7 @@ public:
 
 
 protected:
-	struct_HateList *Find(Mob *ent);
+	struct_HateList* Find(Mob* m);
 private:
 	std::list<struct_HateList *> list;
 	Mob                          *hate_owner;

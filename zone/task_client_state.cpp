@@ -1057,6 +1057,7 @@ void ClientTaskState::RewardTask(Client *c, const TaskInformation *ti, ClientTas
 
 	// just use normal NPC faction ID stuff
 	if (ti->faction_reward && ti->faction_amount == 0) {
+		zone->LoadNPCFaction(ti->faction_reward);
 		c->SetFactionLevel(
 			c->CharacterID(),
 			ti->faction_reward,
@@ -1065,6 +1066,8 @@ void ClientTaskState::RewardTask(Client *c, const TaskInformation *ti, ClientTas
 			c->GetDeity()
 		);
 	} else if (ti->faction_reward != 0 && ti->faction_amount != 0) {
+		// faction_reward is a faction ID
+		zone->LoadFactionAssociation(ti->faction_reward);
 		c->RewardFaction(
 			ti->faction_reward,
 			ti->faction_amount
@@ -1101,9 +1104,9 @@ void ClientTaskState::RewardTask(Client *c, const TaskInformation *ti, ClientTas
 
 	if (ti->reward_points > 0) {
 		if (ti->reward_point_type == static_cast<int32_t>(zone->GetCurrencyID(RADIANT_CRYSTAL))) {
-			c->AddCrystals(ti->reward_points, 0);
+			c->AddRadiantCrystals(ti->reward_points);
 		} else if (ti->reward_point_type == static_cast<int32_t>(zone->GetCurrencyID(EBON_CRYSTAL))) {
-			c->AddCrystals(0, ti->reward_points);
+			c->AddEbonCrystals(ti->reward_points);
 		} else {
 			for (const auto& ac : zone->AlternateCurrencies) {
 				if (ti->reward_point_type == ac.id) {

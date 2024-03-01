@@ -29,6 +29,8 @@
 #include "zonedb.h"
 #include "../common/repositories/criteria/content_filter_criteria.h"
 #include "../common/events/player_event_logs.h"
+#include "../common/repositories/ground_spawns_repository.h"
+#include "../common/repositories/object_repository.h"
 
 
 const char DEFAULT_OBJECT_NAME[] = "IT63_ACTORDEF";
@@ -44,9 +46,12 @@ Object::Object(
 	uint32 id,
 	uint32 type,
 	uint32 icon,
-	const Object_Struct &object,
-	const EQ::ItemInstance *inst
-) : respawn_timer(0), decay_timer(300000)
+	const Object_Struct& object,
+	const EQ::ItemInstance* inst,
+	bool fix_z
+) :
+respawn_timer(0),
+decay_timer(300000)
 {
 	user      = nullptr;
 	last_user = nullptr;
@@ -55,6 +60,7 @@ Object::Object(
 	m_id           = id;
 	m_type         = type;
 	m_icon         = icon;
+	m_fix_z        = fix_z;
 	m_inst         = nullptr;
 	m_ground_spawn = false;
 
@@ -75,79 +81,107 @@ Object::Object(
 	m_data.tilt_x  = object.tilt_x;
 	m_data.tilt_y  = object.tilt_y;
 
-	FixZ();
+	if (!IsFixZEnabled()) {
+		FixZ();
+	}
 }
 
 //creating a re-ocurring ground spawn.
-Object::Object(const EQ::ItemInstance* inst, char* name,float max_x,float min_x,float max_y,float min_y,float z,float heading,uint32 respawntimer)
- : respawn_timer(respawntimer * 1000), decay_timer(300000)
+Object::Object(
+	const EQ::ItemInstance* inst,
+	const std::string& name,
+	float max_x,
+	float min_x,
+	float max_y,
+	float min_y,
+	float z,
+	float heading,
+	uint32 respawn_timer_,
+	bool fix_z
+) :
+respawn_timer(respawn_timer_ * 1000),
+decay_timer(300000)
 {
 
-	user = nullptr;
-	last_user = nullptr;
-	m_max_x=max_x;
-	m_max_y=max_y;
-	m_min_x=min_x;
-	m_min_y=min_y;
-	m_id	= 0;
-	m_inst	= (inst) ? inst->Clone() : nullptr;
-	m_type	= ObjectTypes::Temporary;
-	m_icon	= 0;
+	user           = nullptr;
+	last_user      = nullptr;
+	m_max_x        = max_x;
+	m_max_y        = max_y;
+	m_min_x        = min_x;
+	m_min_y        = min_y;
+	m_id           = 0;
+	m_inst         = (inst) ? inst->Clone() : nullptr;
+	m_type         = ObjectTypes::Temporary;
+	m_icon         = 0;
+	m_fix_z        = fix_z;
 	m_ground_spawn = true;
+
 	decay_timer.Disable();
 	// Set as much struct data as we can
 	memset(&m_data, 0, sizeof(Object_Struct));
+
 	m_data.heading = heading;
-	m_data.z = z;
+	m_data.z       = z;
 	m_data.zone_id = zone->GetZoneID();
+
 	respawn_timer.Disable();
-	strcpy(m_data.object_name, name);
+
+	strcpy(m_data.object_name, name.c_str());
+
 	RandomSpawn(false);
 
-	FixZ();
+	if (!IsFixZEnabled()) {
+		FixZ();
+	}
 
 	// Hardcoded portion for unknown members
-	m_data.unknown024	= 0x7f001194;
-	m_data.unknown076	= 0x0000d5fe;
-	m_data.unknown084	= 0xFFFFFFFF;
+	m_data.unknown024 = 0x7f001194;
+	m_data.unknown076 = 0x0000d5fe;
+	m_data.unknown084 = 0xFFFFFFFF;
 }
 
 // Loading object from client dropping item on ground
-Object::Object(Client* client, const EQ::ItemInstance* inst)
- : respawn_timer(0), decay_timer(300000)
+Object::Object(
+	Client* client,
+	const EQ::ItemInstance* inst
+) :
+respawn_timer(0),
+decay_timer(300000)
 {
 	user = nullptr;
 	last_user = nullptr;
 
 	// Initialize members
-	m_id	= 0;
-	m_inst	= (inst) ? inst->Clone() : nullptr;
-	m_type	= ObjectTypes::Temporary;
-	m_icon	= 0;
+	m_id           = 0;
+	m_inst         = (inst) ? inst->Clone() : nullptr;
+	m_type         = ObjectTypes::Temporary;
+	m_icon         = 0;
 	m_ground_spawn = false;
+	m_fix_z        = false;
+
 	// Set as much struct data as we can
 	memset(&m_data, 0, sizeof(Object_Struct));
+
 	m_data.heading = client->GetHeading();
-	m_data.x = client->GetX();
-	m_data.y = client->GetY();
-	if (client->ClientVersion() >= EQ::versions::ClientVersion::RoF2)
-	{
+	m_data.x       = client->GetX();
+	m_data.y       = client->GetY();
+
+	if (client->ClientVersion() >= EQ::versions::ClientVersion::RoF2) {
 		// RoF2 places items at player's Z, which is 0.625 of their height.
 		m_data.z = client->GetZ() - (client->GetSize() * 0.625f);
-	}
-	else
-	{
+	} else {
 		m_data.z = client->GetZ();
 	}
+
 	m_data.zone_id = zone->GetZoneID();
 
 	decay_timer.Start();
 	respawn_timer.Disable();
 
 	// Hardcoded portion for unknown members
-	m_data.unknown024	= 0x7f001194;
-	m_data.unknown076	= 0x0000d5fe;
-	m_data.unknown084	= 0xFFFFFFFF;
+	m_data.unknown024 = 0x7f001194;
+	m_data.unknown076 = 0x0000d5fe;
+	m_data.unknown084 = 0xFFFFFFFF;
 
 	// Set object name
 	if (inst) {
@@ -155,11 +189,10 @@ Object::Object(Client* client, const EQ::ItemInstance* inst)
 		if (item) {
 			if (item->IDFile[0] == '\0') {
 				strcpy(m_data.object_name, DEFAULT_OBJECT_NAME);
-			}
-			else {
+			} else {
 				// Object name is idfile + _ACTORDEF
 				uint32 len_idfile = strlen(inst->GetItem()->IDFile);
-				uint32 len_copy = sizeof(m_data.object_name) - len_idfile - 1;
+				uint32 len_copy   = sizeof(m_data.object_name) - len_idfile - 1;
 				if (len_copy > sizeof(DEFAULT_OBJECT_NAME_SUFFIX)) {
 					len_copy = sizeof(DEFAULT_OBJECT_NAME_SUFFIX);
 				}
@@ -167,8 +200,7 @@ Object::Object(Client* client, const EQ::ItemInstance* inst)
 				memcpy(&m_data.object_name[0], inst->GetItem()->IDFile, len_idfile);
 				memcpy(&m_data.object_name[len_idfile], DEFAULT_OBJECT_NAME_SUFFIX, len_copy);
 			}
-		}
-		else {
+		} else {
 			strcpy(m_data.object_name, DEFAULT_OBJECT_NAME);
 		}
 	}
@@ -176,47 +208,59 @@ Object::Object(Client* client, const EQ::ItemInstance* inst)
 	FixZ();
 }
 
-Object::Object(const EQ::ItemInstance *inst, float x, float y, float z, float heading, uint32 decay_time)
- : respawn_timer(0), decay_timer(decay_time)
+Object::Object(
+	const EQ::ItemInstance *inst,
+	float x,
+	float y,
+	float z,
+	float heading,
+	uint32 decay_time,
+	bool fix_z
+) :
+respawn_timer(0),
+decay_timer(decay_time)
 {
-	user = nullptr;
+	user      = nullptr;
 	last_user = nullptr;
 
 	// Initialize members
-	m_id	= 0;
-	m_inst	= (inst) ? inst->Clone() : nullptr;
-	m_type	= ObjectTypes::Temporary;
-	m_icon	= 0;
+	m_id           = 0;
+	m_inst         = (inst) ? inst->Clone() : nullptr;
+	m_type         = ObjectTypes::Temporary;
+	m_icon         = 0;
 	m_ground_spawn = false;
+	m_fix_z        = fix_z;
+
 	// Set as much struct data as we can
 	memset(&m_data, 0, sizeof(Object_Struct));
+
 	m_data.heading = heading;
-	m_data.x = x;
-	m_data.y = y;
-	m_data.z = z;
+	m_data.x       = x;
+	m_data.y       = y;
+	m_data.z       = z;
 	m_data.zone_id = zone->GetZoneID();
 
-	if (decay_time)
+	if (decay_time) {
 		decay_timer.Start();
+	}
 
 	respawn_timer.Disable();
 
 	// Hardcoded portion for unknown members
-	m_data.unknown024	= 0x7f001194;
-	m_data.unknown076	= 0x0000d5fe;
-	m_data.unknown084	= 0xFFFFFFFF;
+	m_data.unknown024 = 0x7f001194;
+	m_data.unknown076 = 0x0000d5fe;
+	m_data.unknown084 = 0xFFFFFFFF;
 
 	// Set object name
 	if (inst) {
-		const EQ::ItemData* item = inst->GetItem();
+		const EQ::ItemData *item = inst->GetItem();
 		if (item) {
 			if (item->IDFile[0] == '\0') {
 				strcpy(m_data.object_name, DEFAULT_OBJECT_NAME);
-			}
-			else {
+			} else {
 				// Object name is idfile + _ACTORDEF
 				uint32 len_idfile = strlen(inst->GetItem()->IDFile);
-				uint32 len_copy = sizeof(m_data.object_name) - len_idfile - 1;
+				uint32 len_copy   = sizeof(m_data.object_name) - len_idfile - 1;
 				if (len_copy > sizeof(DEFAULT_OBJECT_NAME_SUFFIX)) {
 					len_copy = sizeof(DEFAULT_OBJECT_NAME_SUFFIX);
 				}
@@ -224,52 +268,64 @@ Object::Object(const EQ::ItemInstance *inst, float x, float y, float z, float he
 				memcpy(&m_data.object_name[0], inst->GetItem()->IDFile, len_idfile);
 				memcpy(&m_data.object_name[len_idfile], DEFAULT_OBJECT_NAME_SUFFIX, len_copy);
 			}
-		}
-		else {
+		} else {
 			strcpy(m_data.object_name, DEFAULT_OBJECT_NAME);
 		}
 	}
 
-	FixZ();
+	if (!IsFixZEnabled()) {
+		FixZ();
+	}
 }
 
-Object::Object(const char *model, float x, float y, float z, float heading, uint8 type, uint32 decay_time)
- : respawn_timer(0), decay_timer(decay_time)
+Object::Object(
+	const std::string& model,
+	float x,
+	float y,
+	float z,
+	float heading,
+	uint8 type,
+	uint32 decay_time
+) :
+respawn_timer(0),
+decay_timer(decay_time)
 {
-	user = nullptr;
+	user      = nullptr;
 	last_user = nullptr;
-	EQ::ItemInstance* inst = new EQ::ItemInstance(ItemInstWorldContainer);
+
+	auto* inst = new EQ::ItemInstance(ItemInstWorldContainer);
 
 	// Initialize members
-	m_id	= 0;
-	m_inst	= (inst) ? inst->Clone() : nullptr;
-	m_type	= type;
-	m_icon	= 0;
+	m_id           = 0;
+	m_inst         = inst->Clone();
+	m_type         = type;
+	m_icon         = 0;
 	m_ground_spawn = false;
+
 	// Set as much struct data as we can
 	memset(&m_data, 0, sizeof(Object_Struct));
 	m_data.heading = heading;
-	m_data.x = x;
-	m_data.y = y;
-	m_data.z = z;
+	m_data.x       = x;
+	m_data.y       = y;
+	m_data.z       = z;
 	m_data.zone_id = zone->GetZoneID();
 
-	FixZ();
+	if (!IsFixZEnabled()) {
+		FixZ();
+	}
 
-	if (decay_time)
+	if (decay_time) {
 		decay_timer.Start();
+	}
 
 	respawn_timer.Disable();
 
-	//Hardcoded portion for unknown members
-	m_data.unknown024	= 0x7f001194;
-	m_data.unknown076	= 0x0000d5fe;
-	m_data.unknown084	= 0xFFFFFFFF;
+	// Hardcoded portion for unknown members
+	m_data.unknown024 = 0x7f001194;
+	m_data.unknown076 = 0x0000d5fe;
+	m_data.unknown084 = 0xFFFFFFFF;
 
-	if(model)
-		strcpy(m_data.object_name, model);
-	else
-		strcpy(m_data.object_name, "IT64_ACTORDEF"); //default object name if model isn't specified for some unknown reason
+	strcpy(m_data.object_name, !model.empty() ? model.c_str() : "IT64_ACTORDEF");
 
 	safe_delete(inst);
 }
@@ -277,7 +333,8 @@ Object::Object(const char *model, float x, float y, float z, float heading, uint
 Object::~Object()
 {
 	safe_delete(m_inst);
-	if(user != nullptr) {
+
+	if (user) {
 		user->SetTradeskillObject(nullptr);
 	}
 }
@@ -296,20 +353,18 @@ void Object::ResetState()
 {
 	safe_delete(m_inst);
 
-	m_id	= 0;
-	m_type	= 0;
-	m_icon	= 0;
+	m_id   = 0;
+	m_type = 0;
+	m_icon = 0;
+
 	memset(&m_data, 0, sizeof(Object_Struct));
 }
 
 bool Object::Save()
 {
-	if (m_id) {
-		// Update existing
+	if (m_id) { // Update existing
 		content_db.UpdateObject(m_id, m_type, m_icon, m_data, m_inst);
-	}
-	else {
-		// Doesn't yet exist, add now
+	} else { // Doesn't yet exist, add now
 		m_id = content_db.AddObject(m_type, m_icon, m_data, m_inst);
 	}
 
@@ -318,14 +373,12 @@ bool Object::Save()
 
 uint16 Object::VarSave()
 {
-	if (m_id) {
-		// Update existing
+	if (m_id) { // Update existing
 		content_db.UpdateObject(m_id, m_type, m_icon, m_data, m_inst);
-	}
-	else {
-		// Doesn't yet exist, add now
+	} else { // Doesn't yet exist, add now
 		m_id = content_db.AddObject(m_type, m_icon, m_data, m_inst);
 	}
+
 	return m_id;
 }
 
@@ -360,10 +413,10 @@ void Object::PutItem(uint8 index, const EQ::ItemInstance* inst)
 	if (m_inst && m_inst->IsType(EQ::item::ItemClassBag)) {
 		if (inst) {
 			m_inst->PutItem(index, *inst);
-		}
-		else {
+		} else {
 			m_inst->DeleteItem(index);
 		}
+
 		database.SaveWorldContainer(zone->GetZoneID(),m_id,m_inst);
 		// This is _highly_ inefficient, but for now it will work: Save entire object to database
 		Save();
@@ -371,19 +424,15 @@ void Object::PutItem(uint8 index, const EQ::ItemInstance* inst)
 }
 
 void Object::Close() {
-	if(user != nullptr)
-	{
+	if (user) {
 		last_user = user;
 		// put any remaining items from the world container back into the player's inventory to avoid item loss
 		// if they close the container without removing all items
-		EQ::ItemInstance* container = m_inst;
-		if(container != nullptr)
-		{
-			for (uint8 i = EQ::invbag::SLOT_BEGIN; i <= EQ::invbag::SLOT_END; i++)
-			{
-				EQ::ItemInstance* inst = container->PopItem(i);
-				if(inst != nullptr)
-				{
+		auto container = m_inst;
+		if (container) {
+			for (uint8 i = EQ::invbag::SLOT_BEGIN; i <= EQ::invbag::SLOT_END; i++) {
+				auto inst = container->PopItem(i);
+				if (inst) {
 					user->MoveItemToInventory(inst, true);
 				}
 			}
@@ -391,6 +440,7 @@ void Object::Close() {
 
 		user->SetTradeskillObject(nullptr);
 	}
+
 	user = nullptr;
 }
 
@@ -423,26 +473,34 @@ EQ::ItemInstance* Object::PopItem(uint8 index)
 void Object::CreateSpawnPacket(EQApplicationPacket* app)
 {
 	app->SetOpcode(OP_GroundSpawn);
+
 	safe_delete_array(app->pBuffer);
+
 	app->pBuffer = new uchar[sizeof(Object_Struct)];
-	app->size = sizeof(Object_Struct);
+	app->size    = sizeof(Object_Struct);
+
 	memcpy(app->pBuffer, &m_data, sizeof(Object_Struct));
 }
 
 void Object::CreateDeSpawnPacket(EQApplicationPacket* app)
 {
 	app->SetOpcode(OP_ClickObject);
+
 	safe_delete_array(app->pBuffer);
+
 	app->pBuffer = new uchar[sizeof(ClickObject_Struct)];
-	app->size = sizeof(ClickObject_Struct);
+	app->size    = sizeof(ClickObject_Struct);
+
 	memset(app->pBuffer, 0, sizeof(ClickObject_Struct));
-	ClickObject_Struct* co = (ClickObject_Struct*) app->pBuffer;
-	co->drop_id = m_data.drop_id;
+
+	auto co = (ClickObject_Struct*) app->pBuffer;
+
+	co->drop_id   = m_data.drop_id;
 	co->player_id = 0;
 }
 
 bool Object::Process(){
-	if(m_type == ObjectTypes::Temporary && decay_timer.Enabled() && decay_timer.Check()) {
+	if (m_type == ObjectTypes::Temporary && decay_timer.Enabled() && decay_timer.Check()) {
 		// Send click to all clients (removes entity on client)
 		auto outapp = new EQApplicationPacket(OP_ClickObject, sizeof(ClickObject_Struct));
 		ClickObject_Struct* click_object = (ClickObject_Struct*)outapp->pBuffer;
@@ -455,13 +513,15 @@ bool Object::Process(){
 		return false;
 	}
 
-	if(m_ground_spawn && respawn_timer.Check()){
+	if (m_ground_spawn && respawn_timer.Check()){
 		RandomSpawn(true);
 	}
 
-	if (user != nullptr && !entity_list.GetClientByCharID(user->CharacterID())) {
+	if (user && !entity_list.GetClientByCharID(user->CharacterID())) {
 		last_user = user;
+
 		user->SetTradeskillObject(nullptr);
+
 		user = nullptr;
 	}
 
@@ -469,18 +529,22 @@ bool Object::Process(){
 }
 
 void Object::RandomSpawn(bool send_packet) {
-	if(!m_ground_spawn)
+	if (!m_ground_spawn) {
 		return;
+	}
 
 	m_data.x = zone->random.Real(m_min_x, m_max_x);
 	m_data.y = zone->random.Real(m_min_y, m_max_y);
 
 	if (m_data.z == BEST_Z_INVALID && zone->HasMap()) {
 		glm::vec3 me;
+
 		me.x = m_data.x;
 		me.y = m_data.y;
 		me.z = 0;
+
 		glm::vec3 hit;
+
 		float best_z = zone->zonemap->FindClosestZ(me, &hit);
 		if (best_z != BEST_Z_INVALID) {
 			m_data.z = best_z + 0.1f;
@@ -500,34 +564,44 @@ void Object::RandomSpawn(bool send_packet) {
 
 bool Object::HandleClick(Client* sender, const ClickObject_Struct* click_object)
 {
-	if(m_ground_spawn) {//This is a Cool Groundspawn
+	if (m_ground_spawn) {//This is a Cool Groundspawn
 		respawn_timer.Start();
 	}
+
 	if (m_type == ObjectTypes::Temporary) {
-		bool cursordelete = false;
+		bool cursor_delete  = false;
 		bool duplicate_lore = false;
+
 		if (m_inst && sender) {
 			// if there is a lore conflict, delete the offending item from the server inventory
 			// the client updates itself and takes care of sending "duplicate lore item" messages
 			auto item = m_inst->GetItem();
 			if (sender->CheckLoreConflict(item)) {
 				duplicate_lore = true;
-				int16 loreslot = sender->GetInv().HasItem(item->ID, 0, invWhereBank);
-				if (loreslot != INVALID_INDEX) { // if the duplicate is in the bank, delete it.
-					sender->DeleteItemInInventory(loreslot);
+
+				const int16 lore_item_slot = sender->GetInv().HasItem(item->ID, 0, invWhereBank);
+				if (lore_item_slot != INVALID_INDEX) { // if the duplicate is in the bank, delete it.
+					sender->DeleteItemInInventory(lore_item_slot);
+				} else { // otherwise, we delete the new one
+					cursor_delete = true;
 				}
-				else {
-					cursordelete = true;
-				}    // otherwise, we delete the new one
 			}
 
 			if (item->RecastDelay) {
 				if (item->RecastType != RECAST_TYPE_UNLINKED_ITEM) {
 					m_inst->SetRecastTimestamp(
-						database.GetItemRecastTimestamp(sender->CharacterID(), item->RecastType));
+						database.GetItemRecastTimestamp(
+							sender->CharacterID(),
+							item->RecastType
+						)
+					);
 				} else {
 					m_inst->SetRecastTimestamp(
-						database.GetItemRecastTimestamp(sender->CharacterID(), item->ID));
+						database.GetItemRecastTimestamp(
+							sender->CharacterID(),
+							item->ID
+						)
+					);
 				}
 			}
 
@@ -544,13 +618,19 @@ bool Object::HandleClick(Client* sender, const ClickObject_Struct* click_object)
 
 				if (parse->EventPlayer(EVENT_PLAYER_PICKUP, sender, std::to_string(item->ID), GetID(), &args)) {
 					auto outapp = new EQApplicationPacket(OP_ClickObject, sizeof(ClickObject_Struct));
+
 					memcpy(outapp->pBuffer, click_object, sizeof(ClickObject_Struct));
-					auto* co = (ClickObject_Struct*) outapp->pBuffer;
+
+					auto co = (ClickObject_Struct*) outapp->pBuffer;
+
 					co->drop_id = 0;
+
 					entity_list.QueueClients(nullptr, outapp, false);
+
 					safe_delete(outapp);
 
 					sender->SetTradeskillObject(nullptr);
+
 					user = nullptr;
 
 					return true;
@@ -571,28 +651,34 @@ bool Object::HandleClick(Client* sender, const ClickObject_Struct* click_object)
 				sender->DiscoverItem(item->ID);
 			}
 
-			if (cursordelete) {    // delete the item if it's a duplicate lore. We have to do this because the client expects the item packet
+			if (cursor_delete) {    // delete the item if it's a duplicate lore. We have to do this because the client expects the item packet
 				sender->DeleteItemInInventory(EQ::invslot::slotCursor, 1, true);
 			}
 
 			sender->DropItemQS(m_inst, true);
 
-			if(!m_ground_spawn)
+			if (!m_ground_spawn) {
 				safe_delete(m_inst);
+			}
 
 			// No longer using a tradeskill object
 			sender->SetTradeskillObject(nullptr);
+
 			user = nullptr;
 		}
 
 		// Send click to all clients (removes entity on client)
 		auto outapp = new EQApplicationPacket(OP_ClickObject, sizeof(ClickObject_Struct));
+
 		memcpy(outapp->pBuffer, click_object, sizeof(ClickObject_Struct));
+
 		entity_list.QueueClients(nullptr, outapp, false);
+
 		safe_delete(outapp);
 
 		// Remove object
 		content_db.DeleteObject(m_id);
+
 		if (!m_ground_spawn) {
 			entity_list.RemoveEntity(GetID());
 		}
@@ -608,36 +694,38 @@ bool Object::HandleClick(Client* sender, const ClickObject_Struct* click_object)
 	} else {
 		// Tradeskill item
 		auto outapp = new EQApplicationPacket(OP_ClickObjectAction, sizeof(ClickObjectAction_Struct));
-		ClickObjectAction_Struct* coa = (ClickObjectAction_Struct*)outapp->pBuffer;
+
+		auto coa = (ClickObjectAction_Struct*) outapp->pBuffer;
 
 		//TODO: there is prolly a better way to do this.
-		coa->type = m_type;
+		coa->type      = m_type;
 		coa->unknown16 = 0x0a;
-
-		coa->drop_id = click_object->drop_id;
+		coa->drop_id   = click_object->drop_id;
 		coa->player_id = click_object->player_id;
-		coa->icon = m_icon;
+		coa->icon      = m_icon;
+
 		strn0cpy(coa->object_name, m_display_name, 64);
 
 		//if this is not the main user, send them a close and a message
-		if (user == nullptr || user == sender) {
+		if (!user || user == sender) {
 			coa->open = 0x01;
-		}
-		else {
+		} else {
 			coa->open = 0x00;
 
 			if (sender->ClientVersion() >= EQ::versions::ClientVersion::RoF) {
-				coa->drop_id = 0xFFFFFFFF;
+				coa->drop_id = UINT32_MAX;
 				sender->Message(Chat::White, "Someone else is using that. Try again later.");
 			}
 		}
 
 		sender->QueuePacket(outapp);
+
 		safe_delete(outapp);
 
 		//if the object allready had a user, we are done
-		if(user != nullptr)
-			return(false);
+		if (user) {
+			return false;
+		}
 
 		// Starting to use this object
 		sender->SetTradeskillObject(this);
@@ -647,18 +735,20 @@ bool Object::HandleClick(Client* sender, const ClickObject_Struct* click_object)
 		// Send items inside of container
 
 		if (m_inst && m_inst->IsType(EQ::item::ItemClassBag)) {
-
 			//Clear out no-drop and no-rent items first if different player opens it
-			if(user != last_user)
+			if (user != last_user) {
 				m_inst->ClearByFlags(byFlagSet, byFlagSet);
+			}
 
 			auto outapp = new EQApplicationPacket(OP_ClientReady, 0);
+
 			sender->QueuePacket(outapp);
+
 			safe_delete(outapp);
+
 			for (uint8 i = EQ::invbag::SLOT_BEGIN; i <= EQ::invbag::SLOT_END; i++) {
-				const EQ::ItemInstance* inst = m_inst->GetItem(i);
+				auto inst = m_inst->GetItem(i);
 				if (inst) {
-					//sender->GetInv().PutItem(i+4000,inst);
 					sender->SendItemPacket(i, inst, ItemPacketWorldContainer);
 				}
 			}
@@ -668,50 +758,57 @@ bool Object::HandleClick(Client* sender, const ClickObject_Struct* click_object)
 	return true;
 }
 
-// Add new Zone Object (theoretically only called for items dropped to ground)
-uint32 ZoneDatabase::AddObject(uint32 type, uint32 icon, const Object_Struct& object, const EQ::ItemInstance* inst)
+uint32 ZoneDatabase::AddObject(
+	uint32 type,
+	uint32 icon,
+	const Object_Struct& o,
+	const EQ::ItemInstance* inst
+)
 {
-	uint32 database_id = 0;
 	uint32 item_id = 0;
-	int16 charges = 0;
+	int16  charges = 0;
 
 	if (inst && inst->GetItem()) {
 		item_id = inst->GetItem()->ID;
 		charges = inst->GetCharges();
 	}
 
-	// SQL Escape object_name
-	uint32 len = strlen(object.object_name) * 2 + 1;
-	auto object_name = new char[len];
-	DoEscapeString(object_name, object.object_name, strlen(object.object_name));
+	auto e = ObjectRepository::NewEntity();
 
-    // Save new record for object
-	std::string query = StringFormat("INSERT INTO object "
-                                    "(zoneid, xpos, ypos, zpos, heading, "
-                                    "itemid, charges, objectname, type, icon) "
-                                    "values (%i, %f, %f, %f, %f, %i, %i, '%s', %i, %i)",
-                                    object.zone_id, object.x, object.y, object.z, object.heading,
-                                    item_id, charges, object_name, type, icon);
-    safe_delete_array(object_name);
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
-		LogError("Unable to insert object: [{}]", results.ErrorMessage().c_str());
+	e.zoneid     = o.zone_id;
+	e.xpos       = o.x;
+	e.ypos       = o.y;
+	e.zpos       = o.z;
+	e.heading    = o.heading;
+	e.itemid     = item_id;
+	e.charges    = charges;
+	e.objectname = o.object_name;
+	e.type       = type;
+	e.icon       = icon;
+
+	e = ObjectRepository::InsertOne(*this, e);
+
+	if (!e.id) {
 		return 0;
 	}
 
-	// Save container contents, if container
 	if (inst && inst->IsType(EQ::item::ItemClassBag)) {
-		SaveWorldContainer(object.zone_id, database_id, inst);
+		SaveWorldContainer(o.zone_id, e.id, inst);
 	}
 
-	return database_id;
+	return e.id;
 }
 
-// Update information about existing object in database
-void ZoneDatabase::UpdateObject(uint32 id, uint32 type, uint32 icon, const Object_Struct& object, const EQ::ItemInstance* inst)
+void ZoneDatabase::UpdateObject(
+	uint32 object_id,
+	uint32 type,
+	uint32 icon,
+	const Object_Struct& o,
+	const EQ::ItemInstance* inst
+)
 {
 	uint32 item_id = 0;
-	int16 charges = 0;
+	int16  charges = 0;
 
 	if (inst && inst->GetItem()) {
 		item_id = inst->GetItem()->ID;
@@ -719,82 +816,82 @@ void ZoneDatabase::UpdateObject(uint32 id, uint32 type, uint32 icon, const Objec
 	}
 
 	if (inst && !inst->IsType(EQ::item::ItemClassBag)) {
-		uint32 len         = strlen(object.object_name) * 2 + 1;
-		auto   object_name = new char[len];
-		DoEscapeString(object_name, object.object_name, strlen(object.object_name));
+		auto e = ObjectRepository::FindOne(*this, object_id);
 
-		// Save new record for object
-		std::string query = StringFormat(
-			"UPDATE object SET "
-			"zoneid = %i, xpos = %f, ypos = %f, zpos = %f, heading = %f, "
-			"itemid = %i, charges = %i, objectname = '%s', type = %i, icon = %i, "
-			"size = %f, tilt_x = %f, tilt_y = %f "
-			"WHERE id = %i",
-			object.zone_id, object.x, object.y, object.z, object.heading,
-			item_id, charges, object_name, type, icon,
-			object.size, object.tilt_x, object.tilt_y, id
-		);
-		safe_delete_array(object_name);
-		auto results = QueryDatabase(query);
-		if (!results.Success()) {
-			LogError("Unable to update object: [{}]", results.ErrorMessage().c_str());
+		e.zoneid     = o.zone_id;
+		e.xpos       = o.x;
+		e.ypos       = o.y;
+		e.zpos       = o.z;
+		e.heading    = o.heading;
+		e.itemid     = item_id;
+		e.charges    = charges;
+		e.objectname = o.object_name;
+		e.type       = type;
+		e.icon       = icon;
+		e.size       = o.size;
+		e.tilt_x     = o.tilt_x;
+		e.tilt_y     = o.tilt_y;
+
+		const int updated = ObjectRepository::UpdateOne(*this, e);
+
+		if (!updated) {
 			return;
 		}
 	}
 
-	// Save container contents, if container
 	if (inst && inst->IsType(EQ::item::ItemClassBag)) {
-		SaveWorldContainer(object.zone_id, id, inst);
+		SaveWorldContainer(o.zone_id, object_id, inst);
 	}
 }
 
-//
-Ground_Spawns* ZoneDatabase::LoadGroundSpawns(uint32 zone_id, int16 version, Ground_Spawns* gs) {
-
-	std::string query = StringFormat(
-		"SELECT max_x, max_y, max_z, "
-		"min_x, min_y, heading, name, "
-		"item, max_allowed, respawn_timer "
-		"FROM ground_spawns "
-		"WHERE zoneid = %i AND (version = %u OR version = -1) %s "
-		"LIMIT 50",
-		zone_id,
-		version,
-		ContentFilterCriteria::apply().c_str()
+GroundSpawns* ZoneDatabase::LoadGroundSpawns(
+	uint32 zone_id,
+	int16 instance_version,
+	GroundSpawns* gs
+)
+{
+	const auto& l = GroundSpawnsRepository::GetWhere(
+		*this,
+		fmt::format(
+			"`zoneid` = {} AND (`version` = {} OR `version` = -1) {} LIMIT 50",
+			zone_id,
+			instance_version,
+			ContentFilterCriteria::apply()
+		)
 	);
 
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
+	if (l.empty()) {
 		return gs;
 	}
 
-	int spawnIndex=0;
-    for (auto row = results.begin(); row != results.end(); ++row, ++spawnIndex) {
-        gs->spawn[spawnIndex].max_x=Strings::ToFloat(row[0]);
-        gs->spawn[spawnIndex].max_y=Strings::ToFloat(row[1]);
-        gs->spawn[spawnIndex].max_z=Strings::ToFloat(row[2]);
-        gs->spawn[spawnIndex].min_x=Strings::ToFloat(row[3]);
-        gs->spawn[spawnIndex].min_y=Strings::ToFloat(row[4]);
-        gs->spawn[spawnIndex].heading=Strings::ToFloat(row[5]);
-        strcpy(gs->spawn[spawnIndex].name,row[6]);
-        gs->spawn[spawnIndex].item=Strings::ToInt(row[7]);
-        gs->spawn[spawnIndex].max_allowed=Strings::ToInt(row[8]);
-        gs->spawn[spawnIndex].respawntimer=Strings::ToInt(row[9]);
-    }
+	uint32 slot_id = 0;
+
+	for (const auto& e : l) {
+		gs->spawn[slot_id].name          = e.name;
+		gs->spawn[slot_id].max_x         = e.max_x;
+		gs->spawn[slot_id].max_y         = e.max_y;
+		gs->spawn[slot_id].max_z         = e.max_z;
+		gs->spawn[slot_id].min_x         = e.min_x;
+		gs->spawn[slot_id].min_y         = e.min_y;
+		gs->spawn[slot_id].heading       = e.heading;
+		gs->spawn[slot_id].item_id       = e.item;
+		gs->spawn[slot_id].max_allowed   = e.max_allowed;
+		gs->spawn[slot_id].respawn_timer = e.respawn_timer;
+		gs->spawn[slot_id].fix_z         = e.fix_z;
+
+		slot_id++;
+	}
+
 	return gs;
 }
 
-void ZoneDatabase::DeleteObject(uint32 id)
+void ZoneDatabase::DeleteObject(uint32 object_id)
 {
-	if (id == 0) {
+	if (!object_id) {
 		return;
 	}
 
-	std::string query = StringFormat("DELETE FROM object WHERE id = %i", id);
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
-		LogError("Unable to delete object: [{}]", results.ErrorMessage().c_str());
-	}
+	ObjectRepository::DeleteOne(*this, object_id);
 }
 
 uint32 Object::GetDBID()

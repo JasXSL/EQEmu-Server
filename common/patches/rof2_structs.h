@@ -2011,6 +2011,31 @@ struct GuildBankClear_Struct
 /*16*/	uint32	MainAreaCount;
 };
 
+struct GuildTributeDonateItemRequest_Struct {
+	/*000*/	uint32	type;
+	/*004*/ uint16 	slot;
+	/*006*/ uint16 	sub_index;
+	/*008*/ uint16 	aug_index;
+	/*010*/ uint16 	unknown10;
+	/*012*/ uint32 	quantity;
+	/*016*/ uint32	tribute_master_id;
+	/*020*/ uint32 	unknown20;
+	/*024*/ uint32	guild_id;
+	/*028*/ uint32	unknown28;
+	/*032*/ uint32 	unknown32;
+};
+
+struct GuildTributeDonateItemReply_Struct {
+	/*000*/ uint32	type;
+	/*004*/ uint16	slot;
+	/*006*/ uint16 	sub_index;
+	/*008*/	uint16	aug_index;
+	/*010*/	uint16	unknown10;
+	/*012*/ uint32	quantity;
+	/*016*/ uint32	unknown20;
+	/*020*/	uint32	favor;
+};
+
 /*
 ** Money Loot
 ** Length: 22 Bytes
@@ -3600,11 +3625,11 @@ struct GuildMakeLeader {
 // Update a guild members rank and banker status
 struct GuildSetRank_Struct
 {
-/*00*/	uint32	GuildID;	// Was Unknown00
-/*04*/	uint32	Rank;
-/*08*/	char	MemberName[64];
-/*72*/	uint32	Banker;
-/*76*/	uint32	Unknown76;	// Seen 1 - Maybe Banker?
+/*00*/	uint32	guild_id;	// Was Unknown00
+/*04*/	uint32	rank;
+/*08*/	char	member_name[64];
+/*72*/	uint32	banker;
+/*76*/	uint32	unknown76;	// Seen 1 - Maybe Banker?
 /*80*/
 };
 
@@ -3619,7 +3644,7 @@ struct Make_Pet_Struct { //Simple struct for getting pet info
 	uint32 min_dmg;
 	uint32 max_dmg;
 };
-struct Ground_Spawn{
+struct GroundSpawn{
 	float max_x;
 	float max_y;
 	float min_x;
@@ -3631,8 +3656,8 @@ struct Ground_Spawn{
 	uint32 max_allowed;
 	uint32 respawntimer;
 };
-struct Ground_Spawns {
-	struct Ground_Spawn spawn[50]; //Assigned max number to allow
+struct GroundSpawns {
+	struct GroundSpawn spawn[50]; //Assigned max number to allow
 };
 
 //struct PetitionBug_Struct{
@@ -3722,15 +3747,15 @@ struct TributeItem_Struct
 
 struct TributePoint_Struct {
 	int32   tribute_points;
-	uint32   unknown04;
+	uint32  unknown04;
 	int32   career_tribute_points;
-	uint32   unknown12;
+	uint32  unknown12;
 };
 
 struct TributeMoney_Struct {
 	uint32   platinum;
 	uint32   tribute_master_id;
-	int32   tribute_points;
+	int32    tribute_points;
 };
 
 

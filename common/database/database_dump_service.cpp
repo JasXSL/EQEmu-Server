@@ -322,6 +322,10 @@ void DatabaseDumpService::DatabaseDump()
 			pipe_file
 		);
 
+		LogInfo("Backing up database [{}]", execute_command);
+		LogInfo("This can take a few minutes depending on the size of your database");
+		LogInfo("LOADING... PLEASE WAIT...");
+
 		BuildCredentialsFile();
 		std::string execution_result = Process::execute(execute_command);
 		if (!execution_result.empty() && IsDumpOutputToConsole()) {
@@ -571,7 +575,12 @@ void DatabaseDumpService::RemoveSqlBackup()
 {
 	std::string file = fmt::format("{}.sql", GetDumpFileNameWithPath());
 	if (File::Exists(file)) {
-		std::filesystem::remove(file);
+		try {
+			std::filesystem::remove(file);
+		}
+		catch (std::exception &e) {
+			LogError("std::filesystem::remove err [{}]", e.what());
+		}
 	}
 
 	RemoveCredentialsFile();

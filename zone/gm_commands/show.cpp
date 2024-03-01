@@ -5,6 +5,7 @@
 #include "show/buffs.cpp"
 #include "show/buried_corpse_count.cpp"
 #include "show/client_version_summary.cpp"
+#include "show/content_flags.cpp"
 #include "show/currencies.cpp"
 #include "show/distance.cpp"
 #include "show/emotes.cpp"
@@ -30,6 +31,7 @@
 #include "show/server_info.cpp"
 #include "show/skills.cpp"
 #include "show/spawn_status.cpp"
+#include "show/special_abilities.cpp"
 #include "show/spells.cpp"
 #include "show/spells_list.cpp"
 #include "show/stats.cpp"
@@ -63,6 +65,7 @@ void command_show(Client *c, const Seperator *sep)
 		Cmd{.cmd = "buffs", .u = "buffs", .fn = ShowBuffs, .a = {"#showbuffs"}},
 		Cmd{.cmd = "buried_corpse_count", .u = "buried_corpse_count", .fn = ShowBuriedCorpseCount, .a = {"#getplayerburiedcorpsecount"}},
 		Cmd{.cmd = "client_version_summary", .u = "client_version_summary", .fn = ShowClientVersionSummary, .a = {"#cvs"}},
+		Cmd{.cmd = "content_flags", .u = "content_flags", .fn = ShowContentFlags, .a = {"#showcontentflags"}},
 		Cmd{.cmd = "currencies", .u = "currencies", .fn = ShowCurrencies, .a = {"#viewcurrencies"}},
 		Cmd{.cmd = "distance", .u = "distance", .fn = ShowDistance, .a = {"#distance"}},
 		Cmd{.cmd = "emotes", .u = "emotes", .fn = ShowEmotes, .a = {"#emoteview"}},
@@ -88,6 +91,7 @@ void command_show(Client *c, const Seperator *sep)
 		Cmd{.cmd = "server_info", .u = "server_info", .fn = ShowServerInfo, .a = {"#serverinfo"}},
 		Cmd{.cmd = "skills", .u = "skills", .fn = ShowSkills, .a = {"#showskills"}},
 		Cmd{.cmd = "spawn_status", .u = "spawn_status [all|disabled|enabled|Spawn ID]", .fn = ShowSpawnStatus, .a = {"#spawnstatus"}},
+		Cmd{.cmd = "special_abilities", .u = "special_abilities", .fn = ShowSpecialAbilities, .a = {"#showspecialabilities"}},
 		Cmd{.cmd = "spells", .u = "spells [disciplines|spells]", .fn = ShowSpells, .a = {"#showspells"}},
 		Cmd{.cmd = "spells_list", .u = "spells_list", .fn = ShowSpellsList, .a = {"#showspellslist"}},
 		Cmd{.cmd = "stats", .u = "stats", .fn = ShowStats, .a = {"#showstats"}},

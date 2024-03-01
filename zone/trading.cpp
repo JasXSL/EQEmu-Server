@@ -814,13 +814,12 @@ void Client::FinishTrade(Mob* tradingWith, bool finalizer, void* event_entry, st
 									((is_pet && (!bagitem->IsQuestItem() || pets_can_take_quest_items) ||
 									!is_pet)))) {
 
-									auto loot_drop_entry = NPC::NewLootDropEntry();
+									auto loot_drop_entry = LootdropEntriesRepository::NewNpcEntity();
 									loot_drop_entry.equip_item = 1;
 									loot_drop_entry.item_charges = static_cast<int8>(baginst->GetCharges());
 
 									tradingWith->CastToNPC()->AddLootDrop(
 										bagitem,
-										&tradingWith->CastToNPC()->itemlist,
 										loot_drop_entry,
 										true
 									);
@@ -842,13 +841,12 @@ void Client::FinishTrade(Mob* tradingWith, bool finalizer, void* event_entry, st
 						}
 					}
 
-					auto new_loot_drop_entry = NPC::NewLootDropEntry();
+					auto new_loot_drop_entry = LootdropEntriesRepository::NewNpcEntity();
 					new_loot_drop_entry.equip_item = 1;
 					new_loot_drop_entry.item_charges = static_cast<int8>(inst->GetCharges());
 
 					tradingWith->CastToNPC()->AddLootDrop(
 						item,
-						&tradingWith->CastToNPC()->itemlist,
 						new_loot_drop_entry,
 						true
 					);
@@ -907,28 +905,53 @@ void Client::FinishTrade(Mob* tradingWith, bool finalizer, void* event_entry, st
 
 bool Client::CheckTradeLoreConflict(Client* other)
 {
-	if (!other)
+	if (!other) {
 		return true;
+	}
+
+	bool has_lore_item = false;
+	std::vector<uint32> lore_item_ids;
 
 	for (int16 index = EQ::invslot::TRADE_BEGIN; index <= EQ::invslot::TRADE_END; ++index) {
-		const EQ::ItemInstance* inst = m_inv[index];
-		if (!inst || !inst->GetItem())
+		const auto inst = m_inv[index];
+		if (!inst || !inst->GetItem()) {
 			continue;
+		}
 
-		if (other->CheckLoreConflict(inst->GetItem()))
-			return true;
+		if (other->CheckLoreConflict(inst->GetItem())) {
+			lore_item_ids.emplace_back(inst->GetItem()->ID);
+
+			has_lore_item = true;
+		}
 	}
 
 	for (int16 index = EQ::invbag::TRADE_BAGS_BEGIN; index <= EQ::invbag::TRADE_BAGS_END; ++index) {
-		const EQ::ItemInstance* inst = m_inv[index];
-		if (!inst || !inst->GetItem())
+		const auto inst = m_inv[index];
+		if (!inst || !inst->GetItem()) {
 			continue;
+		}
 
-		if (other->CheckLoreConflict(inst->GetItem()))
-			return true;
+		if (other->CheckLoreConflict(inst->GetItem())) {
+			lore_item_ids.emplace_back(inst->GetItem()->ID);
+
+			has_lore_item = true;
+		}
 	}
 
-	return false;
+	if (has_lore_item && RuleB(Character, PlayerTradingLoreFeedback)) {
+		for (const uint32 lore_item_id : lore_item_ids) {
+			Message(
+				Chat::Red,
+				fmt::format(
+					"{} already has a lore {} in their inventory.",
+					other->GetCleanName(),
+					database.CreateItemLink(lore_item_id)
+				).c_str()
+			);
+		}
+	}
+
+	return has_lore_item;
 }
 
 bool Client::CheckTradeNonDroppable()

@@ -111,7 +111,7 @@ void ZSList::Process() {
 			0,
 			0,
 			AccountStatus::Player,
-			Chat::Yellow,
+			Chat::System,
 			fmt::format(
 				"[SYSTEM] World will be shutting down in {} minutes.",
 				((shutdowntimer->GetRemainingTime() / 1000) / 60)
@@ -759,7 +759,7 @@ void ZSList::WorldShutDown(uint32 time, uint32 interval)
 			0,
 			0,
 			AccountStatus::Player,
-			Chat::Yellow,
+			Chat::System,
 			fmt::format(
 				"[SYSTEM] World will be shutting down in {} minutes.",
 				(time / 60)
@@ -856,4 +856,16 @@ void ZSList::OnKeepAlive(EQ::Timer *t)
 const std::list<std::unique_ptr<ZoneServer>> &ZSList::getZoneServerList() const
 {
 	return zone_server_list;
+}
+
+bool ZSList::SendPacketToBootedZones(ServerPacket* pack)
+{
+	for (auto const& z : zone_server_list) {
+		auto r = z.get();
+		if (r && r->GetZoneID() > 0) {
+			r->SendPacket(pack);
+		}
+	}
+
+	return true;
 }

@@ -34,7 +34,7 @@ public:
 	~Beacon();
 
 	//abstract virtual function implementations requird by base abstract class
-	virtual bool Death(Mob* killerMob, int64 damage, uint16 spell_id, EQ::skills::SkillType attack_skill) { return true; }
+	virtual bool Death(Mob* killer_mob, int64 damage, uint16 spell_id, EQ::skills::SkillType attack_skill, KilledByTypes killed_by = KilledByTypes::Killed_NPC) { return true; }
 	virtual void Damage(Mob* from, int64 damage, uint16 spell_id, EQ::skills::SkillType attack_skill, bool avoidable = true, int8 buffslot = -1, bool iBuffTic = false, eSpecialAttacks special = eSpecialAttacks::None) { return; }
 	virtual bool HasRaid() { return false; }
 	virtual bool HasGroup() { return false; }
@@ -46,7 +46,7 @@ public:
 	bool	IsBeacon()			const { return true; }
 	bool	Process();
 	virtual void	Depop(bool not_used = true)	{ remove_me = true; }
-	void AELocationSpell(Mob *caster, uint16 cast_spell_id, int16 resist_adjust);
+	void AELocationSpell(Mob *caster, uint16 cast_spell_id, int16 in_resist_adjust);
 
 protected:
 	Timer remove_timer;

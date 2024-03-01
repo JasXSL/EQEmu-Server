@@ -38,6 +38,20 @@
 #include "queryserv.h"
 #include "../common/discord/discord.h"
 #include "../common/repositories/dynamic_zone_templates_repository.h"
+#include "../common/repositories/npc_faction_repository.h"
+#include "../common/repositories/npc_faction_entries_repository.h"
+#include "../common/repositories/faction_association_repository.h"
+#include "../common/repositories/loottable_repository.h"
+#include "../common/repositories/loottable_entries_repository.h"
+#include "../common/repositories/lootdrop_repository.h"
+#include "../common/repositories/lootdrop_entries_repository.h"
+#include "../common/repositories/base_data_repository.h"
+
+struct EXPModifier
+{
+	float aa_modifier;
+	float exp_modifier;
+};
 
 class DynamicZone;
 
@@ -77,14 +91,6 @@ struct ZoneEXPModInfo {
 	float AAExpMod;
 };
 
-struct item_tick_struct {
-	uint32      itemid;
-	uint32      chance;
-	uint32      level;
-	int16       bagslot;
-	std::string qglobal;
-};
-
 class Client;
 class Expedition;
 class Map;
@@ -107,7 +113,11 @@ public:
 	AA::Ability *GetAlternateAdvancementAbilityByRank(int rank_id);
 	AA::Rank *GetAlternateAdvancementRank(int rank_id);
 	bool is_zone_time_localized;
-	bool process_mobs_while_empty;
+	bool quest_idle_override;
+	bool IsIdleWhenEmpty() const;
+	void SetIdleWhenEmpty(bool idle_when_empty);
+	uint32 GetSecondsBeforeIdle() const;
+	void SetSecondsBeforeIdle(uint32 seconds_before_idle);
 	bool AggroLimitReached() { return (aggroedmobs > 10) ? true : false; }
 	bool AllowMercs() const { return (allow_mercs); }
 	bool CanBind() const { return (can_bind); }
@@ -139,6 +149,7 @@ public:
 	bool LoadGroundSpawns();
 	bool LoadZoneCFG(const char *filename, uint16 instance_version);
 	bool LoadZoneObjects();
+	bool IsSpecialBindLocation(const glm::vec4& location);
 	bool Process();
 	bool SaveZoneCFG();
 
@@ -185,7 +196,7 @@ public:
 	DynamicZone *GetDynamicZone();
 
 	IPathfinder                                   *pathing;
-	LinkedList<NPC_Emote_Struct *>                NPCEmoteList;
+	std::vector<NPC_Emote_Struct *>               npc_emote_list;
 	LinkedList<Spawn2 *>                          spawn2_list;
 	LinkedList<ZonePoint *>                       zone_point_list;
 	std::vector<ZonePointsRepository::ZonePoints> virtual_zone_point_list;
@@ -218,7 +229,6 @@ public:
 
 	std::pair<AA::Ability *, AA::Rank *> GetAlternateAdvancementAbilityAndRank(int id, int points_spent);
 
-	std::unordered_map<int, item_tick_struct>             tick_items;
 	std::unordered_map<int, std::unique_ptr<AA::Ability>> aa_abilities;
 	std::unordered_map<int, std::unique_ptr<AA::Rank>>    aa_ranks;
 
@@ -228,6 +238,8 @@ public:
 	std::unordered_map<uint32, std::unique_ptr<DynamicZone>> dynamic_zone_cache;
 	std::unordered_map<uint32, std::unique_ptr<Expedition>>  expedition_cache;
 	std::unordered_map<uint32, DynamicZoneTemplatesRepository::DynamicZoneTemplates> dz_template_cache;
+
+	std::unordered_map<uint32, EXPModifier> exp_modifiers;
 
 	time_t weather_timer;
 	Timer  spawn2_timer;
@@ -256,6 +268,12 @@ public:
 	std::string GetZoneDescription();
 	void SendReloadMessage(std::string reload_type);
 
+	void ClearEXPModifier(Client* c);
+	float GetAAEXPModifier(Client* c);
+	float GetEXPModifier(Client* c);
+	void SetAAEXPModifier(Client* c, float aa_modifier);
+	void SetEXPModifier(Client* c, float exp_modifier);
+
 	void AddAggroMob() { aggroedmobs++; }
 	void AddAuth(ServerZoneIncomingClient_Struct *szic);
 	void ChangeWeather();
@@ -268,7 +286,7 @@ public:
 	void DoAdventureActions();
 	void DoAdventureAssassinationCountIncrease();
 	void DoAdventureCountIncrease();
-	void GetMerchantDataForZoneLoad();
+	void LoadMerchants();
 	void GetTimeSync();
 	void LoadAdventureFlavor();
 	void LoadAlternateAdvancement();
@@ -279,19 +297,18 @@ public:
 	void LoadLDoNTraps();
 	void LoadLevelEXPMods();
 	void LoadGrids();
-	void LoadMercSpells();
-	void LoadMercTemplates();
+	void LoadMercenarySpells();
+	void LoadMercenaryTemplates();
 	void LoadNewMerchantData(uint32 merchantid);
-	void LoadNPCEmotes(LinkedList<NPC_Emote_Struct *> *NPCEmoteList);
+	void LoadNPCEmotes(std::vector<NPC_Emote_Struct*>* v);
 	void LoadTempMerchantData();
-	void LoadTickItems();
 	void LoadVeteranRewards();
 	void LoadZoneDoors();
 	void ReloadStaticData();
 	void ReloadWorld(uint8 global_repop);
 	void RemoveAuth(const char *iCharName, const char *iLSKey);
 	void RemoveAuth(uint32 lsid);
-	void Repop();
+	void Repop(bool is_forced = false);
 	void RequestUCSServerStatus();
 	void ResetAuth();
 	void SetDate(uint16 year, uint8 month, uint8 day, uint8 hour, uint8 minute);
@@ -398,6 +415,37 @@ public:
 
 	void ReloadContentFlags();
 
+	void LoadNPCFaction(const uint32 npc_faction_id);
+	void LoadNPCFactions(const std::vector<uint32>& npc_faction_ids);
+	void ClearNPCFactions();
+	void ReloadNPCFactions();
+	NpcFactionRepository::NpcFaction* GetNPCFaction(const uint32 npc_faction_id);
+	std::vector<NpcFactionEntriesRepository::NpcFactionEntries> GetNPCFactionEntries(const uint32 npc_faction_id) const;
+
+	void LoadNPCFactionAssociation(const uint32 npc_faction_id);
+	void LoadNPCFactionAssociations(const std::vector<uint32>& npc_faction_ids);
+	void LoadFactionAssociation(const uint32 faction_id);
+	void LoadFactionAssociations(const std::vector<uint32>& faction_ids);
+	void ClearFactionAssociations();
+	void ReloadFactionAssociations();
+	FactionAssociationRepository::FactionAssociation* GetFactionAssociation(const uint32 faction_id);
+
+	// loot
+	void LoadLootTable(const uint32 loottable_id);
+	void LoadLootTables(const std::vector<uint32>& loottable_ids);
+	void ClearLootTables();
+	void ReloadLootTables();
+	LoottableRepository::Loottable *GetLootTable(const uint32 loottable_id);
+	std::vector<LoottableEntriesRepository::LoottableEntries> GetLootTableEntries(const uint32 loottable_id) const;
+	LootdropRepository::Lootdrop GetLootdrop(const uint32 lootdrop_id) const;
+	std::vector<LootdropEntriesRepository::LootdropEntries> GetLootdropEntries(const uint32 lootdrop_id) const;
+
+	// Base Data
+	inline void ClearBaseData() { m_base_data.clear(); };
+	BaseDataRepository::BaseData GetBaseData(uint8 level, uint8 class_id);
+	void LoadBaseData();
+	void ReloadBaseData();
+
 private:
 	bool      allow_mercs;
 	bool      can_bind;
@@ -431,6 +479,8 @@ private:
 	uint32    m_max_clients;
 	uint32    zoneid;
 	uint32    m_last_ucss_update;
+	bool      m_idle_when_empty;
+	uint32    m_seconds_before_idle;
 
 	GlobalLootManager                   m_global_loot;
 	LinkedList<ZoneClientAuth_Struct *> client_auth_list;
@@ -446,6 +496,19 @@ private:
 	Timer                               qglobal_purge_timer;
 	ZoneSpellsBlocked                   *blocked_spells;
 
+	// Factions
+	std::vector<NpcFactionRepository::NpcFaction>                 m_npc_factions         = { };
+	std::vector<NpcFactionEntriesRepository::NpcFactionEntries>   m_npc_faction_entries  = { };
+	std::vector<FactionAssociationRepository::FactionAssociation> m_faction_associations = { };
+
+	// loot
+	std::vector<LoottableRepository::Loottable>               m_loottables        = {};
+	std::vector<LoottableEntriesRepository::LoottableEntries> m_loottable_entries = {};
+	std::vector<LootdropRepository::Lootdrop>                 m_lootdrops         = {};
+	std::vector<LootdropEntriesRepository::LootdropEntries>   m_lootdrop_entries  = {};
+
+	// Base Data
+	std::vector<BaseDataRepository::BaseData> m_base_data = { };
 };
 
 #endif

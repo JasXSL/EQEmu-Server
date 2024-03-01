@@ -24,14 +24,14 @@
 #include <sstream>
 
 struct BotsAvailableList {
-	uint32 ID;
-	char Name[64];
-	uint16 Class;
-	uint8 Level;
-	uint16 Race;
-	uint8 Gender;
-	char Owner[64];
-	uint32 Owner_ID;
+	uint32 bot_id;
+	char   bot_name[64];
+	uint16 class_;
+	uint8  level;
+	uint16 race;
+	uint8  gender;
+	char   owner_name[64];
+	uint32 owner_id;
 };
 
 struct BotSpell {
@@ -79,6 +79,17 @@ struct BotSpells_Struct {
 	std::string	bucket_name;
 	std::string	bucket_value;
 	uint8		bucket_comparison;
+};
+
+struct BotTimer_Struct {
+	uint32		timer_id;
+	uint32		timer_value;
+	uint32		recast_time;
+	bool		is_spell;
+	bool		is_disc;
+	uint16		spell_id;
+	bool		is_item;
+	uint32		item_id;
 };
 
 #endif // BOT_STRUCTS

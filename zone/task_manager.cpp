@@ -52,6 +52,8 @@ bool TaskManager::LoadTasks(int single_task)
 		task_query_filter = fmt::format("id > 0");
 	}
 
+	task_query_filter += " AND enabled = 1";
+
 	// load task level data
 	auto repo_tasks = TasksRepository::GetWhere(content_db, task_query_filter);
 	m_task_data.reserve(repo_tasks.size());
@@ -127,7 +129,7 @@ bool TaskManager::LoadTasks(int single_task)
 		);
 	}
 
-	LogTasks("Loaded [{}] Tasks", repo_tasks.size());
+	LogInfo("Loaded [{}] task(s)", repo_tasks.size());
 
 	std::string activities_query_filter = fmt::format(
 		"taskid = {} and activityid < {} ORDER BY taskid, activityid ASC",
@@ -212,6 +214,8 @@ bool TaskManager::LoadTasks(int single_task)
 		ad->max_y                = a.max_y;
 		ad->max_z                = a.max_z;
 		ad->zone_version         = a.zone_version >= 0 ? a.zone_version : -1;
+		ad->optional             = a.optional;
+		ad->list_group           = a.list_group;
 		ad->has_area             = false;
 
 		if (std::abs(a.max_x - a.min_x) > 0.0f &&
@@ -234,7 +238,16 @@ bool TaskManager::LoadTasks(int single_task)
 			}
 		}
 
-		ad->optional = a.optional;
+		// store initial active element ids for select window
+		if (ad->req_activity_id < 0 && ad->step <= task_data->selector_step)
+		{
+			if (ad->step < task_data->selector_step)
+			{
+				task_data->selector_step = ad->step;
+				task_data->selector_ids.clear();
+			}
+			task_data->selector_ids.push_back(activity_id);
+		}
 
 		LogTasksDetail(
 			"(Activity) task_id [{}] activity_id [{}] slot [{}] activity_type [{}] goal_method [{}] goal_count [{}] zones [{}]"
@@ -243,7 +256,7 @@ bool TaskManager::LoadTasks(int single_task)
 			activity_id,
 			task_data->activity_count,
 			static_cast<int32_t>(ad->activity_type),
-			ad->goal_method,
+			static_cast<int32_t>(ad->goal_method),
 			ad->goal_count,
 			ad->zones.c_str(),
 			ad->target_name.c_str(),
@@ -256,7 +269,7 @@ bool TaskManager::LoadTasks(int single_task)
 		task_data->activity_count++;
 	}
 
-	LogTasks("Loaded [{}] Task Activities", task_activities.size());
+	LogInfo("Loaded [{}] task activities", task_activities.size());
 
 	return true;
 }
@@ -948,7 +961,7 @@ void TaskManager::SendTaskActivityShort(Client *client, int task_id, int activit
 	outapp->WriteUInt32(static_cast<uint32>(task_data->type));
 	outapp->WriteUInt32(task_id);
 	outapp->WriteUInt32(activity_id);
-	outapp->WriteUInt32(0);
+	outapp->WriteUInt32(task_data->activity_information[activity_id].list_group);
 	outapp->WriteUInt32(0xffffffff);
 	outapp->WriteUInt8(task_data->activity_information[activity_id].optional ? 1 : 0);
 	client->QueuePacket(outapp.get());
@@ -970,7 +983,7 @@ void TaskManager::SendTaskActivityLong(
 	buf.WriteUInt32(static_cast<uint32>(task_data->type)); // task type
 	buf.WriteUInt32(task_id);
 	buf.WriteUInt32(activity_id);
-	buf.WriteUInt32(0);        // unknown3
+	buf.WriteUInt32(task_data->activity_information[activity_id].list_group);
 
 	const auto& activity = task_data->activity_information[activity_id];
 	int done_count = client->GetTaskActivityDoneCount(task_data->type, client_task_index, activity_id);
@@ -1296,13 +1309,23 @@ bool TaskManager::LoadClientState(Client *client, ClientTaskState *cts)
 		fmt::format("charid = {} ORDER BY acceptedtime", character_id)
 	);
 
+	std::vector<int> remove;
+
 	for (auto &character_task: character_tasks) {
 		int task_id = character_task.taskid;
 		int slot    = character_task.slot;
 
+		const TaskInformation* task = GetTaskData(task_id);
+		if (!task)
+		{
+			LogError("Character [{}] has task [{}] which does not exist", character_id, task_id);
+			remove.push_back(task_id);
+			continue;
+		}
+
 		// this used to be loaded from character_tasks
 		// this should just load from the tasks table
-		auto type = task_manager->GetTaskType(character_task.taskid);
+		auto type = task->type;
 
 		if (task_id < 0) {
 			LogTasks(
@@ -1326,6 +1349,7 @@ bool TaskManager::LoadClientState(Client *client, ClientTaskState *cts)
 
 		if (task_info->task_id != TASKSLOTEMPTY) {
 			LogTasks("Error: slot [{}] for task [{}] is already occupied", slot, task_id);
+			remove.push_back(task_id);
 			continue;
 		}
 
@@ -1334,8 +1358,10 @@ bool TaskManager::LoadClientState(Client *client, ClientTaskState *cts)
 		task_info->updated       = false;
 		task_info->was_rewarded  = character_task.was_rewarded;
 
-		for (auto &i : task_info->activity) {
-			i.activity_id = -1;
+		// enable all states in memory, any missing from db get inserted if updated
+		for (int i = 0; i < MAXACTIVITIESPERTASK; ++i)
+		{
+			task_info->activity[i].activity_id = i < task->activity_count ? i : -1;
 		}
 
 		// this check keeps a lot of core task updating code from working properly (shared or otherwise)
@@ -1351,6 +1377,13 @@ bool TaskManager::LoadClientState(Client *client, ClientTaskState *cts)
 			character_task.acceptedtime,
 			character_task.was_rewarded
 		);
+	}
+
+	if (!remove.empty())
+	{
+		std::string filter = fmt::format("charid = {} AND taskid IN ({})", character_id, fmt::join(remove, ","));
+		CharacterTasksRepository::DeleteWhere(database, filter);
+		CharacterActivitiesRepository::DeleteWhere(database, filter);
 	}
 
 	// Load Activities
@@ -1520,49 +1553,6 @@ bool TaskManager::LoadClientState(Client *client, ClientTaskState *cts)
 			int task_id = Strings::ToInt(row[0]);
 			cts->m_enabled_tasks.push_back(task_id);
 			LogTasksDetail("Adding task_id [{}] to enabled tasks", task_id);
-		}
-	}
-
-	// Check that there is an entry in the client task state for every activity_information in each task
-	// This should only break if a ServerOP adds or deletes activites for a task that players already
-	// have active, or due to a bug.
-	for (int task_index = 0; task_index < MAXACTIVEQUESTS + 1; task_index++) {
-		int task_id = cts->m_active_tasks[task_index].task_id;
-		if (task_id == TASKSLOTEMPTY) {
-			continue;
-		}
-		const auto task_data = GetTaskData(task_id);
-		if (!task_data) {
-			client->Message(
-				Chat::Red,
-				"Active Task Slot %i, references a task (%i), that does not exist. "
-				"Removing from memory. Contact a GM to resolve this.",
-				task_index,
-				task_id
-			);
-
-			LogError("Character [{}] has task [{}] which does not exist", character_id, task_id);
-			cts->m_active_tasks[task_index].task_id = TASKSLOTEMPTY;
-			continue;
-		}
-		for (int activity_index = 0; activity_index < task_data->activity_count; activity_index++) {
-			if (cts->m_active_tasks[task_index].activity[activity_index].activity_id != activity_index) {
-				client->Message(
-					Chat::Red,
-					"Active Task %i, %s. activity_information count does not match expected value."
-					"Removing from memory. Contact a GM to resolve this.",
-					task_id, task_data->title.c_str()
-				);
-
-				LogTasks(
-					"Fatal error in character [{}] task state. activity_information [{}] for Task [{}] either missing from client state or from task",
-					character_id,
-					activity_index,
-					task_id
-				);
-				cts->m_active_tasks[task_index].task_id = TASKSLOTEMPTY;
-				break;
-			}
 		}
 	}
 

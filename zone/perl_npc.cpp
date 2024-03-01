@@ -86,19 +86,19 @@ void Perl_NPC_RemoveItem(NPC* self, uint32 item_id, uint16 quantity, uint16 slot
 	self->RemoveItem(item_id, quantity, slot_id);
 }
 
-void Perl_NPC_ClearItemList(NPC* self) // @categories Inventory and Items
+void Perl_NPC_ClearLootItems(NPC* self) // @categories Inventory and Items
 {
-	self->ClearItemList();
+	self->ClearLootItems();
 }
 
-void Perl_NPC_AddCash(NPC* self, uint16 copper, uint16 silver, uint16 gold, uint16 platinum) // @categories Currency and Points
+void Perl_NPC_AddLootCash(NPC* self, uint32 copper, uint32 silver, uint32 gold, uint32 platinum) // @categories Currency and Points
 {
-	self->AddCash(copper, silver, gold, platinum);
+	self->AddLootCash(copper, silver, gold, platinum);
 }
 
-void Perl_NPC_RemoveCash(NPC* self) // @categories Currency and Points
+void Perl_NPC_RemoveLootCash(NPC* self) // @categories Currency and Points
 {
-	self->RemoveCash();
+	self->RemoveLootCash();
 }
 
 uint32_t Perl_NPC_CountLoot(NPC* self) // @categories Inventory and Items
@@ -204,6 +204,7 @@ bool Perl_NPC_IsOnHatelist(NPC* self, Mob* mob) // @categories Hate and Aggro
 void Perl_NPC_RemoveFromHateList(NPC* self, Mob* mob) // @categories Hate and Aggro
 {
 	self->RemoveFromHateList(mob);
+	self->RemoveFromRampageList(mob);
 }
 
 void Perl_NPC_SetNPCFactionID(NPC* self, int faction_id) // @categories Faction
@@ -619,14 +620,14 @@ int Perl_NPC_CountItem(NPC* self, uint32 item_id)
 	return self->CountItem(item_id);
 }
 
-uint32_t Perl_NPC_GetItemIDBySlot(NPC* self, uint16 loot_slot)
+uint32_t Perl_NPC_GetLootItemIDBySlot(NPC* self, uint16 loot_slot)
 {
-	return self->GetItemIDBySlot(loot_slot);
+	return self->GetLootItemIDBySlot(loot_slot);
 }
 
-int Perl_NPC_GetFirstSlotByItemID(NPC* self, uint32 item_id)
+int Perl_NPC_GetFirstLootSlotByItemID(NPC* self, uint32 item_id)
 {
-	return self->GetFirstSlotByItemID(item_id);
+	return self->GetFirstLootSlotByItemID(item_id);
 }
 
 float Perl_NPC_GetHealScale(NPC* self) // @categories Stats and Attributes
@@ -775,6 +776,22 @@ bool Perl_NPC_HasSpecialAbilities(NPC* self) // @categories Script Utility
 	return self->HasSpecialAbilities();
 }
 
+bool Perl_NPC_GetNPCAggro(NPC* self) // @categories Script Utility
+{
+	return self->GetNPCAggro();
+}
+
+void Perl_NPC_SetNPCAggro(NPC* self, bool in_npc_aggro) // @categories Script Utility
+{
+	self->SetNPCAggro(in_npc_aggro);
+}
+
+uint32 Perl_NPC_GetNPCSpellsEffectsID(NPC* self)
+{
+	return self->GetNPCSpellsEffectsID();
+}
+
+
 void perl_register_npc()
 {
 	perl::interpreter perl(PERL_GET_THX);
@@ -787,7 +804,7 @@ void perl_register_npc()
 	package.add("AddAISpell", (void(*)(NPC*, int16, uint16, uint32, int, int, int16))&Perl_NPC_AddSpellToNPCList);
 	package.add("AddAISpell", (void(*)(NPC*, int16, uint16, uint32, int, int, int16, int8, int8))&Perl_NPC_AddSpellToNPCList);
 	package.add("AddAISpellEffect", &Perl_NPC_AddAISpellEffect);
-	package.add("AddCash", &Perl_NPC_AddCash);
+	package.add("AddCash", &Perl_NPC_AddLootCash);
 	package.add("AddDefensiveProc", &Perl_NPC_AddDefensiveProc);
 	package.add("AddItem", (void(*)(NPC*, uint32))&Perl_NPC_AddItem);
 	package.add("AddItem", (void(*)(NPC*, uint32, uint16))&Perl_NPC_AddItem);
@@ -806,7 +823,7 @@ void perl_register_npc()
 	package.add("CalculateNewWaypoint", &Perl_NPC_CalculateNewWaypoint);
 	package.add("ChangeLastName", &Perl_NPC_ChangeLastName);
 	package.add("CheckNPCFactionAlly", &Perl_NPC_CheckNPCFactionAlly);
-	package.add("ClearItemList", &Perl_NPC_ClearItemList);
+	package.add("ClearItemList", &Perl_NPC_ClearLootItems);
 	package.add("ClearLastName", &Perl_NPC_ClearLastName);
 	package.add("CountItem", &Perl_NPC_CountItem);
 	package.add("CountLoot", &Perl_NPC_CountLoot);
@@ -818,14 +835,14 @@ void perl_register_npc()
 	package.add("GetAvoidanceRating", &Perl_NPC_GetAvoidanceRating);
 	package.add("GetCombatState", &Perl_NPC_GetCombatState);
 	package.add("GetCopper", &Perl_NPC_GetCopper);
-	package.add("GetFirstSlotByItemID", &Perl_NPC_GetFirstSlotByItemID);
+	package.add("GetFirstSlotByItemID", &Perl_NPC_GetFirstLootSlotByItemID);
 	package.add("GetGold", &Perl_NPC_GetGold);
 	package.add("GetGrid", &Perl_NPC_GetGrid);
 	package.add("GetGuardPointX", &Perl_NPC_GetGuardPointX);
 	package.add("GetGuardPointY", &Perl_NPC_GetGuardPointY);
 	package.add("GetGuardPointZ", &Perl_NPC_GetGuardPointZ);
 	package.add("GetHealScale", &Perl_NPC_GetHealScale);
-	package.add("GetItemIDBySlot", &Perl_NPC_GetItemIDBySlot);
+	package.add("GetItemIDBySlot", &Perl_NPC_GetLootItemIDBySlot);
 	package.add("GetKeepsSoldItems", &Perl_NPC_GetKeepsSoldItems);
 	package.add("GetLDoNLockedSkill", &Perl_NPC_GetLDoNLockedSkill);
 	package.add("GetLDoNTrapType", &Perl_NPC_GetLDoNTrapType);
@@ -836,8 +853,10 @@ void perl_register_npc()
 	package.add("GetMaxDamage", &Perl_NPC_GetMaxDamage);
 	package.add("GetMaxWp", &Perl_NPC_GetMaxWp);
 	package.add("GetMinDMG", &Perl_NPC_GetMinDMG);
+	package.add("GetNPCAggro", &Perl_NPC_GetNPCAggro);
 	package.add("GetNPCFactionID", &Perl_NPC_GetNPCFactionID);
 	package.add("GetNPCHate", &Perl_NPC_GetNPCHate);
+	package.add("GetNPCSpellsEffectsID", &Perl_NPC_GetNPCSpellsEffectsID);
 	package.add("GetNPCSpellsID", &Perl_NPC_GetNPCSpellsID);
 	package.add("GetNPCStat", &Perl_NPC_GetNPCStat);
 	package.add("GetPetSpellID", &Perl_NPC_GetPetSpellID);
@@ -887,7 +906,7 @@ void perl_register_npc()
 	package.add("ReloadSpells", &Perl_NPC_ReloadSpells);
 	package.add("RemoveAISpell", &Perl_NPC_RemoveSpellFromNPCList);
 	package.add("RemoveAISpellEffect", &Perl_NPC_RemoveAISpellEffect);
-	package.add("RemoveCash", &Perl_NPC_RemoveCash);
+	package.add("RemoveCash", &Perl_NPC_RemoveLootCash);
 	package.add("RemoveDefensiveProc", &Perl_NPC_RemoveDefensiveProc);
 	package.add("RemoveFromHateList", &Perl_NPC_RemoveFromHateList);
 	package.add("RemoveItem", (void(*)(NPC*, uint32))&Perl_NPC_RemoveItem);
@@ -911,6 +930,7 @@ void perl_register_npc()
 	package.add("SetLDoNTrapDetected", &Perl_NPC_SetLDoNTrapDetected);
 	package.add("SetLDoNTrapSpellID", &Perl_NPC_SetLDoNTrapSpellID);
 	package.add("SetLDoNTrapType", &Perl_NPC_SetLDoNTrapType);
+	package.add("SetNPCAggro", &Perl_NPC_SetNPCAggro);
 	package.add("SetGold", &Perl_NPC_SetGold);
 	package.add("SetGrid", &Perl_NPC_SetGrid);
 	package.add("SetNPCFactionID", &Perl_NPC_SetNPCFactionID);

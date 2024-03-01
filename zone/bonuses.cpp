@@ -117,7 +117,7 @@ void Client::CalcBonuses()
 
 	// hmm maybe a better way to do this
 	int metabolism = spellbonuses.Metabolism + itembonuses.Metabolism + aabonuses.Metabolism;
-	int timer = GetClass() == MONK ? CONSUMPTION_MNK_TIMER : CONSUMPTION_TIMER;
+	int timer = GetClass() == Class::Monk ? CONSUMPTION_MNK_TIMER : CONSUMPTION_TIMER;
 	timer = timer * (100 + metabolism) / 100;
 	if (timer != consume_food_timer.GetTimerTime())
 		consume_food_timer.SetTimer(timer);
@@ -185,6 +185,17 @@ void Mob::CalcItemBonuses(StatBonuses* b) {
 	if (IsOfClientBot()) {
 		for (i = EQ::invslot::TRIBUTE_BEGIN; i <= EQ::invslot::TRIBUTE_END; i++) {
 			const EQ::ItemInstance* inst = m_inv[i];
+			if (!inst) {
+				continue;
+			}
+
+			AddItemBonuses(inst, b, false, true);
+		}
+	}
+
+	if (IsOfClientBot()) {
+		for (i = EQ::invslot::GUILD_TRIBUTE_BEGIN; i <= EQ::invslot::GUILD_TRIBUTE_END; i++) {
+			const auto* inst = GetInv().GetItem(i);
 			if (!inst) {
 				continue;
 			}
@@ -2053,7 +2064,7 @@ void Mob::CalcSpellBonuses(StatBonuses* newbon)
 		}
 	}
 
-	if (GetClass() == BARD)
+	if (GetClass() == Class::Bard)
 		newbon->ManaRegen = 0; // Bards do not get mana regen from spells.
 }
 

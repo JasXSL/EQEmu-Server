@@ -173,7 +173,8 @@ EQ::ItemInstance* EQ::InventoryProfile::GetItem(int16 slot_id) const
 		result = _GetItem(m_inv, slot_id);
 	}
 	else if ((slot_id >= invslot::EQUIPMENT_BEGIN && slot_id <= invslot::EQUIPMENT_END) ||
-		(slot_id >= invslot::TRIBUTE_BEGIN && slot_id <= invslot::TRIBUTE_END)) {
+		(slot_id >= invslot::TRIBUTE_BEGIN && slot_id <= invslot::TRIBUTE_END) ||
+		(slot_id >= invslot::GUILD_TRIBUTE_BEGIN && slot_id <= invslot::GUILD_TRIBUTE_END)) {
 		// Equippable slots (on body)
 		result = _GetItem(m_worn, slot_id);
 	}
@@ -462,6 +463,10 @@ EQ::ItemInstance* EQ::InventoryProfile::PopItem(int16 slot_id)
 		m_inv.erase(slot_id);
 	}
 	else if (slot_id >= invslot::TRIBUTE_BEGIN && slot_id <= invslot::TRIBUTE_END) {
+		p = m_worn[slot_id];
+		m_worn.erase(slot_id);
+	}
+	else if (slot_id >= invslot::GUILD_TRIBUTE_BEGIN && slot_id <= invslot::GUILD_TRIBUTE_END) {
 		p = m_worn[slot_id];
 		m_worn.erase(slot_id);
 	}
@@ -801,34 +806,35 @@ int16 EQ::InventoryProfile::HasItemByLoreGroup(uint32 loregroup, uint8 where)
 // Returns slot_id when there's one available, else SLOT_INVALID
 int16 EQ::InventoryProfile::FindFreeSlot(bool for_bag, bool try_cursor, uint8 min_size, bool is_arrow)
 {
-	// Check basic inventory
-	for (int16 i = invslot::GENERAL_BEGIN; i <= invslot::GENERAL_END; i++) {
-		if ((((uint64)1 << i) & m_lookup->PossessionsBitmask) == 0)
-			continue;
+	const int16 last_bag_slot = (RuleI(World, ExpansionSettings) == -1 || RuleI(World, ExpansionSettings) & EQ::expansions::bitHoT) ? EQ::invslot::slotGeneral10 : EQ::invslot::slotGeneral8;
 
-		if (!GetItem(i))
-			// Found available slot in personal inventory
-			return i;
+	for (int16 i = invslot::GENERAL_BEGIN; i <= last_bag_slot; i++) { // Check basic inventory
+		if ((((uint64) 1 << i) & m_lookup->PossessionsBitmask) == 0) {
+			continue;
+		}
+
+		if (!GetItem(i)) {
+			return i; // Found available slot in personal inventory
+		}
 	}
 
 	if (!for_bag) {
-		for (int16 i = invslot::GENERAL_BEGIN; i <= invslot::GENERAL_END; i++) {
-			if ((((uint64)1 << i) & m_lookup->PossessionsBitmask) == 0)
+		for (int16 i = invslot::GENERAL_BEGIN; i <= last_bag_slot; i++) {
+			if ((((uint64) 1 << i) & m_lookup->PossessionsBitmask) == 0) {
 				continue;
+			}
 
-			const ItemInstance* inst = GetItem(i);
-			if (inst && inst->IsClassBag() && inst->GetItem()->BagSize >= min_size)
-			{
-				if (inst->GetItem()->BagType == item::BagTypeQuiver && inst->GetItem()->ItemType != item::ItemTypeArrow)
-				{
+			const auto *inst = GetItem(i);
+			if (inst && inst->IsClassBag() && inst->GetItem()->BagSize >= min_size) {
+				if (inst->GetItem()->BagType == item::BagTypeQuiver &&
+					inst->GetItem()->ItemType != item::ItemTypeArrow) {
 					continue;
 				}
 
-				int16 base_slot_id = InventoryProfile::CalcSlotId(i, invbag::SLOT_BEGIN);
+				const int16 base_slot_id = InventoryProfile::CalcSlotId(i, invbag::SLOT_BEGIN);
 
-				uint8 slots = inst->GetItem()->BagSlots;
-				uint8 j;
-				for (j = invbag::SLOT_BEGIN; j<slots; j++) {
+				const uint8 slots = inst->GetItem()->BagSlots;
+				for (uint8 j = invbag::SLOT_BEGIN; j < slots; j++) {
 					if (!GetItem(base_slot_id + j)) {
 						// Found available slot within bag
 						return (base_slot_id + j);
@@ -1415,6 +1421,10 @@ int16 EQ::InventoryProfile::_PutItem(int16 slot_id, ItemInstance* inst)
 		}
 	}
 	else if (slot_id >= invslot::TRIBUTE_BEGIN && slot_id <= invslot::TRIBUTE_END) {
+		m_worn[slot_id] = inst;
+		result = slot_id;
+	}
+	else if (slot_id >= invslot::GUILD_TRIBUTE_BEGIN && slot_id <= invslot::GUILD_TRIBUTE_END) {
 		m_worn[slot_id] = inst;
 		result = slot_id;
 	}

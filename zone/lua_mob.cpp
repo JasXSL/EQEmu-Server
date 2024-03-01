@@ -270,9 +270,9 @@ void Lua_Mob::ChangeSize(double in_size) {
 	self->ChangeSize(static_cast<float>(in_size));
 }
 
-void Lua_Mob::ChangeSize(double in_size, bool no_restriction) {
+void Lua_Mob::ChangeSize(double in_size, bool unrestricted) {
 	Lua_Safe_Call_Void();
-	self->ChangeSize(static_cast<float>(in_size), no_restriction);
+	self->ChangeSize(static_cast<float>(in_size), unrestricted);
 }
 
 void Lua_Mob::GMMove(double x, double y, double z) {
@@ -788,9 +788,9 @@ void Lua_Mob::Say(const char *message) {
 	self->Say(message);
 }
 
-void Lua_Mob::Say(const char* message, int language) {
+void Lua_Mob::Say(const char* message, uint8 language_id) {
 	Lua_Safe_Call_Void();
-	entity_list.ChannelMessage(self, ChatChannel_Say, language, message); // these run through the client channels and probably shouldn't for NPCs, but oh well
+	entity_list.ChannelMessage(self, ChatChannel_Say, language_id, message); // these run through the client channels and probably shouldn't for NPCs, but oh well
 }
 
 void Lua_Mob::QuestSay(Lua_Client client, const char *message) {
@@ -798,7 +798,7 @@ void Lua_Mob::QuestSay(Lua_Client client, const char *message) {
 	Journal::Options journal_opts;
 	journal_opts.speak_mode = Journal::SpeakMode::Say;
 	journal_opts.journal_mode = RuleB(NPC, EnableNPCQuestJournal) ? Journal::Mode::Log2 : Journal::Mode::None;
-	journal_opts.language = 0;
+	journal_opts.language = Language::CommonTongue;
 	journal_opts.message_type = Chat::NPCQuestSay;
 	journal_opts.target_spawn_id = 0;
 	self->QuestJournalledSay(client, message, journal_opts);
@@ -811,7 +811,7 @@ void Lua_Mob::QuestSay(Lua_Client client, const char *message, luabind::adl::obj
 	// defaults
 	journal_opts.speak_mode = Journal::SpeakMode::Say;
 	journal_opts.journal_mode = Journal::Mode::Log2;
-	journal_opts.language = 0;
+	journal_opts.language = Language::CommonTongue;
 	journal_opts.message_type = Chat::NPCQuestSay;
 	journal_opts.target_spawn_id = 0;
 
@@ -861,9 +861,9 @@ void Lua_Mob::Shout(const char *message) {
 	self->Shout(message);
 }
 
-void Lua_Mob::Shout(const char* message, int language) {
+void Lua_Mob::Shout(const char* message, uint8 language_id) {
 	Lua_Safe_Call_Void();
-	entity_list.ChannelMessage(self, ChatChannel_Shout, language, message);
+	entity_list.ChannelMessage(self, ChatChannel_Shout, language_id, message);
 }
 
 void Lua_Mob::Emote(const char *message) {
@@ -1013,6 +1013,21 @@ Lua_HateList Lua_Mob::GetShuffledHateList() {
 Lua_Mob Lua_Mob::GetHateTop() {
 	Lua_Safe_Call_Class(Lua_Mob);
 	return Lua_Mob(self->GetHateTop());
+}
+
+Lua_Bot Lua_Mob::GetHateTopBot() {
+	Lua_Safe_Call_Class(Lua_Bot);
+	return Lua_Bot(self->GetHateTopBot());
+}
+
+Lua_Client Lua_Mob::GetHateTopClient() {
+	Lua_Safe_Call_Class(Lua_Client);
+	return Lua_Client(self->GetHateTopClient());
+}
+
+Lua_NPC Lua_Mob::GetHateTopNPC() {
+	Lua_Safe_Call_Class(Lua_NPC);
+	return Lua_NPC(self->GetHateTopNPC());
 }
 
 Lua_Mob Lua_Mob::GetHateDamageTop(Lua_Mob other) {
@@ -3186,6 +3201,72 @@ uint32 Lua_Mob::GetMobTypeIdentifier()
 	return self->GetMobTypeIdentifier();
 }
 
+uint32 Lua_Mob::GetHateListCount()
+{
+	Lua_Safe_Call_Int();
+	return self->GetHateListCount();
+}
+
+uint32 Lua_Mob::GetHateListBotCount()
+{
+	Lua_Safe_Call_Int();
+	return self->GetHateListCount(HateListCountType::Bot);
+}
+
+uint32 Lua_Mob::GetHateListClientCount()
+{
+	Lua_Safe_Call_Int();
+	return self->GetHateListCount(HateListCountType::Client);
+}
+
+uint32 Lua_Mob::GetHateListNPCCount()
+{
+	Lua_Safe_Call_Int();
+	return self->GetHateListCount(HateListCountType::NPC);
+}
+
+bool Lua_Mob::IsAnimation()
+{
+	Lua_Safe_Call_Bool();
+	return self->IsAnimation();
+}
+
+bool Lua_Mob::IsCharmed()
+{
+	Lua_Safe_Call_Bool();
+	return self->IsCharmed();
+}
+
+bool Lua_Mob::IsFamiliar()
+{
+	Lua_Safe_Call_Bool();
+	return self->IsFamiliar();
+}
+
+bool Lua_Mob::IsTargetLockPet()
+{
+	Lua_Safe_Call_Bool();
+	return self->IsTargetLockPet();
+}
+
+bool Lua_Mob::IsPetOwnerBot()
+{
+	Lua_Safe_Call_Bool();
+	return self->IsPetOwnerBot();
+}
+
+bool Lua_Mob::IsPetOwnerClient()
+{
+	Lua_Safe_Call_Bool();
+	return self->IsPetOwnerClient();
+}
+
+bool Lua_Mob::IsPetOwnerNPC()
+{
+	Lua_Safe_Call_Bool();
+	return self->IsPetOwnerNPC();
+}
+
 luabind::scope lua_register_mob() {
 	return luabind::class_<Lua_Mob, Lua_Entity>("Mob")
 	.def(luabind::constructor<>())
@@ -3445,17 +3526,24 @@ luabind::scope lua_register_mob() {
 	.def("GetHateList", &Lua_Mob::GetHateList)
 	.def("GetHateListBots", (Lua_HateList(Lua_Mob::*)(void))&Lua_Mob::GetHateListBots)
 	.def("GetHateListBots", (Lua_HateList(Lua_Mob::*)(uint32))&Lua_Mob::GetHateListBots)
+	.def("GetHateListBotCount", &Lua_Mob::GetHateListBotCount)
 	.def("GetHateListClients", (Lua_HateList(Lua_Mob::*)(void))&Lua_Mob::GetHateListClients)
 	.def("GetHateListClients", (Lua_HateList(Lua_Mob::*)(uint32))&Lua_Mob::GetHateListClients)
+	.def("GetHateListClientCount", &Lua_Mob::GetHateListClientCount)
 	.def("GetHateListNPCs", (Lua_HateList(Lua_Mob::*)(void))&Lua_Mob::GetHateListNPCs)
 	.def("GetHateListNPCs", (Lua_HateList(Lua_Mob::*)(uint32))&Lua_Mob::GetHateListNPCs)
+	.def("GetHateListNPCCount", &Lua_Mob::GetHateListNPCCount)
 	.def("GetHateListByDistance", (Lua_HateList(Lua_Mob::*)(void))&Lua_Mob::GetHateListByDistance)
 	.def("GetHateListByDistance", (Lua_HateList(Lua_Mob::*)(uint32))&Lua_Mob::GetHateListByDistance)
+	.def("GetHateListCount", &Lua_Mob::GetHateListCount)
 	.def("GetHateRandom", (Lua_Mob(Lua_Mob::*)(void))&Lua_Mob::GetHateRandom)
 	.def("GetHateRandomBot", (Lua_Bot(Lua_Mob::*)(void))&Lua_Mob::GetHateRandomBot)
 	.def("GetHateRandomClient", (Lua_Client(Lua_Mob::*)(void))&Lua_Mob::GetHateRandomClient)
 	.def("GetHateRandomNPC", (Lua_NPC(Lua_Mob::*)(void))&Lua_Mob::GetHateRandomNPC)
 	.def("GetHateTop", (Lua_Mob(Lua_Mob::*)(void))&Lua_Mob::GetHateTop)
+	.def("GetHateTopBot", (Lua_Bot(Lua_Mob::*)(void))&Lua_Mob::GetHateTopBot)
+	.def("GetHateTopClient", (Lua_Client(Lua_Mob::*)(void))&Lua_Mob::GetHateTopClient)
+	.def("GetHateTopNPC", (Lua_NPC(Lua_Mob::*)(void))&Lua_Mob::GetHateTopNPC)
 	.def("GetHeading", &Lua_Mob::GetHeading)
 	.def("GetHelmTexture", &Lua_Mob::GetHelmTexture)
 	.def("GetHerosForgeModel", (int32(Lua_Mob::*)(uint8))&Lua_Mob::GetHerosForgeModel)
@@ -3555,15 +3643,18 @@ luabind::scope lua_register_mob() {
 	.def("InterruptSpell", (void(Lua_Mob::*)(void))&Lua_Mob::InterruptSpell)
 	.def("IsAIControlled", (bool(Lua_Mob::*)(void))&Lua_Mob::IsAIControlled)
 	.def("IsAmnesiad", (bool(Lua_Mob::*)(void))&Lua_Mob::IsAmnesiad)
+	.def("IsAnimation", &Lua_Mob::IsAnimation)
 	.def("IsAttackAllowed", (bool(Lua_Mob::*)(Lua_Mob))&Lua_Mob::IsAttackAllowed)
 	.def("IsAttackAllowed", (bool(Lua_Mob::*)(Lua_Mob,bool))&Lua_Mob::IsAttackAllowed)
 	.def("IsBeneficialAllowed", (bool(Lua_Mob::*)(Lua_Mob))&Lua_Mob::IsBeneficialAllowed)
 	.def("IsBerserk", &Lua_Mob::IsBerserk)
 	.def("IsBlind", (bool(Lua_Mob::*)(void))&Lua_Mob::IsBlind)
 	.def("IsCasting", &Lua_Mob::IsCasting)
+	.def("IsCharmed", &Lua_Mob::IsCharmed)
 	.def("IsEliteMaterialItem", (uint32(Lua_Mob::*)(uint8))&Lua_Mob::IsEliteMaterialItem)
 	.def("IsEngaged", (bool(Lua_Mob::*)(void))&Lua_Mob::IsEngaged)
 	.def("IsEnraged", (bool(Lua_Mob::*)(void))&Lua_Mob::IsEnraged)
+	.def("IsFamiliar", &Lua_Mob::IsFamiliar)
 	.def("IsFeared", (bool(Lua_Mob::*)(void))&Lua_Mob::IsFeared)
 	.def("IsFindable", (bool(Lua_Mob::*)(void))&Lua_Mob::IsFindable)
 	.def("IsHorse", &Lua_Mob::IsHorse)
@@ -3575,6 +3666,9 @@ luabind::scope lua_register_mob() {
 	.def("IsMoving", &Lua_Mob::IsMoving)
 	.def("IsPausedTimer", &Lua_Mob::IsPausedTimer)
 	.def("IsPet", (bool(Lua_Mob::*)(void))&Lua_Mob::IsPet)
+	.def("IsPetOwnerBot", &Lua_Mob::IsPetOwnerBot)
+	.def("IsPetOwnerClient", &Lua_Mob::IsPetOwnerClient)
+	.def("IsPetOwnerNPC", &Lua_Mob::IsPetOwnerNPC)
 	.def("IsRoamer", (bool(Lua_Mob::*)(void))&Lua_Mob::IsRoamer)
 	.def("IsRooted", (bool(Lua_Mob::*)(void))&Lua_Mob::IsRooted)
 	.def("IsRunning", (bool(Lua_Mob::*)(void))&Lua_Mob::IsRunning)
@@ -3582,6 +3676,7 @@ luabind::scope lua_register_mob() {
 	.def("IsStunned", (bool(Lua_Mob::*)(void))&Lua_Mob::IsStunned)
 	.def("IsTargetable", (bool(Lua_Mob::*)(void))&Lua_Mob::IsTargetable)
 	.def("IsTargeted", &Lua_Mob::IsTargeted)
+	.def("IsTargetLockPet", &Lua_Mob::IsTargetLockPet)
 	.def("IsTemporaryPet", &Lua_Mob::IsTemporaryPet)
 	.def("IsTrackable", (bool(Lua_Mob::*)(void))&Lua_Mob::IsTrackable)
 	.def("IsWarriorClass", &Lua_Mob::IsWarriorClass)
@@ -3620,7 +3715,7 @@ luabind::scope lua_register_mob() {
 	.def("ResumeTimer", &Lua_Mob::ResumeTimer)
 	.def("RunTo", (void(Lua_Mob::*)(double, double, double))&Lua_Mob::RunTo)
 	.def("Say", (void(Lua_Mob::*)(const char*))& Lua_Mob::Say)
-	.def("Say", (void(Lua_Mob::*)(const char*, int))& Lua_Mob::Say)
+	.def("Say", (void(Lua_Mob::*)(const char*, uint8))& Lua_Mob::Say)
 	.def("SeeHide", (bool(Lua_Mob::*)(void))&Lua_Mob::SeeHide)
 	.def("SeeImprovedHide", (bool(Lua_Mob::*)(bool))&Lua_Mob::SeeImprovedHide)
 	.def("SeeInvisible", (uint8(Lua_Mob::*)(void))&Lua_Mob::SeeInvisible)
@@ -3687,7 +3782,7 @@ luabind::scope lua_register_mob() {
 	.def("StopAllTimers", &Lua_Mob::StopAllTimers)
 	.def("StopTimer", &Lua_Mob::StopTimer)
 	.def("Shout", (void(Lua_Mob::*)(const char*))& Lua_Mob::Shout)
-	.def("Shout", (void(Lua_Mob::*)(const char*, int))& Lua_Mob::Shout)
+	.def("Shout", (void(Lua_Mob::*)(const char*, uint8))& Lua_Mob::Shout)
 	.def("Signal", (void(Lua_Mob::*)(int))&Lua_Mob::Signal)
 	.def("SpellEffect", &Lua_Mob::SpellEffect)
 	.def("SpellFinished", (bool(Lua_Mob::*)(int,Lua_Mob))&Lua_Mob::SpellFinished)

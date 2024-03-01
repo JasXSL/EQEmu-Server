@@ -1,5 +1,4 @@
 #include "../common/features.h"
-#include "../common/languages.h"
 #include "client.h"
 
 #ifdef EMBPERL_XS_CLASSES
@@ -21,12 +20,12 @@ void Perl_QuestItem_SetScale(EQ::ItemInstance* self, float scale_multiplier) // 
 
 void Perl_QuestItem_ItemSay(EQ::ItemInstance* self, const char* text) // @categories Inventory and Items
 {
-	quest_manager.GetInitiator()->ChannelMessageSend(self->GetItem()->Name, 0, ChatChannel_Say, LANG_COMMON_TONGUE, MAX_LANGUAGE_SKILL, text);
+	quest_manager.GetInitiator()->ChannelMessageSend(self->GetItem()->Name, 0, ChatChannel_Say, Language::CommonTongue, Language::MaxValue, text);
 }
 
 void Perl_QuestItem_ItemSay(EQ::ItemInstance* self, const char* text, uint8 language_id) // @categories Inventory and Items
 {
-	quest_manager.GetInitiator()->ChannelMessageSend(self->GetItem()->Name, 0, ChatChannel_Say, language_id, MAX_LANGUAGE_SKILL, text);
+	quest_manager.GetInitiator()->ChannelMessageSend(self->GetItem()->Name, 0, ChatChannel_Say, language_id, Language::MaxValue, text);
 }
 
 bool Perl_QuestItem_IsType(EQ::ItemInstance* self, int type) // @categories Inventory and Items
@@ -276,6 +275,20 @@ EQ::ItemData* Perl_QuestItem_GetUnscaledItem(EQ::ItemInstance* self) {
 	return const_cast<EQ::ItemData*>(self->GetUnscaledItem());
 }
 
+perl::array Perl_QuestItem_GetAugmentIDs(EQ::ItemInstance* self)
+{
+	perl::array result;
+
+	const auto& augment_ids = self->GetAugmentIDs();
+
+	for (int i = 0; i < augment_ids.size(); i++) {
+		result.push_back(augment_ids[i]);
+	}
+
+	return result;
+}
+
+
 void perl_register_questitem()
 {
 	perl::interpreter perl(PERL_GET_THX);
@@ -288,6 +301,7 @@ void perl_register_questitem()
 	package.add("CountAugmentByID", &Perl_QuestItem_CountAugmentByID);
 	package.add("DeleteCustomData", &Perl_QuestItem_DeleteCustomData);
 	package.add("GetAugment", &Perl_QuestItem_GetAugment);
+	package.add("GetAugmentIDs", &Perl_QuestItem_GetAugmentIDs);
 	package.add("GetAugmentItemID", &Perl_QuestItem_GetAugmentItemID);
 	package.add("GetAugmentType", &Perl_QuestItem_GetAugmentType);
 	package.add("GetCharges", &Perl_QuestItem_GetCharges);

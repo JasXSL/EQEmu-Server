@@ -1161,7 +1161,7 @@ void Expedition::AddLockoutByCharacterName(
 {
 	if (!character_name.empty())
 	{
-		uint32_t character_id = database.GetCharacterID(character_name.c_str());
+		uint32_t character_id = database.GetCharacterID(character_name);
 		AddLockoutByCharacterID(character_id, expedition_name, event_name, seconds, uuid);
 	}
 }
@@ -1171,7 +1171,7 @@ bool Expedition::HasLockoutByCharacterID(
 {
 	auto lockouts = Expedition::GetExpeditionLockoutsByCharacterID(character_id);
 	return std::any_of(lockouts.begin(), lockouts.end(), [&](const ExpeditionLockoutTimer& lockout) {
-		return lockout.IsSameLockout(expedition_name, event_name);
+		return !lockout.IsExpired() && lockout.IsSameLockout(expedition_name, event_name);
 	});
 }
 
@@ -1180,7 +1180,7 @@ bool Expedition::HasLockoutByCharacterName(
 {
 	if (!character_name.empty())
 	{
-		uint32_t character_id = database.GetCharacterID(character_name.c_str());
+		uint32_t character_id = database.GetCharacterID(character_name);
 		return HasLockoutByCharacterID(character_id, expedition_name, event_name);
 	}
 	return false;
@@ -1214,7 +1214,7 @@ void Expedition::RemoveLockoutsByCharacterName(
 {
 	if (!character_name.empty())
 	{
-		uint32_t character_id = database.GetCharacterID(character_name.c_str());
+		uint32_t character_id = database.GetCharacterID(character_name);
 		RemoveLockoutsByCharacterID(character_id, expedition_name, event_name);
 	}
 }

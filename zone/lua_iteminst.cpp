@@ -3,7 +3,6 @@
 #include <luabind/luabind.hpp>
 #include <luabind/object.hpp>
 
-#include "../common/languages.h"
 #include "masterentity.h"
 #include "lua_iteminst.h"
 #include "lua_item.h"
@@ -309,13 +308,33 @@ std::string Lua_ItemInst::GetName() {
 void Lua_ItemInst::ItemSay(const char* text) // @categories Inventory and Items
 {
 	Lua_Safe_Call_Void();
-	quest_manager.GetInitiator()->ChannelMessageSend(self->GetItem()->Name, 0, ChatChannel_Say, LANG_COMMON_TONGUE, MAX_LANGUAGE_SKILL, text);
+	quest_manager.GetInitiator()->ChannelMessageSend(self->GetItem()->Name, 0, ChatChannel_Say, Language::CommonTongue, Language::MaxValue, text);
 }
 
 void Lua_ItemInst::ItemSay(const char* text, uint8 language_id) // @categories Inventory and Items
 {
 	Lua_Safe_Call_Void();
-	quest_manager.GetInitiator()->ChannelMessageSend(self->GetItem()->Name, 0, ChatChannel_Say, language_id, MAX_LANGUAGE_SKILL, text);
+	quest_manager.GetInitiator()->ChannelMessageSend(self->GetItem()->Name, 0, ChatChannel_Say, language_id, Language::MaxValue, text);
+}
+
+luabind::object Lua_ItemInst::GetAugmentIDs(lua_State* L)
+{
+	auto lua_table = luabind::newtable(L);
+
+	if (d_) {
+		auto self = reinterpret_cast<NativeType*>(d_);
+
+		const auto& augment_ids = self->GetAugmentIDs();
+
+		int index = 1;
+
+		for (auto augment_id : augment_ids) {
+			lua_table[index] = augment_id;
+			index++;
+		}
+	}
+
+	return lua_table;
 }
 
 luabind::scope lua_register_iteminst() {
@@ -332,6 +351,7 @@ luabind::scope lua_register_iteminst() {
 	.def("CountAugmentByID", (int(Lua_ItemInst::*)(uint32))&Lua_ItemInst::CountAugmentByID)
 	.def("DeleteCustomData", (void(Lua_ItemInst::*)(const std::string &))&Lua_ItemInst::DeleteCustomData)
 	.def("GetAugment", (Lua_ItemInst(Lua_ItemInst::*)(int))&Lua_ItemInst::GetAugment)
+	.def("GetAugmentIDs", (luabind::object(Lua_ItemInst::*)(lua_State*))&Lua_ItemInst::GetAugmentIDs)
 	.def("GetAugmentItemID", (uint32(Lua_ItemInst::*)(int))&Lua_ItemInst::GetAugmentItemID)
 	.def("GetAugmentType", (int(Lua_ItemInst::*)(void))&Lua_ItemInst::GetAugmentType)
 	.def("GetCharges", (int(Lua_ItemInst::*)(void))&Lua_ItemInst::GetCharges)
