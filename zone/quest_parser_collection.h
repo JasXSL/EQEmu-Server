@@ -158,6 +158,7 @@ private:
 	bool PlayerHasEncounterSub(QuestEventID event_id);
 	bool SpellHasEncounterSub(uint32 spell_id, QuestEventID event_id);
 	bool ItemHasEncounterSub(EQ::ItemInstance* inst, QuestEventID event_id);
+	bool BotHasEncounterSub(QuestEventID event_id);
 	bool HasEncounterSub(QuestEventID event_id, const std::string& package_name);
 	bool BotHasQuestSubLocal(QuestEventID event_id);
 	bool BotHasQuestSubGlobal(QuestEventID event_id);

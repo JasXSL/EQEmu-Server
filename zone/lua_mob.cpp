@@ -2266,6 +2266,16 @@ bool Lua_Mob::HasOwner() {
 	return self->HasOwner();
 }
 
+bool Lua_Mob::IsRaidGrouped() {
+	Lua_Safe_Call_Bool();
+	return self->IsRaidGrouped();
+}
+bool Lua_Mob::HasRaid() {
+	Lua_Safe_Call_Bool();
+	return self->HasRaid();
+}
+
+
 bool Lua_Mob::IsPet() {
 	Lua_Safe_Call_Bool();
 	return self->IsPet();

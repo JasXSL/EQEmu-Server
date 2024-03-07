@@ -205,6 +205,18 @@ void unregister_npc_event(int evt, int npc_id) {
 	unregister_npc_event(name, evt, npc_id);
 }
 
+
+void register_bot_event(std::string name, int evt, luabind::adl::object func) {
+	if(luabind::type(func) == LUA_TFUNCTION) {
+		register_event("bot", name, evt, func);
+	}
+}
+
+void unregister_bot_event(std::string name, int evt) {
+	unregister_event("bot", name, evt);
+}
+
+
 void register_player_event(std::string name, int evt, luabind::adl::object func) {
 	if(luabind::type(func) == LUA_TFUNCTION) {
 		register_event("player", name, evt, func);
@@ -5664,6 +5676,8 @@ luabind::scope lua_register_general() {
 		luabind::def("register_npc_event", (void(*)(int, int, luabind::adl::object))&register_npc_event),
 		luabind::def("unregister_npc_event", (void(*)(std::string, int, int))&unregister_npc_event),
 		luabind::def("unregister_npc_event", (void(*)(int, int))&unregister_npc_event),
+		luabind::def("register_bot_event", (void(*)(std::string, int, luabind::adl::object))&register_bot_event),
+		luabind::def("unregister_bot_event", (void(*)(std::string, int))&unregister_bot_event),
 		luabind::def("register_player_event", (void(*)(std::string, int, luabind::adl::object))&register_player_event),
 		luabind::def("register_player_event", (void(*)(int, luabind::adl::object))&register_player_event),
 		luabind::def("unregister_player_event", (void(*)(std::string, int))&unregister_player_event),

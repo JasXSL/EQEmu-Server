@@ -65,6 +65,7 @@ Bot::Bot(NPCType *npcTypeData, Client* botOwner) : NPC(npcTypeData, nullptr, glm
 	_baseATK = npcTypeData->ATK;
 	_baseRace = npcTypeData->race;
 	_baseGender = npcTypeData->gender;
+	_temp = false;
 	RestRegenHP = 0;
 	RestRegenMana = 0;
 	RestRegenEndurance = 0;
@@ -167,6 +168,7 @@ Bot::Bot(
 	_baseATK = npcTypeData->ATK;
 	_baseRace = npcTypeData->race;
 	_baseGender = npcTypeData->gender;
+	_temp = false;
 	current_hp = npcTypeData->current_hp;
 	current_mana = npcTypeData->Mana;
 	RestRegenHP = 0;
@@ -546,6 +548,13 @@ uint32 Bot::GetBotArcheryRange() {
 
 	// everything is good!
 	return (range_item->Range + ammo_item->Range);
+}
+
+void Bot::SetTemp(bool temp) {
+	if (temp && !_temp) {
+		SetID(GetNextTmpBotId());
+	}
+	_temp = temp;
 }
 
 void Bot::ChangeBotArcherWeapons(bool isArcher) {
@@ -1320,6 +1329,9 @@ bool Bot::Save()
 {
 	auto bot_owner = GetBotOwner();
 	if (!bot_owner)
+		return false;
+
+	if( IsTemp() )
 		return false;
 
 	if (!GetBotID()) { // New bot record
@@ -3057,22 +3069,24 @@ bool Bot::Spawn(Client* botCharacterOwner) {
 		helmtexture = 0; //0xFF;
 		texture = 0; //0xFF;
 
-		if (Save()) {
-			GetBotOwner()->CastToClient()->Message(
-				Chat::White,
-				fmt::format(
-					"{} saved.",
-					GetCleanName()
-				).c_str()
-			);
-		} else {
-			GetBotOwner()->CastToClient()->Message(
-				Chat::White,
-				fmt::format(
-					"{} save failed!",
-					GetCleanName()
-				).c_str()
-			);
+		if (!IsTemp()) {
+			if (Save()) {
+				GetBotOwner()->CastToClient()->Message(
+					Chat::White,
+					fmt::format(
+						"{} saved.",
+						GetCleanName()
+					).c_str()
+				);
+			} else {
+				GetBotOwner()->CastToClient()->Message(
+					Chat::White,
+					fmt::format(
+						"{} save failed!",
+						GetCleanName()
+					).c_str()
+				);
+			}
 		}
 
 		// Spawn the bot at the bot owner's loc
@@ -3466,7 +3480,8 @@ void Bot::BotAddEquipItem(uint16 slot_id, uint32 item_id) {
 	// ..causing packets to be sent out to zone with an id of '0'
 	if (item_id) {
 
-		if (uint8 material_from_slot = EQ::InventoryProfile::CalcMaterialFromSlot(slot_id); material_from_slot != EQ::textures::materialInvalid) {
+		uint8 material_from_slot = EQ::InventoryProfile::CalcMaterialFromSlot(slot_id);
+		if (material_from_slot != EQ::textures::materialInvalid) {
 			equipment[slot_id] = item_id; // npc has more than just material slots. Valid material should mean valid inventory index
 			if (GetID()) { // temp hack fix
 				SendWearChange(material_from_slot);
@@ -3530,21 +3545,8 @@ void Bot::AddBotItem(
 	uint32 augment_five,
 	uint32 augment_six
 ) {
-	auto inst = database.CreateItem(
-		item_id,
-		charges,
-		augment_one,
-		augment_two,
-		augment_three,
-		augment_four,
-		augment_five,
-		augment_six,
-		attuned
-	);
-
-	if (!inst) {
-		LogError(
-			"Bot:AddItem Invalid Item data: ID [{}] Charges [{}] Aug1 [{}] Aug2 [{}] Aug3 [{}] Aug4 [{}] Aug5 [{}] Aug6 [{}] Attuned [{}]",
+	if (!IsTemp()) {
+		auto inst = database.CreateItem(
 			item_id,
 			charges,
 			augment_one,
@@ -3555,17 +3557,32 @@ void Bot::AddBotItem(
 			augment_six,
 			attuned
 		);
-		return;
-	}
 
-	if (!database.botdb.SaveItemBySlot(this, slot_id, inst)) {
-		LogError("Failed to save item by slot to slot [{}] for [{}].", slot_id, GetCleanName());
+		if (!inst) {
+			LogError(
+				"Bot:AddItem Invalid Item data: ID [{}] Charges [{}] Aug1 [{}] Aug2 [{}] Aug3 [{}] Aug4 [{}] Aug5 [{}] Aug6 [{}] Attuned [{}]",
+				item_id,
+				charges,
+				augment_one,
+				augment_two,
+				augment_three,
+				augment_four,
+				augment_five,
+				augment_six,
+				attuned
+			);
+			return;
+		}
+
+		if (!database.botdb.SaveItemBySlot(this, slot_id, inst)) {
+			LogError("Failed to save item by slot to slot [{}] for [{}].", slot_id, GetCleanName());
+			safe_delete(inst);
+			return;
+		}
+
+		m_inv.PutItem(slot_id, *inst);
 		safe_delete(inst);
-		return;
 	}
-
-	m_inv.PutItem(slot_id, *inst);
-	safe_delete(inst);
 
 	BotAddEquipItem(slot_id, item_id);
 }
@@ -3739,6 +3756,12 @@ void Bot::PerformTradeWithClient(int16 begin_slot_id, int16 end_slot_id, Client*
 
 	if (!client) {
 		Emote("NO CLIENT");
+		return;
+	}
+
+	if (IsTemp()) {
+		client->Message(Chat::White, "Cannot trade with temp bots.");
+		client->ResetTrade();
 		return;
 	}
 
@@ -8497,7 +8520,7 @@ bool Bot::CheckSpawnConditions(Client* c) {
 
 void Bot::AddBotStartingItems(uint16 race_id, uint8 class_id)
 {
-	if (!IsPlayerRace(race_id) || !IsPlayerClass(class_id)) {
+	if (!IsPlayerRace(race_id) || !IsPlayerClass(class_id) || IsTemp()) {
 		return;
 	}
 
@@ -9172,3 +9195,8 @@ void Bot::DoItemClick(const EQ::ItemData *item, uint16 slot_id)
 }
 
 uint8 Bot::spell_casting_chances[SPELL_TYPE_COUNT][Class::PLAYER_CLASS_COUNT][EQ::constants::STANCE_TYPE_COUNT][cntHSND] = { 0 };
+
+uint32_t Bot::GetNextTmpBotId(){
+	_tmp_bot_id++;
+	return 0xFFFFFFFF-_tmp_bot_id;
+}

@@ -577,6 +577,9 @@ public:
 	bool IsPetOwnerBot();
 	bool IsPetOwnerClient();
 	bool IsPetOwnerNPC();
+	bool IsRaidGrouped();
+	bool HasRaid();
+	
 };
 
 #endif

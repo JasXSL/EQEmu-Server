@@ -11,11 +11,13 @@
 #include "lua_mob.h"
 #include "lua_client.h"
 #include "lua_npc.h"
+#include "lua_bot.h"
 
 void Lua_Group::DisbandGroup() {
 	Lua_Safe_Call_Void();
 	self->DisbandGroup();
 }
+
 
 bool Lua_Group::IsGroupMember(const char* name) {
 	Lua_Safe_Call_Bool();

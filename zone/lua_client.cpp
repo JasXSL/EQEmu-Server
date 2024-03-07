@@ -15,8 +15,10 @@
 #include "lua_group.h"
 #include "lua_raid.h"
 #include "lua_packet.h"
+#include "lua_bot.h"
 #include "dialogue_window.h"
 #include "titles.h"
+#include "bot.h"
 
 struct InventoryWhere { };
 
@@ -24,6 +26,199 @@ void Lua_Client::SendSound() {
 	Lua_Safe_Call_Void();
 	self->SendSound();
 }
+
+// Invites a bot to your party
+bool Lua_Client::InviteBot(Lua_Bot invitee) {
+	Lua_Safe_Call_Bool();
+	
+	if (self->IsRaidGrouped() && !invitee.HasRaid()) {
+		Bot::ProcessRaidInvite(invitee.CastToBot(), self, true);
+	} else if (!invitee.HasRaid()) {
+		Bot::ProcessBotGroupInvite(self, std::string(invitee.GetName()));
+	} else {
+		return false;
+	}
+	
+	return true;
+}
+
+uint32 Lua_Client::CreateBot(const char *name, const char *lastname, uint8 level, uint16 race, uint8 botclass, uint8 gender, bool temp)
+{
+	Lua_Safe_Call_Bool();
+
+	auto bot_creation_limit = self->GetBotCreationLimit();
+	auto bot_creation_limit_class = self->GetBotCreationLimit(botclass);
+	auto bot_spawn_limit = self->GetBotSpawnLimit();
+	auto bot_spawn_limit_class = self->GetBotSpawnLimit(botclass);
+
+	uint32 bot_count = 0;
+	uint32 bot_class_count = 0;
+	if (!temp && !database.botdb.QueryBotCount(self->CharacterID(), botclass, bot_count, bot_class_count)) {
+		self->Message(Chat::White, "Failed to query bot count.");
+		return 0;
+	}
+
+	if (!temp && bot_creation_limit >= 0 && bot_count >= bot_creation_limit) {
+		std::string message;
+
+		if (bot_creation_limit) {
+			message = fmt::format(
+				"You cannot create anymore than {} bot{}.",
+				bot_creation_limit,
+				bot_creation_limit != 1 ? "s" : ""
+			);
+		} else {
+			message = "You cannot create any bots.";
+		}
+
+		self->Message(Chat::White, message.c_str());
+		return 0;
+	}
+
+	if (!temp && bot_creation_limit_class >= 0 && bot_class_count >= bot_creation_limit_class) {
+		std::string message;
+
+		if (bot_creation_limit_class) {
+			message = fmt::format(
+				"You cannot create anymore than {} {} bot{}.",
+				bot_creation_limit_class,
+				GetClassIDName(botclass),
+				bot_creation_limit_class != 1 ? "s" : ""
+			);
+		} else {
+			message = fmt::format(
+				"You cannot create any {} bots.",
+				GetClassIDName(botclass)
+			);
+		}
+
+		self->Message(Chat::White, message.c_str());
+		return 0;
+	}
+
+	auto spawned_bot_count = Bot::SpawnedBotCount(self->CharacterID());
+
+	if (
+		!temp &&
+		bot_spawn_limit >= 0 &&
+		spawned_bot_count >= bot_spawn_limit &&
+		!self->GetGM()
+	) {
+		std::string message;
+		if (bot_spawn_limit) {
+			message = fmt::format(
+				"You cannot have more than {} spawned bot{}.",
+				bot_spawn_limit,
+				bot_spawn_limit != 1 ? "s" : ""
+			);
+		} else {
+			message = "You are not currently allowed to spawn any bots.";
+		}
+
+		self->Message(Chat::White, message.c_str());
+		return 0;
+	}
+
+	auto spawned_bot_count_class = Bot::SpawnedBotCount(self->CharacterID(), botclass);
+
+	if (
+		!temp &&
+		bot_spawn_limit_class >= 0 &&
+		spawned_bot_count_class >= bot_spawn_limit_class &&
+		!self->GetGM()
+	) {
+		std::string message;
+		if (bot_spawn_limit_class) {
+			message = fmt::format(
+				"You cannot have more than {} spawned {} bot{}.",
+				bot_spawn_limit_class,
+				GetClassIDName(botclass),
+				bot_spawn_limit_class != 1 ? "s" : ""
+			);
+		} else {
+			message = fmt::format(
+				"You are not currently allowed to spawn any {} bots.",
+				GetClassIDName(botclass)
+			);
+		}
+
+		self->Message(Chat::White, message.c_str());
+		return 0;
+	}
+
+	std::string test_name = name;
+	bool available_flag = false;
+	if (!temp && !database.botdb.QueryNameAvailablity(test_name, available_flag)) {
+		self->Message(
+			Chat::White,
+			fmt::format(
+				"Failed to query name availability for '{}'.",
+				test_name
+			).c_str()
+		);
+		return 0;
+	}
+
+	if (!temp && !available_flag) {
+		self->Message(
+			Chat::White,
+			fmt::format(
+				"The name {} is already being used or is invalid. Please choose a different name.",
+				test_name
+			).c_str()
+		);
+		return 0;
+	}
+
+	Bot* new_bot = new Bot(Bot::CreateDefaultNPCTypeStructForBot(name, lastname, level, race, botclass, gender), self);
+	new_bot->SetTemp(temp);
+	new_bot->CalcMaxHP(); // Needed when creating a temp bot.
+
+	if (!new_bot->IsValidRaceClassCombo()) {
+		self->Message(Chat::White, "That Race/Class combination cannot be created.");
+		return 0;
+	}
+
+	if (!new_bot->IsValidName()) {
+		self->Message(
+			Chat::White,
+			fmt::format(
+				"{} has invalid characters. You can use only the A-Z, a-z and _ characters in a bot name.",
+				new_bot->GetCleanName()
+			).c_str()
+		);
+		return 0;
+	}
+
+	// Now that all validation is complete, we can save our newly created bot
+	if (!temp && !new_bot->Save()) {
+		self->Message(
+			Chat::White,
+			fmt::format(
+				"Unable to save {} as a bot.",
+				new_bot->GetCleanName()
+			).c_str()
+		);
+	} else if( temp ){
+
+		new_bot->Spawn(self);
+
+	} else {
+		new_bot->AddBotStartingItems(race, botclass);
+		self->Message(
+			Chat::White,
+			fmt::format(
+				"{} saved as bot ID {}.",
+				new_bot->GetCleanName(),
+				new_bot->GetBotID()
+			).c_str()
+		);
+
+	}
+	
+	return new_bot->GetBotID();
+}
+
 
 void Lua_Client::Save() {
 	Lua_Safe_Call_Void();
@@ -3363,6 +3558,8 @@ luabind::scope lua_register_client() {
 	.def("CharacterID", (uint32(Lua_Client::*)(void))&Lua_Client::CharacterID)
 	.def("CheckIncreaseSkill", (void(Lua_Client::*)(int,Lua_Mob))&Lua_Client::CheckIncreaseSkill)
 	.def("CheckIncreaseSkill", (void(Lua_Client::*)(int,Lua_Mob,int))&Lua_Client::CheckIncreaseSkill)
+	.def("InviteBot", (void(Lua_Client::*)(Lua_Bot))&Lua_Client::InviteBot)
+	.def("CreateBot", (uint32(Lua_Client::*)(const char *,const char *,uint8,uint16,uint8,uint8,bool))&Lua_Client::CreateBot)
 	.def("CheckSpecializeIncrease", (void(Lua_Client::*)(int))&Lua_Client::CheckSpecializeIncrease)
 	.def("ClearCompassMark",(void(Lua_Client::*)(void))&Lua_Client::ClearCompassMark)
 	.def("ClearAccountFlag", (void(Lua_Client::*)(const std::string&))&Lua_Client::ClearAccountFlag)

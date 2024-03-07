@@ -276,7 +276,8 @@ public:
 	int 	GroupLeadershipAAHealthRegeneration();
 	int		GroupLeadershipAAOffenseEnhancement();
 	void CalcRestState();
-
+	inline bool IsTemp(){ return _temp; };
+	void SetTemp(bool temp);
 	int64 CalcMaxEndurance();
 	int64 CalcBaseEndurance();
 	int64 CalcEnduranceRegen();
@@ -468,7 +469,7 @@ public:
 	static void BotGroupSay(Mob *speaker, const char *msg, ...);
 
 	// "GET" Class Methods
-	uint32 GetBotID() const { return _botID; }
+	uint32 GetBotID() const { return _temp ? 0xFFFFFFFF : _botID; }
 	uint32 GetBotOwnerCharacterID() const { return _botOwnerCharacterID; }
 	uint32 GetBotSpellID() const { return npc_spells_id; }
 	Mob* GetBotOwner() { return this->_botOwner; }
@@ -831,6 +832,8 @@ public:
 	// Public "Refactor" Methods
 	static bool CheckSpawnConditions(Client* c);
 
+	static uint32_t GetNextTmpBotId();
+
 protected:
 	void BotMeditate(bool isSitting);
 	bool CheckBotDoubleAttack(bool Triple = false);
@@ -849,6 +852,7 @@ protected:
 	std::vector<BotTimer_Struct> bot_timers;
 
 private:
+	inline static uint32_t _tmp_bot_id = 0; // temp bot IDs start from the back
 	// Class Members
 	uint32 _botID;
 	uint32 _botOwnerCharacterID;
@@ -880,6 +884,7 @@ private:
 	int32	cur_end;
 	int32	max_end;
 	int32	end_regen;
+	bool _temp;
 
 	Timer m_evade_timer; // can be moved to pTimers at some point
 	Timer m_auto_defend_timer;
