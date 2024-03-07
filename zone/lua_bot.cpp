@@ -70,6 +70,24 @@ int16 Lua_Bot::HasBotItem(uint32 item_id) {
 	return self->HasBotItem(item_id);
 }
 
+void Lua_Bot::SetGuardMode(bool guard){
+	Lua_Safe_Call_Void();
+	if (guard) {
+		self->SetGuardMode();
+	} else {
+		self->SetGuardFlag(false);
+	}
+}
+void Lua_Bot::SetHold(bool hold){
+	Lua_Safe_Call_Void();
+	self->SetHoldFlag(hold);
+}
+void Lua_Bot::SetGuardPos(float x, float y, float z, float heading){
+	Lua_Safe_Call_Void();
+	self->SetGuardPos(x,y,z,heading);
+}
+
+
 void Lua_Bot::RemoveBotItem(uint32 item_id) {
 	Lua_Safe_Call_Void();
 	self->RemoveBotItem(item_id);
@@ -741,6 +759,9 @@ luabind::scope lua_register_bot() {
 	.def("GetSpellRecastTimer", (uint32(Lua_Bot::*)(uint16))&Lua_Bot::GetSpellRecastTimer)
 	.def("HasAugmentEquippedByID", (bool(Lua_Bot::*)(uint32))&Lua_Bot::HasAugmentEquippedByID)
 	.def("HasBotItem", (int16(Lua_Bot::*)(uint32))&Lua_Bot::HasBotItem)
+	.def("SetGuardMode", (void(Lua_Bot::*)(bool))&Lua_Bot::SetGuardMode)
+	.def("SetGuardPos", (void(Lua_Bot::*)(float,float,float,float))&Lua_Bot::SetGuardPos)
+	.def("SetHold", (void(Lua_Bot::*)(bool))&Lua_Bot::SetHold)
 	.def("HasBotSpellEntry", (bool(Lua_Bot::*)(uint16))&Lua_Bot::HasBotSpellEntry)
 	.def("HasItemEquippedByID", (bool(Lua_Bot::*)(uint32))&Lua_Bot::HasItemEquippedByID)
 	.def("IsGrouped", (bool(Lua_Bot::*)(void))&Lua_Bot::IsGrouped)

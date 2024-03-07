@@ -1871,6 +1871,13 @@ void Bot::SetGuardMode() {
 	}
 }
 
+void Bot::SetGuardPos(float x, float y, float z, float h) {
+	m_GuardPoint.x = x;
+	m_GuardPoint.y = x;
+	m_GuardPoint.z = x;
+	m_GuardPoint.w = x;
+}
+
 void Bot::SetHoldMode() {
 
 	SetHoldFlag();

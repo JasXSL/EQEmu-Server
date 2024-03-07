@@ -338,6 +338,7 @@ public:
 	uint8 GetStopMeleeLevel() const { return _stopMeleeLevel; }
 	void SetStopMeleeLevel(uint8 level);
 	void SetGuardMode();
+	void SetGuardPos(float x, float y, float z, float h);
 	void SetHoldMode();
 	uint32 GetBotCasterRange() const { return m_bot_caster_range; }
 	bool IsValidSpellRange(uint16 spell_id, Mob const* tar);
