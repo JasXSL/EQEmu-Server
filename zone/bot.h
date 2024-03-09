@@ -470,7 +470,7 @@ public:
 	static void BotGroupSay(Mob *speaker, const char *msg, ...);
 
 	// "GET" Class Methods
-	uint32 GetBotID() const { return _temp ? 0xFFFFFFFF : _botID; }
+	uint32 GetBotID() const { return _botID; }
 	uint32 GetBotOwnerCharacterID() const { return _botOwnerCharacterID; }
 	uint32 GetBotSpellID() const { return npc_spells_id; }
 	Mob* GetBotOwner() { return this->_botOwner; }
@@ -853,7 +853,7 @@ protected:
 	std::vector<BotTimer_Struct> bot_timers;
 
 private:
-	inline static uint32_t _tmp_bot_id = 0; // temp bot IDs start from the back
+	inline static uint32 _tmp_bot_id = 0; // temp bot IDs start from the back
 	// Class Members
 	uint32 _botID;
 	uint32 _botOwnerCharacterID;

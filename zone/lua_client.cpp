@@ -44,7 +44,7 @@ bool Lua_Client::InviteBot(Lua_Bot invitee) {
 
 uint32 Lua_Client::CreateBot(const char *name, const char *lastname, uint8 level, uint16 race, uint8 botclass, uint8 gender, bool temp)
 {
-	Lua_Safe_Call_Bool();
+	Lua_Safe_Call_Int();
 
 	auto bot_creation_limit = self->GetBotCreationLimit();
 	auto bot_creation_limit_class = self->GetBotCreationLimit(botclass);
@@ -173,8 +173,9 @@ uint32 Lua_Client::CreateBot(const char *name, const char *lastname, uint8 level
 	Bot* new_bot = new Bot(Bot::CreateDefaultNPCTypeStructForBot(name, lastname, level, race, botclass, gender), self);
 	new_bot->SetTemp(temp);
 	new_bot->CalcMaxHP(); // Needed when creating a temp bot.
+	new_bot->SetNPCAggro(true);
 
-	if (!new_bot->IsValidRaceClassCombo()) {
+	if (!temp && !new_bot->IsValidRaceClassCombo()) {
 		self->Message(Chat::White, "That Race/Class combination cannot be created.");
 		return 0;
 	}
@@ -187,35 +188,41 @@ uint32 Lua_Client::CreateBot(const char *name, const char *lastname, uint8 level
 				new_bot->GetCleanName()
 			).c_str()
 		);
+		LogInfo("Bot creation name {} is invalid.", name);
 		return 0;
 	}
 
 	// Now that all validation is complete, we can save our newly created bot
-	if (!temp && !new_bot->Save()) {
-		self->Message(
-			Chat::White,
-			fmt::format(
-				"Unable to save {} as a bot.",
-				new_bot->GetCleanName()
-			).c_str()
-		);
-	} else if( temp ){
-
-		new_bot->Spawn(self);
-
-	} else {
-		new_bot->AddBotStartingItems(race, botclass);
-		self->Message(
-			Chat::White,
-			fmt::format(
-				"{} saved as bot ID {}.",
-				new_bot->GetCleanName(),
-				new_bot->GetBotID()
-			).c_str()
-		);
-
+	if (!temp) {
+		if (!new_bot->Save()) {
+			self->Message(
+				Chat::White,
+				fmt::format(
+					"Unable to save {} as a bot.",
+					new_bot->GetCleanName()
+				).c_str()
+			);
+			return 0;
+		} 
+		else {
+			new_bot->AddBotStartingItems(race, botclass);
+			self->Message(
+				Chat::White,
+				fmt::format(
+					"{} saved as bot ID {}.",
+					new_bot->GetCleanName(),
+					new_bot->GetBotID()
+				).c_str()
+			);
+		}
 	}
+	else {
+		new_bot->Spawn(self);
+	} 
 	
+			
+	LogInfo("Bot {} was created with id {}.", name, new_bot->GetBotID());
+
 	return new_bot->GetBotID();
 }
 

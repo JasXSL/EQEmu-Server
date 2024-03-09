@@ -552,7 +552,7 @@ uint32 Bot::GetBotArcheryRange() {
 
 void Bot::SetTemp(bool temp) {
 	if (temp && !_temp) {
-		SetID(GetNextTmpBotId());
+		SetBotID(Bot::GetNextTmpBotId());
 	}
 	_temp = temp;
 }
@@ -1873,9 +1873,9 @@ void Bot::SetGuardMode() {
 
 void Bot::SetGuardPos(float x, float y, float z, float h) {
 	m_GuardPoint.x = x;
-	m_GuardPoint.y = x;
-	m_GuardPoint.z = x;
-	m_GuardPoint.w = x;
+	m_GuardPoint.y = y;
+	m_GuardPoint.z = z;
+	m_GuardPoint.w = h;
 }
 
 void Bot::SetHoldMode() {
@@ -3155,7 +3155,7 @@ bool Bot::Spawn(Client* botCharacterOwner) {
 			// Safety Check to confirm we have a valid group
 			auto owner = GetBotOwner();
 			if (owner && !group->IsGroupMember(owner->GetCleanName())) {
-				Bot::RemoveBotFromGroup(this, group);
+				RemoveBotFromGroup(this, group);
 			} else {
 				SetGrouped(true);
 				group->LearnMembers();
@@ -3552,8 +3552,22 @@ void Bot::AddBotItem(
 	uint32 augment_five,
 	uint32 augment_six
 ) {
-	if (!IsTemp()) {
-		auto inst = database.CreateItem(
+
+	auto inst = database.CreateItem(
+		item_id,
+		charges,
+		augment_one,
+		augment_two,
+		augment_three,
+		augment_four,
+		augment_five,
+		augment_six,
+		attuned
+	);
+
+	if (!inst) {
+		LogError(
+			"Bot:AddItem Invalid Item data: ID [{}] Charges [{}] Aug1 [{}] Aug2 [{}] Aug3 [{}] Aug4 [{}] Aug5 [{}] Aug6 [{}] Attuned [{}]",
 			item_id,
 			charges,
 			augment_one,
@@ -3564,32 +3578,18 @@ void Bot::AddBotItem(
 			augment_six,
 			attuned
 		);
-
-		if (!inst) {
-			LogError(
-				"Bot:AddItem Invalid Item data: ID [{}] Charges [{}] Aug1 [{}] Aug2 [{}] Aug3 [{}] Aug4 [{}] Aug5 [{}] Aug6 [{}] Attuned [{}]",
-				item_id,
-				charges,
-				augment_one,
-				augment_two,
-				augment_three,
-				augment_four,
-				augment_five,
-				augment_six,
-				attuned
-			);
-			return;
-		}
-
-		if (!database.botdb.SaveItemBySlot(this, slot_id, inst)) {
-			LogError("Failed to save item by slot to slot [{}] for [{}].", slot_id, GetCleanName());
-			safe_delete(inst);
-			return;
-		}
-
-		m_inv.PutItem(slot_id, *inst);
-		safe_delete(inst);
+		return;
 	}
+
+	if (!IsTemp() && !database.botdb.SaveItemBySlot(this, slot_id, inst)) {
+		LogError("Failed to save item by slot to slot [{}] for [{}].", slot_id, GetCleanName());
+		safe_delete(inst);
+		return;
+	}
+
+	m_inv.PutItem(slot_id, *inst);
+	safe_delete(inst);
+
 
 	BotAddEquipItem(slot_id, item_id);
 }
@@ -3654,7 +3654,7 @@ bool Bot::RemoveBotFromGroup(Bot* bot, Group* group) {
 			if (group->DelMember(bot)) {
 				group->DelMemberOOZ(bot->GetName());
 				database.SetGroupID(bot->GetCleanName(), 0, bot->GetBotID());
-				if (group->GroupCount() < 1) {
+				if (group->GroupCount() < 2) {
 					group->DisbandGroup();
 				}
 			}
@@ -6417,6 +6417,11 @@ void Bot::Camp(bool save_to_database) {
 }
 
 void Bot::Zone() {
+
+	if (IsTemp() && GetGroup()) {
+		Bot::RemoveBotFromGroup(this, GetGroup());
+	}
+
 	if (auto raid = entity_list.GetRaidByBotName(GetName())) {
 		raid->MemberZoned(CastToClient());
 	}
@@ -9203,7 +9208,8 @@ void Bot::DoItemClick(const EQ::ItemData *item, uint16 slot_id)
 
 uint8 Bot::spell_casting_chances[SPELL_TYPE_COUNT][Class::PLAYER_CLASS_COUNT][EQ::constants::STANCE_TYPE_COUNT][cntHSND] = { 0 };
 
-uint32_t Bot::GetNextTmpBotId(){
+uint32 Bot::GetNextTmpBotId(){
 	_tmp_bot_id++;
-	return 0xFFFFFFFF-_tmp_bot_id;
+	LogInfo("Tmp bot id is now {}, returning {}", _tmp_bot_id, (uint32)0xFFFFFFFF-_tmp_bot_id);
+	return (uint32)0xFFFFFFFF-_tmp_bot_id;
 }
