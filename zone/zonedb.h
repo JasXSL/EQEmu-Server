@@ -107,7 +107,7 @@ struct DBnpcspellseffects_Struct {
 
 #pragma pack(1)
 struct DBbotspells_entries_Struct {
-	uint16		spellid;
+	uint32		spellid;
 	uint8		minlevel;
 	uint8		maxlevel;
 	uint32		type;
