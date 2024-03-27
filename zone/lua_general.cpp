@@ -906,25 +906,16 @@ std::string lua_get_item_name(uint32 item_id) {
 	return quest_manager.getitemname(item_id);
 }
 
-std::string lua_say_link(const char *phrase, bool silent, const char *link_name) {
-	char text[256] = { 0 };
-	strncpy(text, phrase, 255);
-
-	return quest_manager.saylink(text, silent, link_name);
+std::string lua_say_link(std::string  text) {
+	return Saylink::Create(text);
 }
 
-std::string lua_say_link(const char *phrase, bool silent) {
-	char text[256] = { 0 };
-	strncpy(text, phrase, 255);
-
-	return quest_manager.saylink(text, silent, text);
+std::string lua_say_link(std::string text, bool silent) {
+	return Saylink::Create(text, silent, text);
 }
 
-std::string lua_say_link(const char *phrase) {
-	char text[256] = { 0 };
-	strncpy(text, phrase, 255);
-
-	return quest_manager.saylink(text, false, text);
+std::string lua_say_link(std::string text, bool silent, std::string link_name) {
+	return Saylink::Create(text, silent, link_name);
 }
 
 void lua_set_rule(std::string rule_name, std::string rule_value) {
@@ -5487,6 +5478,14 @@ uint16 lua_get_bot_race_by_id(uint32 bot_id)
 	return database.botdb.GetBotRaceByID(bot_id);
 }
 
+std::string lua_silent_say_link(std::string text) {
+	return Saylink::Silent(text);
+}
+
+std::string lua_silent_say_link(std::string text, std::string link_name) {
+	return Saylink::Silent(text, link_name);
+}
+
 #define LuaCreateNPCParse(name, c_type, default_value) do { \
 	cur = table[#name]; \
 	if(luabind::type(cur) != LUA_TNIL) { \
@@ -5665,6 +5664,10 @@ bool get_ruleb(int rule) {
 	return RuleManager::Instance()->GetBoolRule((RuleManager::BoolType)rule);
 }
 
+std::string get_rules(int rule) {
+	return RuleManager::Instance()->GetStringRule((RuleManager::StringType)rule);
+}
+
 luabind::scope lua_register_general() {
 	return luabind::namespace_("eq")
 	[(
@@ -5838,9 +5841,9 @@ luabind::scope lua_register_general() {
 		luabind::def("get_item_comment", (std::string(*)(uint32))&lua_get_item_comment),
 		luabind::def("get_item_lore", (std::string(*)(uint32))&lua_get_item_lore),
 		luabind::def("get_item_name", (std::string(*)(uint32))&lua_get_item_name),
-		luabind::def("say_link", (std::string(*)(const char*,bool,const char*))&lua_say_link),
-		luabind::def("say_link", (std::string(*)(const char*,bool))&lua_say_link),
-		luabind::def("say_link", (std::string(*)(const char*))&lua_say_link),
+		luabind::def("say_link", (std::string(*)(std::string))&lua_say_link),
+		luabind::def("say_link", (std::string(*)(std::string,bool))&lua_say_link),
+		luabind::def("say_link", (std::string(*)(std::string,bool,std::string))&lua_say_link),
 		luabind::def("set_rule", (void(*)(std::string, std::string))&lua_set_rule),
 		luabind::def("get_rule", (std::string(*)(std::string))&lua_get_rule),
 		luabind::def("get_data", (std::string(*)(std::string))&lua_get_data),
@@ -6279,6 +6282,8 @@ luabind::scope lua_register_general() {
 		luabind::def("get_bot_level_by_id", &lua_get_bot_level_by_id),
 		luabind::def("get_bot_name_by_id", &lua_get_bot_name_by_id),
 		luabind::def("get_bot_race_by_id", &lua_get_bot_race_by_id),
+		luabind::def("silent_say_link", (std::string(*)(std::string))&lua_silent_say_link),
+		luabind::def("silent_say_link", (std::string(*)(std::string,std::string))&lua_silent_say_link),
 		/*
 			Cross Zone
 		*/
@@ -6743,7 +6748,8 @@ luabind::scope lua_register_events() {
 			luabind::value("timer_stop", static_cast<int>(EVENT_TIMER_STOP)),
 			luabind::value("entity_variable_delete", static_cast<int>(EVENT_ENTITY_VARIABLE_DELETE)),
 			luabind::value("entity_variable_set", static_cast<int>(EVENT_ENTITY_VARIABLE_SET)),
-			luabind::value("entity_variable_update", static_cast<int>(EVENT_ENTITY_VARIABLE_UPDATE))
+			luabind::value("entity_variable_update", static_cast<int>(EVENT_ENTITY_VARIABLE_UPDATE)),
+			luabind::value("aa_loss", static_cast<int>(EVENT_AA_LOSS))
 		)];
 }
 
@@ -7258,7 +7264,13 @@ luabind::scope lua_register_rules_const() {
 #define RULE_BOOL(cat, rule, default_value, notes) \
 		luabind::value(#rule, RuleManager::Bool__##rule),
 #include "../common/ruletypes.h"
-		luabind::value("_BoolRuleCount", RuleManager::_BoolRuleCount)
+		luabind::value("_BoolRuleCount", RuleManager::_BoolRuleCount),
+#undef RULE_BOOL
+#define RULE_STRING(cat, rule, default_value, notes) \
+		luabind::value(#rule, RuleManager::String__##rule),
+#include "../common/ruletypes.h"
+		luabind::value("_StringRuleCount", RuleManager::_StringRuleCount)
+#undef RULE_STRING
 	)];
 }
 
@@ -7280,6 +7292,13 @@ luabind::scope lua_register_ruleb() {
 	return luabind::namespace_("RuleB")
 		[
 			luabind::def("Get", &get_ruleb)
+		];
+}
+
+luabind::scope lua_register_rules() {
+	return luabind::namespace_("RuleS")
+		[
+			luabind::def("Get", &get_rules)
 		];
 }
 

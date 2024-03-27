@@ -498,6 +498,8 @@ public:
 	bool IsInAGuild();
 	bool InviteBot(Lua_Bot invitee);
 	uint32 CreateBot(const char *name, const char *lastname, uint8 level, uint16 race, uint8 botclass, uint8 gender, bool temp);
+	luabind::object GetRaidOrGroupOrSelf(lua_State* L);
+	luabind::object GetRaidOrGroupOrSelf(lua_State* L, bool clients_only);
 
 	void ApplySpell(int spell_id);
 	void ApplySpell(int spell_id, int duration);
@@ -568,6 +570,8 @@ public:
 	void SetBotSpawnLimit(int new_spawn_limit, uint8 class_id);
 	void CampAllBots();
 	void CampAllBots(uint8 class_id);
+	bool RemoveAAPoints(uint32 points);
+	bool RemoveAlternateCurrencyValue(uint32 currency_id, uint32 amount);
 
 	void DialogueWindow(std::string markdown);
 
