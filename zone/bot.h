@@ -335,6 +335,8 @@ public:
 	bool AIHealRotation(Mob* tar, bool useFastHeals);
 	bool GetPauseAI() const { return _pauseAI; }
 	void SetPauseAI(bool pause_flag) { _pauseAI = pause_flag; }
+	bool GetRecklessAI() const { return _recklessAI; };
+	void SetRecklessAI(bool reckless_flag) { _recklessAI = reckless_flag; }
 	uint8 GetStopMeleeLevel() const { return _stopMeleeLevel; }
 	void SetStopMeleeLevel(uint8 level);
 	void SetGuardMode();
@@ -914,6 +916,7 @@ private:
 	uint8 _stopMeleeLevel;
 	int m_expansion_bitmask;
 	bool m_enforce_spell_settings;
+	bool _recklessAI;
 
 	// Private "base stats" Members
 	int32 _baseMR;
@@ -933,6 +936,7 @@ private:
 	int32 _baseATK;
 	uint16 _baseRace;	// Necessary to preserve the race otherwise bots get their race updated in the db when they get an illusion.
 	uint8 _baseGender;	// Bots gender. Necessary to preserve the original value otherwise it can be changed by illusions.
+	
 
 	// Class Methods
 	void LoadAAs();

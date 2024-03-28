@@ -86,6 +86,7 @@ Bot::Bot(NPCType *npcTypeData, Client* botOwner) : NPC(npcTypeData, nullptr, glm
 	SetAltOutOfCombatBehavior(GetClass() == Class::Bard); // will need to be updated if more classes make use of this flag
 	SetShowHelm(true);
 	SetPauseAI(false);
+	SetRecklessAI(false);
 
 	m_auto_defend_timer.Disable();
 	SetGuardFlag(false);
@@ -6437,14 +6438,15 @@ void Bot::Camp(bool save_to_database) {
 
 void Bot::Zone() {
 
-	if (IsTemp() && GetGroup()) {
-		Bot::RemoveBotFromGroup(this, GetGroup());
+	const bool hasGroup = HasGroup();
+	if (IsTemp() && hasGroup) {
+		RemoveBotFromGroup(this, GetGroup());
 	}
 
 	if (auto raid = entity_list.GetRaidByBotName(GetName())) {
 		raid->MemberZoned(CastToClient());
 	}
-	else if (HasGroup()) {
+	else if (hasGroup) {
 		GetGroup()->MemberZoned(this);
 	}
 
@@ -6469,7 +6471,7 @@ bool Bot::IsArcheryRange(Mob *target) {
 
 void Bot::UpdateGroupCastingRoles(const Group* group, bool disband)
 {
-	if (!group)
+	if (!group) // Temp bots cause a crash otherwise. I don't know why.
 		return;
 
 	for (auto iter : group->members) {

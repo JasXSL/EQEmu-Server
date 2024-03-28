@@ -82,6 +82,10 @@ void Lua_Bot::SetHold(bool hold){
 	Lua_Safe_Call_Void();
 	self->SetHoldFlag(hold);
 }
+void Lua_Bot::SetRecklessAI(bool reckless){
+	Lua_Safe_Call_Void();
+	self->SetRecklessAI(reckless);
+}
 void Lua_Bot::SetGuardPos(float x, float y, float z, float heading){
 	Lua_Safe_Call_Void();
 	self->SetGuardPos(x,y,z,heading);
@@ -768,6 +772,7 @@ luabind::scope lua_register_bot() {
 	.def("SetGuardMode", (void(Lua_Bot::*)(bool))&Lua_Bot::SetGuardMode)
 	.def("SetGuardPos", (void(Lua_Bot::*)(float,float,float,float))&Lua_Bot::SetGuardPos)
 	.def("SetHold", (void(Lua_Bot::*)(bool))&Lua_Bot::SetHold)
+	.def("SetRecklessAI", (void(Lua_Bot::*)(bool))&Lua_Bot::SetRecklessAI)
 	.def("HasBotSpellEntry", (bool(Lua_Bot::*)(uint16))&Lua_Bot::HasBotSpellEntry)
 	.def("HasItemEquippedByID", (bool(Lua_Bot::*)(uint32))&Lua_Bot::HasItemEquippedByID)
 	.def("IsGrouped", (bool(Lua_Bot::*)(void))&Lua_Bot::IsGrouped)

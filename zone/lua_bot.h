@@ -155,6 +155,7 @@ public:
 	void Stand();
 	void SetGuardMode(bool guard = true);
 	void SetHold(bool hold = true);
+	void SetRecklessAI(bool reckless = true);
 	void SetGuardPos(float x, float y, float z, float heading);
 
 	void Fling(float target_x, float target_y, float target_z);

@@ -186,6 +186,12 @@ bool BotDatabase::QueryNameAvailablity(const std::string& bot_name, bool& availa
 		bot_name.size() > 60 ||
 		!database.CheckUsedName(bot_name)
 	) {
+		LogError(
+			"Name too long, empty, or used [{}], empty {}, size {}",
+			bot_name,
+			bot_name.empty(),
+			bot_name.size()
+		);
 		return false;
 	}
 
