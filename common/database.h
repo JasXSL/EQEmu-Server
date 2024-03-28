@@ -125,11 +125,11 @@ public:
 	uint32 GetGroupIDByCharID(uint32 character_id);
 	uint32 GetRaidIDByCharID(uint32 character_id);
 
-	const std::string& GetAccountName(uint32 account_id, uint32* lsaccount_id = 0);
-	const std::string& GetCharName(uint32 character_id);
-	const std::string& GetCharNameByID(uint32 character_id);
-	const std::string& GetNPCNameByID(uint32 npc_id);
-	const std::string& GetCleanNPCNameByID(uint32 npc_id);
+	const std::string GetAccountName(uint32 account_id, uint32* lsaccount_id = 0);
+	const std::string GetCharName(uint32 character_id);
+	const std::string GetCharNameByID(uint32 character_id);
+	const std::string GetNPCNameByID(uint32 npc_id);
+	const std::string GetCleanNPCNameByID(uint32 npc_id);
 	void LoginIP(uint32 account_id, const std::string& login_ip);
 
 	/* Instancing */
@@ -166,7 +166,7 @@ public:
 	bool GetAdventureStats(uint32 character_id, AdventureStats_Struct* as);
 
 	/* Account Related */
-	const std::string& GetLiveChar(uint32 account_id);
+	const std::string GetLiveChar(uint32 account_id);
 	bool SetAccountStatus(const std::string& account_name, int16 status);
 	bool SetLocalPassword(uint32 account_id, const std::string& password);
 	bool UpdateLiveChar(const std::string& name, uint32 account_id);
