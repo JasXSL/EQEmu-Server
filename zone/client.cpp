@@ -342,7 +342,6 @@ Client::Client(EQStreamInterface *ieqs) : Mob(
 	XTargetAutoAddHaters = true;
 	m_autohatermgr.SetOwner(this, nullptr, nullptr);
 	m_activeautohatermgr = &m_autohatermgr;
-	LoadAccountFlags();
 
 	initial_respawn_selection = 0;
 	alternate_currency_loaded = false;
@@ -7822,7 +7821,7 @@ void Client::SendFactionMessage(int32 tmpvalue, int32 faction_id, int32 faction_
 void Client::LoadAccountFlags()
 {
 	accountflags.clear();
-
+	
 	const auto& l = AccountFlagsRepository::GetWhere(database, fmt::format("p_accid = {}", account_id));
 	if (l.empty()) {
 		return;
