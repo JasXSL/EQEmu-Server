@@ -6438,15 +6438,14 @@ void Bot::Camp(bool save_to_database) {
 
 void Bot::Zone() {
 
-	const bool hasGroup = HasGroup();
-	if (IsTemp() && hasGroup) {
+	if (IsTemp() && HasGroup()) {
 		RemoveBotFromGroup(this, GetGroup());
 	}
 
-	if (auto raid = entity_list.GetRaidByBotName(GetName())) {
+	else if (auto raid = entity_list.GetRaidByBotName(GetName())) {
 		raid->MemberZoned(CastToClient());
 	}
-	else if (hasGroup) {
+	else if (HasGroup()) {
 		GetGroup()->MemberZoned(this);
 	}
 

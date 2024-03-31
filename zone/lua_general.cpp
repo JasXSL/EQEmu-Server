@@ -41,6 +41,8 @@ struct MessageTypes { };
 struct Rule { };
 struct Journal_SpeakMode { };
 struct Journal_Mode { };
+struct ZoneIDs { };
+struct LanguageIDs { };
 
 struct lua_registered_event {
 	std::string encounter_name;
@@ -7263,7 +7265,7 @@ luabind::scope lua_register_message_types() {
 }
 
 luabind::scope lua_register_zone_types() {
-	return luabind::class_<MessageTypes>("Zone")
+	return luabind::class_<ZoneIDs>("Zone")
 		.enum_("constants")
 		[(
 			luabind::value("qeynos", Zones::QEYNOS),
@@ -7751,7 +7753,7 @@ luabind::scope lua_register_zone_types() {
 }
 
 luabind::scope lua_register_languages() {
-	return luabind::class_<MessageTypes>("Language")
+	return luabind::class_<LanguageIDs>("Language")
 		.enum_("constants")
 		[(
 			luabind::value("CommonTongue", Language::CommonTongue),
