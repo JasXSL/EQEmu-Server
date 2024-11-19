@@ -2,6 +2,8 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.12)
 
 SET(common_sources
     base_packet.cpp
+    bazaar.cpp
+    bodytypes.cpp
     classes.cpp
     cli/eqemu_command_handler.cpp
     compression.cpp
@@ -60,6 +62,7 @@ SET(common_sources
     mutex.cpp
     mysql_request_result.cpp
     mysql_request_row.cpp
+    mysql_stmt.cpp
     opcode_map.cpp
     opcodemgr.cpp
     packet_dump.cpp
@@ -156,6 +159,7 @@ SET(repositories
     repositories/base/base_bugs_repository.h
     repositories/base/base_bug_reports_repository.h
     repositories/base/base_buyer_repository.h
+    repositories/base/base_buyer_trade_items_repository.h
     repositories/base/base_character_activities_repository.h
     repositories/base/base_character_alternate_abilities_repository.h
     repositories/base/base_character_alt_currency_repository.h
@@ -177,6 +181,8 @@ SET(repositories
     repositories/base/base_character_leadership_abilities_repository.h
     repositories/base/base_character_material_repository.h
     repositories/base/base_character_memmed_spells_repository.h
+    repositories/base/base_character_parcels_repository.h
+    repositories/base/base_character_parcels_containers_repository.h
     repositories/base/base_character_peqzone_flags_repository.h
     repositories/base/base_character_pet_buffs_repository.h
     repositories/base/base_character_pet_info_repository.h
@@ -335,7 +341,8 @@ SET(repositories
     repositories/books_repository.h
     repositories/bugs_repository.h
     repositories/bug_reports_repository.h
-    repositories/buyer_repository.h
+    repositories/buyer_buy_lines_repository.h
+    repositories/buyer_trade_items_repository.h
     repositories/character_activities_repository.h
     repositories/character_alternate_abilities_repository.h
     repositories/character_alt_currency_repository.h
@@ -357,6 +364,8 @@ SET(repositories
     repositories/character_leadership_abilities_repository.h
     repositories/character_material_repository.h
     repositories/character_memmed_spells_repository.h
+    repositories/character_parcels_repository.h
+    repositories/character_parcels_containers_repository.h
     repositories/character_peqzone_flags_repository.h
     repositories/character_pet_buffs_repository.h
     repositories/character_pet_info_repository.h
@@ -497,6 +506,7 @@ SET(repositories
 
 SET(common_headers
     additive_lagged_fibonacci_engine.h
+    bazaar.h
     base_packet.h
     bodytypes.h
     classes.h
@@ -577,6 +587,7 @@ SET(common_headers
     mutex.h
     mysql_request_result.h
     mysql_request_row.h
+    mysql_stmt.h
     op_codes.h
     opcode_dispatch.h
     opcodemgr.h

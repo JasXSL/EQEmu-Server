@@ -10,6 +10,7 @@ class Lua_Item;
 class Lua_ItemInst;
 class Lua_StatBonuses;
 class Lua_Bot;
+class Lua_Merc;
 class Lua_NPC;
 class Lua_Client;
 struct Lua_Mob_List;
@@ -269,7 +270,6 @@ public:
 	bool CanThisClassBlock();
 	void SetInvul(bool value);
 	bool GetInvul();
-	void SetExtraHaste(int haste);
 	int GetHaste();
 	int GetHandToHandDamage();
 	int GetHandToHandDelay();
@@ -400,7 +400,7 @@ public:
 	void RemoveAllNimbusEffects();
 	bool IsRunning();
 	void SetRunning(bool running);
-	void SetBodyType(int new_body, bool overwrite_orig);
+	void SetBodyType(uint8 new_body, bool overwrite_orig);
 	void SetTargetable(bool on);
 	void ModSkillDmgTaken(int skill, int value);
 	int GetModSkillDmgTaken(int skill);
@@ -590,6 +590,27 @@ public:
 	bool IsIntelligenceCasterClass();
 	bool IsPureMeleeClass();
 	bool IsWisdomCasterClass();
+	std::string GetConsiderColor(Lua_Mob other);
+	std::string GetConsiderColor(uint8 other_level);
+	int GetExtraHaste();
+	void SetExtraHaste(int haste);
+	void SetExtraHaste(int haste, bool need_to_save);
+	void AreaAttack(float distance);
+	void AreaAttack(float distance, int16 slot_id);
+	void AreaAttack(float distance, int16 slot_id, int count);
+	void AreaAttack(float distance, int16 slot_id, int count, bool is_from_spell);
+	void AreaAttack(float distance, int16 slot_id, int count, bool is_from_spell, int attack_rounds);
+	void AreaSpell(Lua_Mob center, uint16 spell_id);
+	void AreaSpell(Lua_Mob center, uint16 spell_id, bool affect_caster);
+	void AreaSpell(Lua_Mob center, uint16 spell_id, bool affect_caster, int16 resist_adjust);
+	void AreaSpell(Lua_Mob center, uint16 spell_id, bool affect_caster, int16 resist_adjust, int max_targets);
+	void MassGroupBuff(Lua_Mob center, uint16 spell_id);
+	void MassGroupBuff(Lua_Mob center, uint16 spell_id, bool affect_caster);
+	void BuffFadeBeneficial();
+	void BuffFadeDetrimental();
+	void BuffFadeDetrimentalByCaster(Lua_Mob caster);
+	void BuffFadeNonPersistDeath();
+	void BuffFadeSongs();
 };
 
 #endif

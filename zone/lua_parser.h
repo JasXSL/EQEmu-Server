@@ -109,6 +109,22 @@ public:
 		uint32 extra_data,
 		std::vector<std::any> *extra_pointers
 	);
+	virtual int EventMerc(
+		QuestEventID evt,
+		Merc* merc,
+		Mob* init,
+		std::string data,
+		uint32 extra_data,
+		std::vector<std::any>* extra_pointers
+	);
+	virtual int EventGlobalMerc(
+		QuestEventID evt,
+		Merc* merc,
+		Mob* init,
+		std::string data,
+		uint32 extra_data,
+		std::vector<std::any>* extra_pointers
+	);
 
 	virtual bool HasQuestSub(uint32 npc_id, QuestEventID evt);
 	virtual bool HasGlobalQuestSub(QuestEventID evt);
@@ -120,6 +136,8 @@ public:
 	virtual bool HasEncounterSub(const std::string& package_name, QuestEventID evt);
 	virtual bool BotHasQuestSub(QuestEventID evt);
 	virtual bool GlobalBotHasQuestSub(QuestEventID evt);
+	virtual bool MercHasQuestSub(QuestEventID evt);
+	virtual bool GlobalMercHasQuestSub(QuestEventID evt);
 
 	virtual void LoadNPCScript(std::string filename, int npc_id);
 	virtual void LoadGlobalNPCScript(std::string filename);
@@ -130,6 +148,8 @@ public:
 	virtual void LoadEncounterScript(std::string filename, std::string encounter_name);
 	virtual void LoadBotScript(std::string filename);
 	virtual void LoadGlobalBotScript(std::string filename);
+	virtual void LoadMercScript(std::string filename);
+	virtual void LoadGlobalMercScript(std::string filename);
 
 	virtual void AddVar(std::string name, std::string val);
 	virtual std::string GetVar(std::string name);
@@ -179,6 +199,14 @@ public:
 		uint32 extra_data,
 		std::vector<std::any> *extra_pointers
 	);
+	virtual int DispatchEventMerc(
+		QuestEventID evt,
+		Merc* merc,
+		Mob* init,
+		std::string data,
+		uint32 extra_data,
+		std::vector<std::any>* extra_pointers
+	);
 
 	static LuaParser* Instance() {
 		static LuaParser inst;
@@ -198,10 +226,13 @@ public:
 	uint32 GetEXPForLevel(Client *self, uint16 level, bool &ignoreDefault);
 	uint64 GetExperienceForKill(Client *self, Mob *against, bool &ignoreDefault);
 	int64 CalcSpellEffectValue_formula(Mob *self, uint32 formula, int64 base_value, int64 max_value, int caster_level, uint16 spell_id, int ticsremaining, bool &ignoreDefault);
+	int32 UpdatePersonalFaction(Mob *self, int32 npc_value, int32 faction_id, int32 current_value, int32 temp, int32 this_faction_min, int32 this_faction_max, bool &ignore_default);
 	void RegisterBug(Client *self, BaseBugReportsRepository::BugReports bug, bool &ignore_default);
 	int64 CommonDamage(Mob *self, Mob* attacker, int64 value, uint16 spell_id, int skill_used, bool avoidable, int8 buff_slot, bool buff_tic, int special, bool &ignore_default);
 	uint64 HealDamage(Mob *self, Mob* caster, uint64 value, uint16 spell_id, bool &ignore_default);
-	
+	uint64 SetEXP(Mob *self, ExpSource exp_source, uint64 current_exp, uint64 set_exp, bool is_rezz_exp, bool &ignore_default);
+	uint64 SetAAEXP(Mob *self, ExpSource exp_source, uint64 current_aa_exp, uint64 set_aa_exp, bool is_rezz_exp, bool &ignore_default);
+	bool IsImmuneToSpell(Mob *self, Mob* caster, uint16 spell_id, bool &ignore_default);
 private:
 	LuaParser();
 	LuaParser(const LuaParser&);
@@ -265,6 +296,16 @@ private:
 		uint32 extra_data,
 		std::vector<std::any> *extra_pointers,
 		luabind::adl::object *l_func = nullptr
+	);
+	int _EventMerc(
+		std::string package_name,
+		QuestEventID evt,
+		Merc* merc,
+		Mob* init,
+		std::string data,
+		uint32 extra_data,
+		std::vector<std::any>* extra_pointers,
+		luabind::adl::object* l_func = nullptr
 	);
 
 	void LoadScript(std::string filename, std::string package_name);
