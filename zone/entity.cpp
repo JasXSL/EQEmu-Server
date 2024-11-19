@@ -526,7 +526,7 @@ void EntityList::MobProcess()
 			//	-- the zone is newly empty and we're allowing mobs to settle
 			if (
 				numclients > 0 || zone->quest_idle_override ||
-				(s2 && s2->PathWhenZoneIdle()) ||
+				(mob && s2 && s2->PathWhenZoneIdle()) ||
 				mob_settle_timer->Enabled()
 			) {
 				mob_dead = !mob->Process();
@@ -696,7 +696,7 @@ void EntityList::AddNPC(NPC *npc, bool send_spawn_packet, bool dont_queue)
 	npc_list.emplace(std::pair<uint16, NPC *>(npc->GetID(), npc));
 	mob_list.emplace(std::pair<uint16, Mob *>(npc->GetID(), npc));
 
-	entity_list.ScanCloseMobs(npc->close_mobs, npc, true);
+	entity_list.ScanCloseMobs(npc);
 
 	if (parse->HasQuestSub(npc->GetNPCTypeID(), EVENT_SPAWN)) {
 		parse->EventNPC(EVENT_SPAWN, npc, nullptr, "", 0);
@@ -776,6 +776,10 @@ void EntityList::AddMerc(Merc *merc, bool SendSpawnPacket, bool dontqueue)
 
 		merc_list.emplace(std::pair<uint16, Merc *>(merc->GetID(), merc));
 		mob_list.emplace(std::pair<uint16, Mob *>(merc->GetID(), merc));
+
+		if (parse->MercHasQuestSub(EVENT_SPAWN)) {
+			parse->EventMerc(EVENT_SPAWN, merc, nullptr, "", 0);
+		}
 	}
 }
 
@@ -1544,7 +1548,7 @@ void EntityList::RemoveFromTargetsFadingMemories(Mob *spell_target, bool RemoveF
 			continue;
 		}
 
-		if (mob->GetSpecialAbility(IMMUNE_FADING_MEMORIES)) {
+		if (mob->GetSpecialAbility(SpecialAbility::MemoryFadeImmunity)) {
 			continue;
 		}
 
@@ -1654,6 +1658,13 @@ void EntityList::QueueClientsByTarget(Mob *sender, const EQApplicationPacket *ap
 				if (inspect_buffs) { // if inspect_buffs is true we're sending a mob's buffs to those with the LAA
 					Send = clear_target_window;
 					if (c->GetGM() || RuleB(Spells, AlwaysSendTargetsBuffs)) {
+						if (c->GetGM()) {
+							if (!c->EntityVariableExists(SEE_BUFFS_FLAG)) {
+								c->Message(Chat::White, "Your GM flag allows you to always see your targets' buffs.");
+								c->SetEntityVariable(SEE_BUFFS_FLAG, "1");
+							}
+						}
+
 						Send = !clear_target_window;
 					} else if (c->IsRaidGrouped()) {
 						Raid *raid = c->GetRaid();
@@ -1735,8 +1746,7 @@ void EntityList::QueueCloseClients(
 	}
 
 	float distance_squared = distance * distance;
-
-	for (auto &e : GetCloseMobList(sender, distance)) {
+	for (auto &e : sender->GetCloseMobList(distance)) {
 		Mob *mob = e.second;
 		if (!mob) {
 			continue;
@@ -2675,6 +2685,10 @@ void EntityList::RemoveAllMobs()
 {
 	auto it = mob_list.begin();
 	while (it != mob_list.end()) {
+		if (!it->second) {
+			++it;
+			continue;
+		}
 		safe_delete(it->second);
 		free_ids.push(it->first);
 		it = mob_list.erase(it);
@@ -2812,6 +2826,9 @@ bool EntityList::RemoveMob(uint16 delete_id)
 
 	auto it = mob_list.find(delete_id);
 	if (it != mob_list.end()) {
+		if (!it->second) {
+			return false;
+		}
 		if (npc_list.count(delete_id)) {
 			entity_list.RemoveNPC(delete_id);
 		}
@@ -2872,7 +2889,7 @@ bool EntityList::RemoveMobFromCloseLists(Mob *mob)
 			entity_id
 		);
 
-		it->second->close_mobs.erase(entity_id);
+		it->second->m_close_mobs.erase(entity_id);
 		++it;
 	}
 
@@ -2897,86 +2914,76 @@ void EntityList::RemoveAuraFromMobs(Mob *aura)
 	}
 }
 
-/**
- * The purpose of this system is so that we cache relevant entities that are "close"
- *
- * In general; it becomes incredibly expensive to run zone-wide checks against every single mob in the zone when in reality
- * we only care about entities closest to us
- *
- * A very simple example of where this is relevant is Aggro, the below example is skewed because the overall implementation
- * of Aggro was also tweaked in conjunction with close lists. We also scan more aggressively when entities are moving (1-6 seconds)
- * versus 60 seconds when idle. We also have entities that are moving add themselves to those closest to them so that their close
- * lists remain always up to date
- *
- * Before: Aggro checks for NPC to Client aggro | (40 clients in zone) x (525 npcs) x 2 (times a second) = 2,520,000 checks a minute
- * After: Aggro checks for NPC to Client aggro | (40 clients in zone) x (20-30 npcs) x 2 (times a second) = 144,000 checks a minute (This is actually far less today)
- *
- * Places in the code where this logic makes a huge impact
- *
- * Aggro checks (zone wide -> close)
- * Aura processing (zone wide -> close)
- * AE Taunt (zone wide -> close)
- * AOE Spells (zone wide -> close)
- * Bard Pulse AOE (zone wide -> close)
- * Mass Group Buff (zone wide -> close)
- * AE Attack (zone wide -> close)
- * Packet QueueCloseClients (zone wide -> close)
- * Check Close Beneficial Spells (Buffs; should I heal other npcs) (zone wide -> close)
- * AI Yell for Help (NPC Assist other NPCs) (zone wide -> close)
- *
- * All of the above makes a tremendous impact on the bottom line of cpu cycle performance because we run an order of magnitude
- * less checks by focusing our hot path logic down to a very small subset of relevant entities instead of looping an entire
- * entity list (zone wide)
- *
- * @param close_mobs
- * @param scanning_mob
- */
-void EntityList::ScanCloseMobs(
-	std::unordered_map<uint16, Mob *> &close_mobs,
-	Mob *scanning_mob,
-	bool add_self_to_other_lists
-)
+// The purpose of this system is so that we cache relevant entities that are "close"
+//
+// In general; it becomes incredibly expensive to run zone-wide checks against every single mob in the zone when in reality
+// we only care about entities closest to us
+//
+// A very simple example of where this is relevant is Aggro, the below example is skewed because the overall implementation
+// of Aggro was also tweaked in conjunction with close lists. We also scan more aggressively when entities are moving (1-6 seconds)
+// versus 60 seconds when idle. We also have entities that are moving add themselves to those closest to them so that their close
+// lists remain always up to date
+//
+// Before: Aggro checks for NPC to Client aggro | (40 clients in zone) x (525 npcs) x 2 (times a second) = 2,520,000 checks a minute
+// After: Aggro checks for NPC to Client aggro | (40 clients in zone) x (20-30 npcs) x 2 (times a second) = 144,000 checks a minute (This is // tually far less today)
+//
+// Places in the code where this logic makes a huge impact
+//
+// Aggro checks (zone wide -> close)
+// Aura processing (zone wide -> close)
+// AE Taunt (zone wide -> close)
+// AOE Spells (zone wide -> close)
+// Bard Pulse AOE (zone wide -> close)
+// Mass Group Buff (zone wide -> close)
+// AE Attack (zone wide -> close)
+// Packet QueueCloseClients (zone wide -> close)
+// Check Close Beneficial Spells (Buffs; should I heal other npcs) (zone wide -> close)
+// AI Yell for Help (NPC Assist other NPCs) (zone wide -> close)
+//
+// All of the above makes a tremendous impact on the bottom line of cpu cycle performance because we run an order of magnitude
+// less checks by focusing our hot path logic down to a very small subset of relevant entities instead of looping an entire
+// entity list (zone wide)
+void EntityList::ScanCloseMobs(Mob *scanning_mob)
 {
+	if (!scanning_mob) {
+		return;
+	}
+
+	if (scanning_mob->GetID() <= 0) {
+		return;
+	}
+
 	float scan_range = RuleI(Range, MobCloseScanDistance) * RuleI(Range, MobCloseScanDistance);
 
-	close_mobs.clear();
+	// Reserve memory in m_close_mobs to avoid frequent re-allocations if not already reserved.
+	// Assuming mob_list.size() as an upper bound for reservation.
+	if (scanning_mob->m_close_mobs.bucket_count() < mob_list.size()) {
+		scanning_mob->m_close_mobs.reserve(mob_list.size());
+	}
+
+	scanning_mob->m_close_mobs.clear();
 
 	for (auto &e : mob_list) {
 		auto mob = e.second;
-
-		if (!mob->IsNPC() && !mob->IsClient() && !mob->IsBot() && !mob->IsMerc()) {
-			continue;
-		}
-
 		if (mob->GetID() <= 0) {
 			continue;
 		}
 
 		float distance = DistanceSquared(scanning_mob->GetPosition(), mob->GetPosition());
 		if (distance <= scan_range || mob->GetAggroRange() >= scan_range) {
-			close_mobs.emplace(std::pair<uint16, Mob *>(mob->GetID(), mob));
-
-			if (add_self_to_other_lists && scanning_mob->GetID() > 0) {
-				bool has_mob = false;
-
-				for (auto &cm: mob->close_mobs) {
-					if (scanning_mob->GetID() == cm.first) {
-						has_mob = true;
-						break;
-					}
-				}
-
-				if (!has_mob) {
-					mob->close_mobs.insert(std::pair<uint16, Mob *>(scanning_mob->GetID(), scanning_mob));
-				}
+			// add mob to scanning_mob's close list and vice versa
+			// check if the mob is already in the close mobs list before inserting
+			if (mob->m_close_mobs.find(scanning_mob->GetID()) == mob->m_close_mobs.end()) {
+				mob->m_close_mobs[scanning_mob->GetID()] = scanning_mob;
 			}
+			scanning_mob->m_close_mobs[mob->GetID()] = mob;
 		}
 	}
 
-	LogAIScanCloseDetail(
-		"[{}] Scanning Close List | list_size [{}] moving [{}]",
+	LogAIScanClose(
+		"[{}] Scanning close list > list_size [{}] moving [{}]",
 		scanning_mob->GetCleanName(),
-		close_mobs.size(),
+		scanning_mob->m_close_mobs.size(),
 		scanning_mob->IsMoving() ? "true" : "false"
 	);
 }
@@ -3632,7 +3639,7 @@ void EntityList::ClearFeignAggro(Mob *targ)
 	while (it != npc_list.end()) {
 		// add Feign Memory check because sometimes weird stuff happens
 		if (it->second->CheckAggro(targ) || (targ->IsClient() && it->second->IsOnFeignMemory(targ))) {
-			if (it->second->GetSpecialAbility(IMMUNE_FEIGN_DEATH)) {
+			if (it->second->GetSpecialAbility(SpecialAbility::FeignDeathImmunity)) {
 				++it;
 				continue;
 			}
@@ -3661,7 +3668,7 @@ void EntityList::ClearFeignAggro(Mob *targ)
 
 			it->second->RemoveFromHateList(targ);
 
-			if (it->second->GetSpecialAbility(SPECATK_RAMPAGE)) {
+			if (it->second->GetSpecialAbility(SpecialAbility::Rampage)) {
 				it->second->RemoveFromRampageList(targ, true);
 			}
 
@@ -4378,10 +4385,10 @@ void EntityList::AddTempPetsToHateList(Mob *owner, Mob* other, bool bFrenzy)
 		if (n && n->GetSwarmInfo()) {
 			if (n->GetSwarmInfo()->owner_id == owner->GetID()) {
 				if (
-					!n->GetSpecialAbility(IMMUNE_AGGRO) &&
-					!(other->IsBot() && n->GetSpecialAbility(IMMUNE_AGGRO_BOT)) &&
-					!(other->IsClient() && n->GetSpecialAbility(IMMUNE_AGGRO_CLIENT)) &&
-					!(other->IsNPC() && n->GetSpecialAbility(IMMUNE_AGGRO_NPC))
+					!n->GetSpecialAbility(SpecialAbility::AggroImmunity) &&
+					!(other->IsBot() && n->GetSpecialAbility(SpecialAbility::BotAggroImmunity)) &&
+					!(other->IsClient() && n->GetSpecialAbility(SpecialAbility::ClientAggroImmunity)) &&
+					!(other->IsNPC() && n->GetSpecialAbility(SpecialAbility::NPCAggroImmunity))
 				) {
 					n->hate_list.AddEntToHateList(other, 0, 0, bFrenzy);
 				}
@@ -4405,10 +4412,10 @@ void EntityList::AddTempPetsToHateListOnOwnerDamage(Mob *owner, Mob* attacker, i
 					attacker &&
 					attacker != n &&
 					!n->IsEngaged() &&
-					!n->GetSpecialAbility(IMMUNE_AGGRO) &&
-					!(attacker->IsBot() && n->GetSpecialAbility(IMMUNE_AGGRO_BOT)) &&
-					!(attacker->IsClient() && n->GetSpecialAbility(IMMUNE_AGGRO_CLIENT)) &&
-					!(attacker->IsNPC() && n->GetSpecialAbility(IMMUNE_AGGRO_NPC)) &&
+					!n->GetSpecialAbility(SpecialAbility::AggroImmunity) &&
+					!(attacker->IsBot() && n->GetSpecialAbility(SpecialAbility::BotAggroImmunity)) &&
+					!(attacker->IsClient() && n->GetSpecialAbility(SpecialAbility::ClientAggroImmunity)) &&
+					!(attacker->IsNPC() && n->GetSpecialAbility(SpecialAbility::NPCAggroImmunity)) &&
 					!attacker->IsTrap() &&
 					!attacker->IsCorpse()
 					) {
@@ -4439,7 +4446,7 @@ void EntityList::QuestJournalledSayClose(
 	buf.WriteInt32(0);
 
 	if (RuleB(Chat, QuestDialogueUsesDialogueWindow)) {
-		for (auto &e : GetCloseMobList(sender, (dist * dist))) {
+		for (auto &e : sender->GetCloseMobList(dist)) {
 			Mob *mob = e.second;
 			if (!mob) {
 				continue;
@@ -4472,6 +4479,36 @@ void EntityList::QuestJournalledSayClose(
 	// client only bothers logging if target spawn ID matches, safe to send to everyone
 	QueueCloseClients(sender, outapp, false, dist);
 	delete outapp;
+}
+
+bool Entity::CheckCoordLosNoZLeaps(float cur_x, float cur_y, float cur_z,
+		float trg_x, float trg_y, float trg_z, float perwalk)
+{
+	if (zone->zonemap == nullptr) {
+		return true;
+	}
+
+	glm::vec3 myloc;
+	glm::vec3 oloc;
+	glm::vec3 hit;
+
+	myloc.x = cur_x;
+	myloc.y = cur_y;
+	myloc.z = cur_z+5;
+
+	oloc.x = trg_x;
+	oloc.y = trg_y;
+	oloc.z = trg_z+5;
+
+	if (myloc.x == oloc.x && myloc.y == oloc.y && myloc.z == oloc.z) {
+		return true;
+	}
+
+	if (!zone->zonemap->LineIntersectsZoneNoZLeaps(myloc,oloc,perwalk,&hit)) {
+		return true;
+	}
+
+	return false;
 }
 
 Corpse *EntityList::GetClosestCorpse(Mob *sender, const char *Name)
@@ -5053,7 +5090,7 @@ uint32 EntityList::CheckNPCsClose(Mob *center)
 	while (it != npc_list.end()) {
 		NPC *cur = it->second;
 		if (!cur || cur == center || cur->IsPet() || cur->GetClass() == Class::LDoNTreasure ||
-				cur->GetBodyType() == BT_NoTarget || cur->GetBodyType() == BT_Special) {
+				cur->GetBodyType() == BodyType::NoTarget || cur->GetBodyType() == BodyType::Special) {
 			++it;
 			continue;
 		}
@@ -5413,9 +5450,9 @@ void EntityList::AddLootToNPCS(uint32 item_id, uint32 count)
 	while (it != npc_list.end()) {
 		if (!it->second->IsPet()
 				&& it->second->GetClass() != Class::LDoNTreasure
-				&& it->second->GetBodyType() != BT_NoTarget
-				&& it->second->GetBodyType() != BT_NoTarget2
-				&& it->second->GetBodyType() != BT_Special)
+				&& it->second->GetBodyType() != BodyType::NoTarget
+				&& it->second->GetBodyType() != BodyType::NoTarget2
+				&& it->second->GetBodyType() != BodyType::Special)
 			npc_count++;
 		++it;
 	}
@@ -5434,9 +5471,9 @@ void EntityList::AddLootToNPCS(uint32 item_id, uint32 count)
 	while (it != npc_list.end()) {
 		if (!it->second->IsPet()
 				&& it->second->GetClass() != Class::LDoNTreasure
-				&& it->second->GetBodyType() != BT_NoTarget
-				&& it->second->GetBodyType() != BT_NoTarget2
-				&& it->second->GetBodyType() != BT_Special)
+				&& it->second->GetBodyType() != BodyType::NoTarget
+				&& it->second->GetBodyType() != BodyType::NoTarget2
+				&& it->second->GetBodyType() != BodyType::Special)
 			npcs[i++] = it->second;
 		++it;
 	}
@@ -5514,7 +5551,7 @@ void EntityList::ExpeditionWarning(uint32 minutes_left)
 	safe_delete(outapp);
 }
 
-Mob *EntityList::GetClosestMobByBodyType(Mob *sender, bodyType BodyType, bool skip_client_pets)
+Mob *EntityList::GetClosestMobByBodyType(Mob *sender, uint8 BodyType, bool skip_client_pets)
 {
 
 	if (!sender)
@@ -5612,7 +5649,7 @@ std::vector<Mob*> EntityList::GetTargetsForVirusEffect(Mob *spreader, Mob *origi
 
 	std::vector<Mob *> spreader_list        = {};
 	bool               is_detrimental_spell = IsDetrimentalSpell(spell_id);
-	for (auto          &it : entity_list.GetCloseMobList(spreader, range)) {
+	for (auto          &it : spreader->GetCloseMobList(range)) {
 		Mob *mob = it.second;
 		if (!mob) {
 			continue;
@@ -5742,7 +5779,7 @@ void EntityList::ReloadMerchants() {
 std::unordered_map<uint16, Mob *> &EntityList::GetCloseMobList(Mob *mob, float distance)
 {
 	if (distance <= RuleI(Range, MobCloseScanDistance)) {
-		return mob->close_mobs;
+		return mob->m_close_mobs;
 	}
 
 	return mob_list;
@@ -5906,4 +5943,40 @@ void EntityList::DamageArea(
 			e->Damage(sender, damage, SPELL_UNKNOWN, EQ::skills::SkillEagleStrike);
 		}
 	}
+}
+
+std::vector<NPC*> EntityList::GetNPCsByIDs(std::vector<uint32> npc_ids)
+{
+	std::vector<NPC*> v;
+
+	for (const auto& e : GetNPCList()) {
+		const auto& n = std::find(npc_ids.begin(), npc_ids.end(), e.second->GetNPCTypeID());
+		if (e.second) {
+			if (n != npc_ids.end()) {
+				continue;
+			}
+
+			v.emplace_back(e.second);
+		}
+	}
+
+	return v;
+}
+
+std::vector<NPC*> EntityList::GetExcludedNPCsByIDs(std::vector<uint32> npc_ids)
+{
+	std::vector<NPC*> v;
+
+	for (const auto& e : GetNPCList()) {
+		const auto& n = std::find(npc_ids.begin(), npc_ids.end(), e.second->GetNPCTypeID());
+		if (e.second) {
+			if (n == npc_ids.end()) {
+				continue;
+			}
+
+			v.emplace_back(e.second);
+		}
+	}
+
+	return v;
 }

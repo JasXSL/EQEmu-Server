@@ -371,8 +371,8 @@ void Client::Handle_OP_ZoneChange(const EQApplicationPacket *app) {
 	}
 
 	if (content_service.GetCurrentExpansion() >= Expansion::Classic && GetGM()) {
-		LogInfo("[{}] Bypassing Expansion zone checks because GM status is set", GetCleanName());
-		Message(Chat::Yellow, "Bypassing Expansion zone checks because GM status is set");
+		LogInfo("[{}] Bypassing zone expansion checks because GM flag is set", GetCleanName());
+		Message(Chat::White, "Your GM flag allows you to bypass zone expansion checks.");
 	}
 
 	if (zoning_message == ZoningMessage::ZoneSuccess) {
@@ -737,7 +737,7 @@ void Client::ProcessMovePC(uint32 zoneID, uint32 instance_id, float x, float y, 
 			ZonePC(zoneID, instance_id, x, y, z, heading, ignorerestrictions, zm);
 			break;
 		default:
-			LogError("Client::ProcessMovePC received a reguest to perform an unsupported client zone operation");
+			LogError("Received a request to perform an unsupported client zone operation");
 			break;
 	}
 }
@@ -753,11 +753,6 @@ void Client::ZonePC(uint32 zoneID, uint32 instance_id, float x, float y, float z
 	auto zd = GetZoneVersionWithFallback(zoneID, zone->GetInstanceVersion());
 	if (zd) {
 		pZoneName = strcpy(new char[zd->long_name.length() + 1], zd->long_name.c_str());
-	}
-
-	// If we are zoning to the same zone, we need to use the current instance ID if it is not specified.
-	if (zoneID == zone->GetZoneID() && instance_id == 0) {
-		instance_id = zone->GetInstanceID();
 	}
 
 	auto r = content_service.FindZone(zoneID, instance_id);
@@ -776,6 +771,11 @@ void Client::ZonePC(uint32 zoneID, uint32 instance_id, float x, float y, float z
 			ignorerestrictions,
 			static_cast<int>(zm)
 		);
+
+		// If we are zoning to the same zone, we need to use the current instance ID if it is not specified.
+		if (content_service.IsInPublicStaticInstance(instance_id) && zoneID == zone->GetZoneID() && instance_id == 0) {
+			instance_id = zone->GetInstanceID();
+		}
 	}
 
 	LogInfo(
@@ -1365,7 +1365,7 @@ bool Client::CanEnterZone(const std::string& zone_short_name, int16 instance_ver
 		return false;
 	}
 
-	if (GetLevel() < z->min_level) {
+	if (!GetGM() && GetLevel() < z->min_level) {
 		LogInfo(
 			"Character [{}] does not meet minimum level requirement ([{}] < [{}])!",
 			GetCleanName(),
@@ -1375,7 +1375,7 @@ bool Client::CanEnterZone(const std::string& zone_short_name, int16 instance_ver
 		return false;
 	}
 
-	if (GetLevel() > z->max_level) {
+	if (!GetGM() && GetLevel() > z->max_level) {
 		LogInfo(
 			"Character [{}] does not meet maximum level requirement ([{}] > [{}])!",
 			GetCleanName(),
@@ -1395,32 +1395,19 @@ bool Client::CanEnterZone(const std::string& zone_short_name, int16 instance_ver
 		return false;
 	}
 
-	if (!z->flag_needed.empty() && !GetGM()) {
-		// Use a numeric boolean true flag to check zone_flags_db, which operates by ints
-		if (Strings::IsNumber(z->flag_needed) && Strings::ToBool(z->flag_needed)) {
-			if (!HasZoneFlag(z->zoneidnumber)) {
-				LogInfo(
-					"Character [{}] does not have the zone_flags flag to be in this zone [{}]!",
-					GetCleanName(),
-					z->flag_needed
-				);
-				return false;
-			}
-		}
-		// A non numeric flag checks account flags instead
-		else{
-			std::string flag = GetAccountFlag(z->flag_needed);
-			if (!Strings::ToBool(flag)) {
-				LogInfo(
-					"Character [{}] does not have the account_flags flag to be in this zone [{}], value [{}]",
-					GetCleanName(),
-					z->flag_needed,
-					flag
-				);
-				return false;
-			}
-
-		}
+	if (
+		!GetGM() &&
+		!z->flag_needed.empty() &&
+		Strings::IsNumber(z->flag_needed) &&
+		Strings::ToBool(z->flag_needed) &&
+		!HasZoneFlag(z->zoneidnumber)
+	) {
+		LogInfo(
+			"Character [{}] does not have the flag to be in this zone [{}]!",
+			GetCleanName(),
+			z->flag_needed
+		);
+		return false;
 	}
 
 	return true;

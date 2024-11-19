@@ -76,7 +76,7 @@ NPC::NPC(const NPCType *npc_type_data, Spawn2 *in_respawn, const glm::vec4 &posi
 		  npc_type_data->gender,
 		  npc_type_data->race,
 		  npc_type_data->class_,
-		  (bodyType) npc_type_data->bodytype,
+		  npc_type_data->bodytype,
 		  npc_type_data->deity,
 		  npc_type_data->level,
 		  npc_type_data->npc_id,
@@ -451,7 +451,7 @@ NPC::NPC(const NPCType *npc_type_data, Spawn2 *in_respawn, const glm::vec4 &posi
 
 	RestoreMana();
 
-	if (GetBodyType() == BT_Animal && !RuleB(NPC, AnimalsOpenDoors)) {
+	if (GetBodyType() == BodyType::Animal && !RuleB(NPC, AnimalsOpenDoors)) {
 		m_can_open_doors = false;
 	}
 
@@ -582,7 +582,7 @@ bool NPC::Process()
 		Mob* owner = entity_list.GetMob(ownerid);
 		if (owner != 0)
 		{
-			//if(GetBodyType() != BT_SwarmPet)
+			//if(GetBodyType() != BodyType::SwarmPet)
 			// owner->SetPetID(0);
 			ownerid = 0;
 			petid = 0;
@@ -601,27 +601,12 @@ bool NPC::Process()
 		DepopSwarmPets();
 	}
 
-	if (mob_close_scan_timer.Check()) {
-		entity_list.ScanCloseMobs(close_mobs, this, IsMoving());
+	if (m_scan_close_mobs_timer.Check()) {
+		entity_list.ScanCloseMobs(this);
 	}
 
-	const uint16 npc_mob_close_scan_timer_moving = 6000;
-	const uint16 npc_mob_close_scan_timer_idle   = 60000;
-
-	if (mob_check_moving_timer.Check()) {
-		if (moving) {
-			if (mob_close_scan_timer.GetRemainingTime() > npc_mob_close_scan_timer_moving) {
-				LogAIScanCloseDetail("NPC [{}] Restarting with moving timer", GetCleanName());
-				mob_close_scan_timer.Disable();
-				mob_close_scan_timer.Start(npc_mob_close_scan_timer_moving);
-				mob_close_scan_timer.Trigger();
-			}
-		}
-		else if (mob_close_scan_timer.GetDuration() == npc_mob_close_scan_timer_moving) {
-			LogAIScanCloseDetail("NPC [{}] Restarting with idle timer", GetCleanName());
-			mob_close_scan_timer.Disable();
-			mob_close_scan_timer.Start(npc_mob_close_scan_timer_idle);
-		}
+	if (m_mob_check_moving_timer.Check()) {
+		CheckScanCloseMobsMovingTimer();
 	}
 
 	if (hp_regen_per_second > 0 && hp_regen_per_second_timer.Check()) {
@@ -767,7 +752,7 @@ bool NPC::Process()
 		ProcessEnrage();
 
 		/* Don't keep running the check every second if we don't have enrage */
-		if (!GetSpecialAbility(SPECATK_ENRAGE)) {
+		if (!GetSpecialAbility(SpecialAbility::Enrage)) {
 			enraged_timer.Disable();
 		}
 	}
@@ -797,6 +782,11 @@ bool NPC::Process()
 		{
 			qGlobals->PurgeExpiredGlobals();
 		}
+	}
+
+	if (bot_attack_flag_timer.Check()) {
+		bot_attack_flag_timer.Disable();
+		ClearBotAttackFlags();
 	}
 
 	AI_Process();
@@ -848,22 +838,10 @@ void NPC::Depop(bool start_spawn_timer) {
 		DoNPCEmote(EQ::constants::EmoteEventTypes::OnDespawn, emoteid);
 	}
 
-	if (IsNPC()) {
-		if (parse->HasQuestSub(GetNPCTypeID(), EVENT_DESPAWN)) {
-			parse->EventNPC(EVENT_DESPAWN, this, nullptr, "", 0);
-		}
+	parse->EventBotMercNPC(EVENT_DESPAWN, this, nullptr);
 
-		if (parse->HasQuestSub(ZONE_CONTROLLER_NPC_ID, EVENT_DESPAWN_ZONE)) {
-			DispatchZoneControllerEvent(EVENT_DESPAWN_ZONE, this, "", 0, nullptr);
-		}
-	} else if (IsBot()) {
-		if (parse->BotHasQuestSub(EVENT_DESPAWN)) {
-			parse->EventBot(EVENT_DESPAWN, CastToBot(), nullptr, "", 0);
-		}
-
-		if (parse->HasQuestSub(ZONE_CONTROLLER_NPC_ID, EVENT_DESPAWN_ZONE)) {
-			DispatchZoneControllerEvent(EVENT_DESPAWN_ZONE, this, "", 0, nullptr);
-		}
+	if (parse->HasQuestSub(ZONE_CONTROLLER_NPC_ID, EVENT_DESPAWN_ZONE)) {
+		DispatchZoneControllerEvent(EVENT_DESPAWN_ZONE, this, "", 0, nullptr);
 	}
 
 	p_depop = true;
@@ -1183,7 +1161,14 @@ NPC* NPC::SpawnNPC(const char* spawncommand, const glm::vec4& position, Client* 
 			}
 
 			if (npc->bodytype) {
-				client->Message(Chat::White, fmt::format("Body Type | {} ({})", EQ::constants::GetBodyTypeName(npc->bodytype), npc->bodytype).c_str());
+				client->Message(
+					Chat::White,
+					fmt::format(
+						"Body Type | {} ({})",
+						BodyType::GetName(npc->bodytype),
+						npc->bodytype
+					).c_str()
+				);
 			}
 
 			client->Message(Chat::White, "New NPC spawned!");
@@ -1209,6 +1194,7 @@ uint32 ZoneDatabase::CreateNewNPCCommand(
 	e.race            = n->GetRace();
 	e.class_          = n->GetClass();
 	e.hp              = n->GetMaxHP();
+	e.mana            = n->GetMaxMana();
 	e.gender          = n->GetGender();
 	e.texture         = n->GetTexture();
 	e.helmtexture     = n->GetHelmTexture();
@@ -1216,8 +1202,50 @@ uint32 ZoneDatabase::CreateNewNPCCommand(
 	e.loottable_id    = n->GetLoottableID();
 	e.merchant_id     = n->MerchantType;
 	e.runspeed        = n->GetRunspeed();
-	e.prim_melee_type = static_cast<uint8_t>(EQ::skills::SkillHandtoHand);
-	e.sec_melee_type  = static_cast<uint8_t>(EQ::skills::SkillHandtoHand);
+	e.walkspeed       = n->GetWalkspeed();
+	e.prim_melee_type = n->GetPrimSkill();
+	e.sec_melee_type  = n->GetSecSkill();
+
+	e.bodytype        = n->GetBodyType();
+	e.npc_faction_id  = n->GetNPCFactionID();
+	e.aggroradius     = n->GetAggroRange();
+	e.assistradius    = n->GetAssistRange();
+
+	e.AC              = n->GetAC();
+	e.ATK             = n->GetATK();
+	e.STR             = n->GetSTR();
+	e.STA             = n->GetSTA();
+	e.AGI             = n->GetAGI();
+	e.DEX             = n->GetDEX();
+	e.WIS             = n->GetWIS();
+	e._INT            = n->GetINT();
+	e.CHA             = n->GetCHA();
+
+	e.PR              = n->GetPR();
+	e.MR              = n->GetMR();
+	e.DR              = n->GetDR();
+	e.FR              = n->GetFR();
+	e.CR              = n->GetCR();
+	e.Corrup          = n->GetCorrup();
+	e.PhR             = n->GetPhR();
+
+	e.Accuracy        = n->GetAccuracyRating();
+	e.slow_mitigation = n->GetSlowMitigation();
+	e.mindmg          = n->GetMinDMG();
+	e.maxdmg          = n->GetMaxDMG();
+	e.hp_regen_rate   = n->GetHPRegen();
+	e.hp_regen_per_second = n->GetHPRegenPerSecond();
+	//e.attack_delay    = n->GetAttackDelay(); // Attack delay isn't copying correctly, 3000 becomes 18,400 in the copied NPC?
+	e.spellscale      = n->GetSpellScale();
+	e.healscale       = n->GetHealScale();
+	e.Avoidance       = n->GetAvoidanceRating();
+	e.heroic_strikethrough = n->GetHeroicStrikethrough();
+
+	e.see_hide        = n->SeeHide();
+	e.see_improved_hide = n->SeeImprovedHide();
+	e.see_invis       = n->SeeInvisible();
+	e.see_invis_undead = n->SeeInvisibleUndead();
+
 
 	e = NpcTypesRepository::InsertOne(*this, e);
 
@@ -1228,9 +1256,10 @@ uint32 ZoneDatabase::CreateNewNPCCommand(
 	auto sg = SpawngroupRepository::NewEntity();
 
 	sg.name = fmt::format(
-		"{}-{}",
+		"{}_{}_{}",
 		zone,
-		n->GetName()
+		Strings::Escape(n->GetName()),
+		Timer::GetCurrentTime()
 	);
 
 	sg = SpawngroupRepository::InsertOne(*this, sg);
@@ -1249,7 +1278,7 @@ uint32 ZoneDatabase::CreateNewNPCCommand(
 	s2.x            = n->GetX();
 	s2.y            = n->GetY();
 	s2.z            = n->GetZ();
-	s2.respawntime  = 1200;
+	s2.respawntime  = extra > 0 ? extra : 1200;
 	s2.heading      = n->GetHeading();
 	s2.spawngroupID = sg.id;
 
@@ -1361,12 +1390,17 @@ uint32 ZoneDatabase::UpdateNPCTypeAppearance(Client* c, NPC* n)
 	return updated;
 }
 
-uint32 ZoneDatabase::DeleteSpawnLeaveInNPCTypeTable(const std::string& zone, Client* c, NPC* n)
+uint32 ZoneDatabase::DeleteSpawnLeaveInNPCTypeTable(const std::string& zone, Client* c, NPC* n, uint32 remove_spawngroup_id)
 {
+	if (!n->respawn2) {
+		return 0;
+	}
+
 	const auto& l = Spawn2Repository::GetWhere(
 		*this,
 		fmt::format(
-			"`zone` = '{}' AND `spawngroupID` = {}",
+			"`id` = {} AND `zone` = '{}' AND `spawngroupID` = {}",
+			n->respawn2->GetID(),
 			zone,
 			n->GetSpawnGroupId()
 		)
@@ -1382,12 +1416,14 @@ uint32 ZoneDatabase::DeleteSpawnLeaveInNPCTypeTable(const std::string& zone, Cli
 		return 0;
 	}
 
-	if (!SpawngroupRepository::DeleteOne(*this, e.spawngroupID)) {
-		return 0;
-	}
+	if (remove_spawngroup_id > 0) {
+		if (!SpawngroupRepository::DeleteOne(*this, e.spawngroupID)) {
+			return 0;
+		}
 
-	if (!SpawnentryRepository::DeleteOne(*this, e.spawngroupID)) {
-		return 0;
+		if (!SpawnentryRepository::DeleteOne(*this, e.spawngroupID)) {
+			return 0;
+		}
 	}
 
 	return 1;
@@ -1440,7 +1476,7 @@ uint32 ZoneDatabase::AddSpawnFromSpawnGroup(
 	uint32 instance_version,
 	Client* c,
 	NPC* n,
-	uint32 spawngroup_id
+	uint32 extra
 )
 {
 	auto e = Spawn2Repository::NewEntity();
@@ -1451,8 +1487,8 @@ uint32 ZoneDatabase::AddSpawnFromSpawnGroup(
 	e.y            = c->GetY();
 	e.z            = c->GetZ();
 	e.heading      = c->GetHeading();
-	e.respawntime  = 120;
-	e.spawngroupID = spawngroup_id;
+	e.respawntime  = extra > 0 ? extra : 1200;
+	e.spawngroupID = n->GetSpawnGroupId();
 
 	e = Spawn2Repository::InsertOne(*this, e);
 
@@ -1529,7 +1565,7 @@ uint32 ZoneDatabase::NPCSpawnDB(
 			return UpdateNPCTypeAppearance(c, n);
 		}
 		case NPCSpawnTypes::RemoveSpawn: {
-			return DeleteSpawnLeaveInNPCTypeTable(zone, c, n);
+			return DeleteSpawnLeaveInNPCTypeTable(zone, c, n, extra);
 		}
 		case NPCSpawnTypes::DeleteSpawn: {
 			return DeleteSpawnRemoveFromNPCTypeTable(zone, instance_version, c, n);
@@ -1785,7 +1821,7 @@ void NPC::Disarm(Client* client, int chance) {
 			int matslot = eslot == EQ::invslot::slotPrimary ? EQ::textures::weaponPrimary : EQ::textures::weaponSecondary;
 			if (matslot != -1)
 				SendWearChange(matslot);
-			if ((CastToMob()->GetBodyType() == BT_Humanoid || CastToMob()->GetBodyType() == BT_Summoned) && eslot == EQ::invslot::slotPrimary)
+			if ((CastToMob()->GetBodyType() == BodyType::Humanoid || CastToMob()->GetBodyType() == BodyType::Summoned) && eslot == EQ::invslot::slotPrimary)
 				Say("Ahh! My weapon!");
 			client->MessageString(Chat::Skills, DISARM_SUCCESS, GetCleanName());
 			if (chance != 1000)
@@ -1812,127 +1848,127 @@ void Mob::NPCSpecialAttacks(const char* parse, int permtag, bool reset, bool rem
 		switch(*parse)
 		{
 			case 'E':
-				SetSpecialAbility(SPECATK_ENRAGE, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::Enrage, remove ? 0 : 1);
 				break;
 			case 'F':
-				SetSpecialAbility(SPECATK_FLURRY, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::Flurry, remove ? 0 : 1);
 				break;
 			case 'R':
-				SetSpecialAbility(SPECATK_RAMPAGE, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::Rampage, remove ? 0 : 1);
 				break;
 			case 'r':
-				SetSpecialAbility(SPECATK_AREA_RAMPAGE, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::AreaRampage, remove ? 0 : 1);
 				break;
 			case 'S':
 				if(remove) {
-					SetSpecialAbility(SPECATK_SUMMON, 0);
-					StopSpecialAbilityTimer(SPECATK_SUMMON);
+					SetSpecialAbility(SpecialAbility::Summon, 0);
+					StopSpecialAbilityTimer(SpecialAbility::Summon);
 				} else {
-					SetSpecialAbility(SPECATK_SUMMON, 1);
+					SetSpecialAbility(SpecialAbility::Summon, 1);
 				}
 			break;
 			case 'T':
-				SetSpecialAbility(SPECATK_TRIPLE, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::TripleAttack, remove ? 0 : 1);
 				break;
 			case 'Q':
 				//quad requires triple to work properly
 				if(remove) {
-					SetSpecialAbility(SPECATK_QUAD, 0);
+					SetSpecialAbility(SpecialAbility::QuadrupleAttack, 0);
 				} else {
-					SetSpecialAbility(SPECATK_TRIPLE, 1);
-					SetSpecialAbility(SPECATK_QUAD, 1);
+					SetSpecialAbility(SpecialAbility::TripleAttack, 1);
+					SetSpecialAbility(SpecialAbility::QuadrupleAttack, 1);
 					}
 				break;
 			case 'b':
-				SetSpecialAbility(SPECATK_BANE, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::BaneAttack, remove ? 0 : 1);
 				break;
 			case 'm':
-				SetSpecialAbility(SPECATK_MAGICAL, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::MagicalAttack, remove ? 0 : 1);
 				break;
 			case 'U':
-				SetSpecialAbility(UNSLOWABLE, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::SlowImmunity, remove ? 0 : 1);
 				break;
 			case 'M':
-				SetSpecialAbility(UNMEZABLE, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::MesmerizeImmunity, remove ? 0 : 1);
 				break;
 			case 'C':
-				SetSpecialAbility(UNCHARMABLE, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::CharmImmunity, remove ? 0 : 1);
 				break;
 			case 'N':
-				SetSpecialAbility(UNSTUNABLE, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::StunImmunity, remove ? 0 : 1);
 				break;
 			case 'I':
-				SetSpecialAbility(UNSNAREABLE, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::SnareImmunity, remove ? 0 : 1);
 				break;
 			case 'D':
-				SetSpecialAbility(UNFEARABLE, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::FearImmunity, remove ? 0 : 1);
 				break;
 			case 'K':
-				SetSpecialAbility(UNDISPELLABLE, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::DispellImmunity, remove ? 0 : 1);
 				break;
 			case 'A':
-				SetSpecialAbility(IMMUNE_MELEE, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::MeleeImmunity, remove ? 0 : 1);
 				break;
 			case 'B':
-				SetSpecialAbility(IMMUNE_MAGIC, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::MagicImmunity, remove ? 0 : 1);
 				break;
 			case 'f':
-				SetSpecialAbility(IMMUNE_FLEEING, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::FleeingImmunity, remove ? 0 : 1);
 				break;
 			case 'O':
-				SetSpecialAbility(IMMUNE_MELEE_EXCEPT_BANE, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::MeleeImmunityExceptBane, remove ? 0 : 1);
 				break;
 			case 'W':
-				SetSpecialAbility(IMMUNE_MELEE_NONMAGICAL, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::MeleeImmunityExceptMagical, remove ? 0 : 1);
 				break;
 			case 'H':
-				SetSpecialAbility(IMMUNE_AGGRO, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::AggroImmunity, remove ? 0 : 1);
 				break;
 			case 'G':
-				SetSpecialAbility(IMMUNE_AGGRO_ON, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::BeingAggroImmunity, remove ? 0 : 1);
 				break;
 			case 'g':
-				SetSpecialAbility(IMMUNE_CASTING_FROM_RANGE, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::CastingFromRangeImmunity, remove ? 0 : 1);
 				break;
 			case 'd':
-				SetSpecialAbility(IMMUNE_FEIGN_DEATH, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::FeignDeathImmunity, remove ? 0 : 1);
 				break;
 			case 'Y':
-				SetSpecialAbility(SPECATK_RANGED_ATK, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::RangedAttack, remove ? 0 : 1);
 				break;
 			case 'L':
-				SetSpecialAbility(SPECATK_INNATE_DW, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::DualWield, remove ? 0 : 1);
 				break;
 			case 't':
-				SetSpecialAbility(NPC_TUNNELVISION, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::TunnelVision, remove ? 0 : 1);
 				break;
 			case 'n':
-				SetSpecialAbility(NPC_NO_BUFFHEAL_FRIENDS, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::NoBuffHealFriends, remove ? 0 : 1);
 				break;
 			case 'p':
-				SetSpecialAbility(IMMUNE_PACIFY, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::PacifyImmunity, remove ? 0 : 1);
 				break;
 			case 'J':
-				SetSpecialAbility(LEASH, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::Leash, remove ? 0 : 1);
 				break;
 			case 'j':
-				SetSpecialAbility(TETHER, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::Tether, remove ? 0 : 1);
 				break;
 			case 'o':
-				SetSpecialAbility(DESTRUCTIBLE_OBJECT, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::DestructibleObject, remove ? 0 : 1);
 				SetDestructibleObject(remove ? true : false);
 				break;
 			case 'Z':
-				SetSpecialAbility(NO_HARM_FROM_CLIENT, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::HarmFromClientImmunity, remove ? 0 : 1);
 				break;
 			case 'i':
-				SetSpecialAbility(IMMUNE_TAUNT, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::TauntImmunity, remove ? 0 : 1);
 				break;
 			case 'e':
-				SetSpecialAbility(ALWAYS_FLEE, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::AlwaysFlee, remove ? 0 : 1);
 				break;
 			case 'h':
-				SetSpecialAbility(FLEE_PERCENT, remove ? 0 : 1);
+				SetSpecialAbility(SpecialAbility::FleePercent, remove ? 0 : 1);
 				break;
 
 			default:
@@ -1959,147 +1995,147 @@ bool Mob::HasNPCSpecialAtk(const char* parse) {
 		switch(*parse)
 		{
 			case 'E':
-				if (!GetSpecialAbility(SPECATK_ENRAGE))
+				if (!GetSpecialAbility(SpecialAbility::Enrage))
 					HasAllAttacks = false;
 				break;
 			case 'F':
-				if (!GetSpecialAbility(SPECATK_FLURRY))
+				if (!GetSpecialAbility(SpecialAbility::Flurry))
 					HasAllAttacks = false;
 				break;
 			case 'R':
-				if (!GetSpecialAbility(SPECATK_RAMPAGE))
+				if (!GetSpecialAbility(SpecialAbility::Rampage))
 					HasAllAttacks = false;
 				break;
 			case 'r':
-				if (!GetSpecialAbility(SPECATK_AREA_RAMPAGE))
+				if (!GetSpecialAbility(SpecialAbility::AreaRampage))
 					HasAllAttacks = false;
 				break;
 			case 'S':
-				if (!GetSpecialAbility(SPECATK_SUMMON))
+				if (!GetSpecialAbility(SpecialAbility::Summon))
 					HasAllAttacks = false;
 				break;
 			case 'T':
-				if (!GetSpecialAbility(SPECATK_TRIPLE))
+				if (!GetSpecialAbility(SpecialAbility::TripleAttack))
 					HasAllAttacks = false;
 				break;
 			case 'Q':
-				if (!GetSpecialAbility(SPECATK_QUAD))
+				if (!GetSpecialAbility(SpecialAbility::QuadrupleAttack))
 					HasAllAttacks = false;
 				break;
 			case 'b':
-				if (!GetSpecialAbility(SPECATK_BANE))
+				if (!GetSpecialAbility(SpecialAbility::BaneAttack))
 					HasAllAttacks = false;
 				break;
 			case 'm':
-				if (!GetSpecialAbility(SPECATK_MAGICAL))
+				if (!GetSpecialAbility(SpecialAbility::MagicalAttack))
 					HasAllAttacks = false;
 				break;
 			case 'U':
-				if (!GetSpecialAbility(UNSLOWABLE))
+				if (!GetSpecialAbility(SpecialAbility::SlowImmunity))
 					HasAllAttacks = false;
 				break;
 			case 'M':
-				if (!GetSpecialAbility(UNMEZABLE))
+				if (!GetSpecialAbility(SpecialAbility::MesmerizeImmunity))
 					HasAllAttacks = false;
 				break;
 			case 'C':
-				if (!GetSpecialAbility(UNCHARMABLE))
+				if (!GetSpecialAbility(SpecialAbility::CharmImmunity))
 					HasAllAttacks = false;
 				break;
 			case 'N':
-				if (!GetSpecialAbility(UNSTUNABLE))
+				if (!GetSpecialAbility(SpecialAbility::StunImmunity))
 					HasAllAttacks = false;
 				break;
 			case 'I':
-				if (!GetSpecialAbility(UNSNAREABLE))
+				if (!GetSpecialAbility(SpecialAbility::SnareImmunity))
 					HasAllAttacks = false;
 				break;
 			case 'D':
-				if (!GetSpecialAbility(UNFEARABLE))
+				if (!GetSpecialAbility(SpecialAbility::FearImmunity))
 					HasAllAttacks = false;
 				break;
 			case 'A':
-				if (!GetSpecialAbility(IMMUNE_MELEE))
+				if (!GetSpecialAbility(SpecialAbility::MeleeImmunity))
 					HasAllAttacks = false;
 				break;
 			case 'B':
-				if (!GetSpecialAbility(IMMUNE_MAGIC))
+				if (!GetSpecialAbility(SpecialAbility::MagicImmunity))
 					HasAllAttacks = false;
 				break;
 			case 'f':
-				if (!GetSpecialAbility(IMMUNE_FLEEING))
+				if (!GetSpecialAbility(SpecialAbility::FleeingImmunity))
 					HasAllAttacks = false;
 				break;
 			case 'O':
-				if (!GetSpecialAbility(IMMUNE_MELEE_EXCEPT_BANE))
+				if (!GetSpecialAbility(SpecialAbility::MeleeImmunityExceptBane))
 					HasAllAttacks = false;
 				break;
 			case 'W':
-				if (!GetSpecialAbility(IMMUNE_MELEE_NONMAGICAL))
+				if (!GetSpecialAbility(SpecialAbility::MeleeImmunityExceptMagical))
 					HasAllAttacks = false;
 				break;
 			case 'H':
-				if (!GetSpecialAbility(IMMUNE_AGGRO))
+				if (!GetSpecialAbility(SpecialAbility::AggroImmunity))
 					HasAllAttacks = false;
 				break;
 			case 'G':
-				if (!GetSpecialAbility(IMMUNE_AGGRO_ON))
+				if (!GetSpecialAbility(SpecialAbility::BeingAggroImmunity))
 					HasAllAttacks = false;
 				break;
 			case 'g':
-				if (!GetSpecialAbility(IMMUNE_CASTING_FROM_RANGE))
+				if (!GetSpecialAbility(SpecialAbility::CastingFromRangeImmunity))
 					HasAllAttacks = false;
 				break;
 			case 'd':
-				if (!GetSpecialAbility(IMMUNE_FEIGN_DEATH))
+				if (!GetSpecialAbility(SpecialAbility::FeignDeathImmunity))
 					HasAllAttacks = false;
 				break;
 			case 'Y':
-				if (!GetSpecialAbility(SPECATK_RANGED_ATK))
+				if (!GetSpecialAbility(SpecialAbility::RangedAttack))
 					HasAllAttacks = false;
 				break;
 			case 'L':
-				if (!GetSpecialAbility(SPECATK_INNATE_DW))
+				if (!GetSpecialAbility(SpecialAbility::DualWield))
 					HasAllAttacks = false;
 				break;
 			case 't':
-				if (!GetSpecialAbility(NPC_TUNNELVISION))
+				if (!GetSpecialAbility(SpecialAbility::TunnelVision))
 					HasAllAttacks = false;
 				break;
 			case 'n':
-				if (!GetSpecialAbility(NPC_NO_BUFFHEAL_FRIENDS))
+				if (!GetSpecialAbility(SpecialAbility::NoBuffHealFriends))
 					HasAllAttacks = false;
 				break;
 			case 'p':
-				if(!GetSpecialAbility(IMMUNE_PACIFY))
+				if(!GetSpecialAbility(SpecialAbility::PacifyImmunity))
 					HasAllAttacks = false;
 				break;
 			case 'J':
-				if(!GetSpecialAbility(LEASH))
+				if(!GetSpecialAbility(SpecialAbility::Leash))
 					HasAllAttacks = false;
 				break;
 			case 'j':
-				if(!GetSpecialAbility(TETHER))
+				if(!GetSpecialAbility(SpecialAbility::Tether))
 					HasAllAttacks = false;
 				break;
 			case 'o':
-				if(!GetSpecialAbility(DESTRUCTIBLE_OBJECT))
+				if(!GetSpecialAbility(SpecialAbility::DestructibleObject))
 				{
 					HasAllAttacks = false;
 					SetDestructibleObject(false);
 				}
 				break;
 			case 'Z':
-				if(!GetSpecialAbility(NO_HARM_FROM_CLIENT)){
+				if(!GetSpecialAbility(SpecialAbility::HarmFromClientImmunity)){
 					HasAllAttacks = false;
 				}
 				break;
 			case 'e':
-				if(!GetSpecialAbility(ALWAYS_FLEE))
+				if(!GetSpecialAbility(SpecialAbility::AlwaysFlee))
 					HasAllAttacks = false;
 				break;
 			case 'h':
-				if(!GetSpecialAbility(FLEE_PERCENT))
+				if(!GetSpecialAbility(SpecialAbility::FleePercent))
 					HasAllAttacks = false;
 				break;
 			default:
@@ -2120,6 +2156,7 @@ void NPC::FillSpawnStruct(NewSpawn_Struct* ns, Mob* ForWho)
 	UpdateActiveLight();
 	ns->spawn.light = GetActiveLightType();
 	ns->spawn.show_name = NPCTypedata->show_name;
+	ns->spawn.trader = false;
 }
 
 void NPC::PetOnSpawn(NewSpawn_Struct* ns)
@@ -2149,7 +2186,7 @@ void NPC::PetOnSpawn(NewSpawn_Struct* ns)
 
 		//Not recommended if using above (However, this will work better on older clients).
 		if (RuleB(Pets, UnTargetableSwarmPet)) {
-			ns->spawn.bodytype = BT_NoTarget;
+			ns->spawn.bodytype = BodyType::NoTarget;
 		}
 
 		if (
@@ -2874,31 +2911,252 @@ void NPC::DoNPCEmote(uint8 event_, uint32 emote_id, Mob* t)
 
 bool NPC::CanTalk()
 {
-	//Races that should be able to talk. (Races up to Titanium)
-
-	uint16 TalkRace[473] =
-	{1,2,3,4,5,6,7,8,9,10,11,12,0,0,15,16,0,18,19,20,0,0,23,0,25,0,0,0,0,0,0,
-	32,0,0,0,0,0,0,39,40,0,0,0,44,0,0,0,0,49,0,51,0,53,54,55,56,57,58,0,0,0,
-	62,0,64,65,66,67,0,0,70,71,0,0,0,0,0,77,78,79,0,81,82,0,0,0,86,0,0,0,90,
-	0,92,93,94,95,0,0,98,99,0,101,0,103,0,0,0,0,0,0,110,111,112,0,0,0,0,0,0,
-	0,0,0,0,123,0,0,126,0,128,0,130,131,0,0,0,0,136,137,0,139,140,0,0,0,144,
-	0,0,0,0,0,150,151,152,153,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-	0,0,0,0,0,0,183,184,0,0,187,188,189,0,0,0,0,0,195,196,0,198,0,0,0,202,0,
-	0,205,0,0,208,0,0,0,0,0,0,0,0,217,0,219,0,0,0,0,0,0,226,0,0,229,230,0,0,
-	0,0,235,236,0,238,239,240,241,242,243,244,0,246,247,0,0,0,251,0,0,254,255,
-	256,257,0,0,0,0,0,0,0,0,266,267,0,0,270,271,0,0,0,0,0,277,278,0,0,0,0,283,
-	284,0,286,0,288,289,290,0,0,0,0,295,296,297,298,299,300,0,0,0,304,0,0,0,0,
-	0,0,0,0,0,0,0,0,0,0,0,320,0,322,323,324,325,0,0,0,0,330,331,332,333,334,335,
-	336,337,338,339,340,341,342,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,359,360,361,362,
-	0,364,365,366,0,368,369,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,385,386,0,0,0,0,0,392,
-	393,394,395,396,397,398,0,400,402,0,0,0,0,406,0,408,0,0,411,0,413,0,0,0,417,
-	0,0,420,0,0,0,0,425,0,0,0,0,0,0,0,433,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-	0,0,0,0,0,458,0,0,0,0,0,0,0,0,467,0,0,470,0,0,473};
-
-	if (TalkRace[GetRace() - 1] > 0)
-		return true;
-
-	return false;
+	switch (GetRace()) {
+		case Race::Human:
+		case Race::Barbarian:
+		case Race::Erudite:
+		case Race::WoodElf:
+		case Race::HighElf:
+		case Race::DarkElf:
+		case Race::HalfElf:
+		case Race::Dwarf:
+		case Race::Troll:
+		case Race::Ogre:
+		case Race::Halfling:
+		case Race::Gnome:
+		case Race::Werewolf:
+		case Race::Brownie:
+		case Race::Centaur:
+		case Race::Giant:
+		case Race::Trakanon:
+		case Race::VenrilSathir:
+		case Race::Kerran:
+		case Race::Fairy:
+		case Race::Ghost:
+		case Race::Gnoll:
+		case Race::Goblin:
+		case Race::FreeportGuard:
+		case Race::LavaDragon:
+		case Race::LizardMan:
+		case Race::Minotaur:
+		case Race::Orc:
+		case Race::HumanBeggar:
+		case Race::Pixie:
+		case Race::Drachnid:
+		case Race::SolusekRo:
+		case Race::Tunare:
+		case Race::Treant:
+		case Race::Vampire:
+		case Race::StatueOfRallosZek:
+		case Race::HighpassCitizen:
+		case Race::Zombie:
+		case Race::QeynosCitizen:
+		case Race::NeriakCitizen:
+		case Race::EruditeCitizen:
+		case Race::Bixie:
+		case Race::RivervaleCitizen:
+		case Race::Scarecrow:
+		case Race::Sphinx:
+		case Race::HalasCitizen:
+		case Race::GrobbCitizen:
+		case Race::OggokCitizen:
+		case Race::KaladimCitizen:
+		case Race::CazicThule:
+		case Race::ElfVampire:
+		case Race::Denizen:
+		case Race::Efreeti:
+		case Race::PhinigelAutropos:
+		case Race::Mermaid:
+		case Race::Harpy:
+		case Race::Fayguard:
+		case Race::Innoruuk:
+		case Race::Djinn:
+		case Race::InvisibleMan:
+		case Race::Iksar:
+		case Race::VahShir:
+		case Race::Sarnak:
+		case Race::Xalgoz:
+		case Race::Yeti:
+		case Race::IksarCitizen:
+		case Race::ForestGiant:
+		case Race::Burynai:
+		case Race::Erollisi:
+		case Race::Tribunal:
+		case Race::Bertoxxulous:
+		case Race::Bristlebane:
+		case Race::Ratman:
+		case Race::Coldain:
+		case Race::VeliousDragon:
+		case Race::Siren:
+		case Race::FrostGiant:
+		case Race::StormGiant:
+		case Race::BlackAndWhiteDragon:
+		case Race::GhostDragon:
+		case Race::PrismaticDragon:
+		case Race::Grimling:
+		case Race::KhatiSha:
+		case Race::Vampire2:
+		case Race::Shissar:
+		case Race::VampireVolatalis:
+		case Race::Shadel:
+		case Race::Netherbian:
+		case Race::Akhevan:
+		case Race::Wretch:
+		case Race::LordInquisitorSeru:
+		case Race::VahShirKing:
+		case Race::VahShirGuard:
+		case Race::TeleportMan:
+		case Race::Werewolf2:
+		case Race::Nymph:
+		case Race::Dryad:
+		case Race::Treant2:
+		case Race::TarewMarr:
+		case Race::SolusekRo2:
+		case Race::GuardOfJustice:
+		case Race::SolusekRoGuard:
+		case Race::BertoxxulousNew:
+		case Race::TribunalNew:
+		case Race::TerrisThule:
+		case Race::KnightOfPestilence:
+		case Race::Lepertoloth:
+		case Race::Pusling:
+		case Race::WaterMephit:
+		case Race::NightmareGoblin:
+		case Race::Karana:
+		case Race::Saryrn:
+		case Race::FenninRo:
+		case Race::SoulDevourer:
+		case Race::NewRallosZek:
+		case Race::VallonZek:
+		case Race::TallonZek:
+		case Race::AirMephit:
+		case Race::EarthMephit:
+		case Race::FireMephit:
+		case Race::NightmareMephit:
+		case Race::Zebuxoruk:
+		case Race::MithanielMarr:
+		case Race::UndeadKnight:
+		case Race::Rathe:
+		case Race::Xegony:
+		case Race::Fiend:
+		case Race::Quarm:
+		case Race::Efreeti2:
+		case Race::Valorian2:
+		case Race::AnimatedArmor:
+		case Race::UndeadFootman:
+		case Race::RallosOgre:
+		case Race::Froglok2:
+		case Race::TrollCrewMember:
+		case Race::PirateDeckhand:
+		case Race::BrokenSkullPirate:
+		case Race::PirateGhost:
+		case Race::OneArmedPirate:
+		case Race::SpiritmasterNadox:
+		case Race::BrokenSkullTaskmaster:
+		case Race::GnomePirate:
+		case Race::DarkElfPirate:
+		case Race::OgrePirate:
+		case Race::HumanPirate:
+		case Race::EruditePirate:
+		case Race::UndeadVampire:
+		case Race::Vampire3:
+		case Race::RujarkianOrc:
+		case Race::BoneGolem:
+		case Race::SandElf:
+		case Race::MasterVampire:
+		case Race::MasterOrc:
+		case Race::Mummy:
+		case Race::NewGoblin:
+		case Race::Nihil:
+		case Race::Trusik:
+		case Race::Ukun:
+		case Race::Ixt:
+		case Race::Ikaav:
+		case Race::Aneuk:
+		case Race::Kyv:
+		case Race::Noc:
+		case Race::Ratuk:
+		case Race::Huvul:
+		case Race::Mastruq:
+		case Race::MataMuram:
+		case Race::Succubus:
+		case Race::Pyrilen:
+		case Race::Dragorn:
+		case Race::Gelidran:
+		case Race::Minotaur2:
+		case Race::CrystalShard:
+		case Race::Goblin2:
+		case Race::Giant2:
+		case Race::Orc2:
+		case Race::Werewolf3:
+		case Race::Shiliskin:
+		case Race::Minotaur3:
+		case Race::Fairy2:
+		case Race::Bolvirk:
+		case Race::Elddar:
+		case Race::ForestGiant2:
+		case Race::BoneGolem2:
+		case Race::Scrykin:
+		case Race::Treant3:
+		case Race::Vampire4:
+		case Race::AyonaeRo:
+		case Race::SullonZek:
+		case Race::Bixie2:
+		case Race::Centaur2:
+		case Race::Drakkin:
+		case Race::Giant3:
+		case Race::Gnoll2:
+		case Race::GiantShade:
+		case Race::Harpy2:
+		case Race::Satyr:
+		case Race::Dynleth:
+		case Race::Kedge:
+		case Race::Kerran2:
+		case Race::Shissar2:
+		case Race::Siren2:
+		case Race::Sphinx2:
+		case Race::Human2:
+		case Race::Brownie2:
+		case Race::Exoskeleton:
+		case Race::Minotaur4:
+		case Race::Scarecrow2:
+		case Race::Wereorc:
+		case Race::ElvenGhost:
+		case Race::HumanGhost:
+		case Race::Burynai2:
+		case Race::Dracolich:
+		case Race::IksarGhost:
+		case Race::Mephit:
+		case Race::Sarnak2:
+		case Race::Gnoll3:
+		case Race::GodOfDiscord:
+		case Race::Ogre2:
+		case Race::Giant4:
+		case Race::Apexus:
+		case Race::Bellikos:
+		case Race::BrellsFirstCreation:
+		case Race::Brell:
+		case Race::Coldain2:
+		case Race::Coldain3:
+		case Race::Telmira:
+		case Race::MorellThule:
+		case Race::Amygdalan:
+		case Race::Sandman:
+		case Race::RoyalGuard:
+		case Race::CazicThule2:
+		case Race::Erudite2:
+		case Race::Alaran:
+		case Race::AlaranGhost:
+		case Race::Ratman2:
+		case Race::Akheva:
+		case Race::Luclin:
+		case Race::Luclin2:
+		case Race::Luclin3:
+		case Race::Luclin4:
+			return true;
+		default:
+			return false;
+	}
 }
 
 //this is called with 'this' as the mob being looked at, and
@@ -3009,7 +3267,7 @@ int NPC::GetScore()
         if(HasNPCSpecialAtk("S")) { spccontrib++; }    //Summon
         if(HasNPCSpecialAtk("T")) { spccontrib += 2; } //Triple
         if(HasNPCSpecialAtk("Q")) { spccontrib += 3; } //Quad
-        if(HasNPCSpecialAtk("U")) { spccontrib += 5; } //Unslowable
+        if(HasNPCSpecialAtk("U")) { spccontrib += 5; } //SpecialAbility::SlowImmunity
         if(HasNPCSpecialAtk("L")) { spccontrib++; }    //Innate Dual Wield
     }
 
@@ -3243,7 +3501,7 @@ bool NPC::AICheckCloseBeneficialSpells(
 		return false;
 	}
 
-	if (caster->GetSpecialAbility(NPC_NO_BUFFHEAL_FRIENDS)) {
+	if (caster->GetSpecialAbility(SpecialAbility::NoBuffHealFriends)) {
 		return false;
 	}
 
@@ -3264,7 +3522,7 @@ bool NPC::AICheckCloseBeneficialSpells(
 	/**
 	 * Check through close range mobs
 	 */
-	for (auto & close_mob : entity_list.GetCloseMobList(caster, cast_range)) {
+	for (auto & close_mob : caster->GetCloseMobList(cast_range)) {
 		Mob *mob = close_mob.second;
 		if (!mob) {
 			continue;
@@ -3343,8 +3601,8 @@ void NPC::AIYellForHelp(Mob *sender, Mob *attacker)
 		GetID()
 	);
 
-	for (auto &close_mob : entity_list.GetCloseMobList(sender)) {
-		Mob   *mob     = close_mob.second;
+	for (auto &close_mob: sender->GetCloseMobList()) {
+		Mob *mob = close_mob.second;
 		if (!mob) {
 			continue;
 		}
@@ -3403,7 +3661,7 @@ void NPC::AIYellForHelp(Mob *sender, Mob *attacker)
 			 * if they are in range, make sure we are not green...
 			 * then jump in if they are our friend
 			 */
-			if (mob->GetLevel() >= 50 || mob->AlwaysAggro() || attacker->GetLevelCon(mob->GetLevel()) != CON_GRAY) {
+			if (mob->GetLevel() >= 50 || mob->AlwaysAggro() || attacker->GetLevelCon(mob->GetLevel()) != ConsiderColor::Gray) {
 				if (mob->GetPrimaryFaction() == sender->CastToNPC()->GetPrimaryFaction()) {
 					const auto f = zone->GetNPCFaction(mob->CastToNPC()->GetNPCFactionID());
 					if (f) {
@@ -3751,56 +4009,56 @@ void NPC::DescribeSpecialAbilities(Client* c)
 
 	// These abilities are simple on/off flags
 	static const std::vector<uint32> toggleable_special_abilities = {
-		SPECATK_TRIPLE,
-		SPECATK_QUAD,
-		SPECATK_INNATE_DW,
-		SPECATK_BANE,
-		SPECATK_MAGICAL,
-		UNSLOWABLE,
-		UNMEZABLE,
-		UNCHARMABLE,
-		UNSTUNABLE,
-		UNSNAREABLE,
-		UNFEARABLE,
-		UNDISPELLABLE,
-		IMMUNE_MELEE,
-		IMMUNE_MAGIC,
-		IMMUNE_FLEEING,
-		IMMUNE_MELEE_EXCEPT_BANE,
-		IMMUNE_MELEE_NONMAGICAL,
-		IMMUNE_AGGRO,
-		IMMUNE_AGGRO_ON,
-		IMMUNE_CASTING_FROM_RANGE,
-		IMMUNE_FEIGN_DEATH,
-		IMMUNE_TAUNT,
-		NPC_NO_BUFFHEAL_FRIENDS,
-		IMMUNE_PACIFY,
-		DESTRUCTIBLE_OBJECT,
-		NO_HARM_FROM_CLIENT,
-		ALWAYS_FLEE,
-		ALLOW_BENEFICIAL,
-		DISABLE_MELEE,
-		ALLOW_TO_TANK,
-		IGNORE_ROOT_AGGRO_RULES,
-		PROX_AGGRO,
-		IMMUNE_RANGED_ATTACKS,
-		IMMUNE_DAMAGE_CLIENT,
-		IMMUNE_DAMAGE_NPC,
-		IMMUNE_AGGRO_CLIENT,
-		IMMUNE_AGGRO_NPC,
-		IMMUNE_FADING_MEMORIES,
-		IMMUNE_OPEN,
-		IMMUNE_ASSASSINATE,
-		IMMUNE_HEADSHOT,
-		IMMUNE_AGGRO_BOT,
-		IMMUNE_DAMAGE_BOT
+		SpecialAbility::TripleAttack,
+		SpecialAbility::QuadrupleAttack,
+		SpecialAbility::DualWield,
+		SpecialAbility::BaneAttack,
+		SpecialAbility::MagicalAttack,
+		SpecialAbility::SlowImmunity,
+		SpecialAbility::MesmerizeImmunity,
+		SpecialAbility::CharmImmunity,
+		SpecialAbility::StunImmunity,
+		SpecialAbility::SnareImmunity,
+		SpecialAbility::FearImmunity,
+		SpecialAbility::DispellImmunity,
+		SpecialAbility::MeleeImmunity,
+		SpecialAbility::MagicImmunity,
+		SpecialAbility::FleeingImmunity,
+		SpecialAbility::MeleeImmunityExceptBane,
+		SpecialAbility::MeleeImmunityExceptMagical,
+		SpecialAbility::AggroImmunity,
+		SpecialAbility::BeingAggroImmunity,
+		SpecialAbility::CastingFromRangeImmunity,
+		SpecialAbility::FeignDeathImmunity,
+		SpecialAbility::TauntImmunity,
+		SpecialAbility::NoBuffHealFriends,
+		SpecialAbility::PacifyImmunity,
+		SpecialAbility::DestructibleObject,
+		SpecialAbility::HarmFromClientImmunity,
+		SpecialAbility::AlwaysFlee,
+		SpecialAbility::AllowBeneficial,
+		SpecialAbility::DisableMelee,
+		SpecialAbility::AllowedToTank,
+		SpecialAbility::IgnoreRootAggroRules,
+		SpecialAbility::ProximityAggro,
+		SpecialAbility::RangedAttackImmunity,
+		SpecialAbility::ClientDamageImmunity,
+		SpecialAbility::NPCDamageImmunity,
+		SpecialAbility::ClientAggroImmunity,
+		SpecialAbility::NPCAggroImmunity,
+		SpecialAbility::MemoryFadeImmunity,
+		SpecialAbility::OpenImmunity,
+		SpecialAbility::AssassinateImmunity,
+		SpecialAbility::HeadshotImmunity,
+		SpecialAbility::BotAggroImmunity,
+		SpecialAbility::BotDamageImmunity
 	};
 
 	// These abilities have parameters that need to be parsed out individually
 	static const std::map<uint32, std::vector<std::string>> parameter_special_abilities = {
-		{ SPECATK_SUMMON, { "Cooldown in Milliseconds", "Health Percentage" } },
+		{ SpecialAbility::Summon, { "Cooldown in Milliseconds", "Health Percentage" } },
 		{
-			SPECATK_ENRAGE,
+			SpecialAbility::Enrage,
 			{
 				"Health Percentage",
 				"Duration in Milliseconds",
@@ -3808,7 +4066,7 @@ void NPC::DescribeSpecialAbilities(Client* c)
 			}
 		},
 		{
-			SPECATK_RAMPAGE,
+			SpecialAbility::Rampage,
 			{
 				"Chance",
 				"Targets",
@@ -3820,7 +4078,7 @@ void NPC::DescribeSpecialAbilities(Client* c)
 			}
 		},
 		{
-			SPECATK_AREA_RAMPAGE,
+			SpecialAbility::AreaRampage,
 			{
 				"Targets",
 				"Normal Attack Damage Percentage",
@@ -3832,7 +4090,7 @@ void NPC::DescribeSpecialAbilities(Client* c)
 			}
 		},
 		{
-			SPECATK_FLURRY,
+			SpecialAbility::Flurry,
 			{
 				"Attacks",
 				"Normal Attack Damage Percentage",
@@ -3844,7 +4102,7 @@ void NPC::DescribeSpecialAbilities(Client* c)
 			}
 		},
 		{
-			SPECATK_RANGED_ATK,
+			SpecialAbility::RangedAttack,
 			{
 				"Attacks",
 				"Maximum Range",
@@ -3853,21 +4111,21 @@ void NPC::DescribeSpecialAbilities(Client* c)
 				"Minimum Range"
 			}
 		},
-		{ NPC_TUNNELVISION, { "Aggro Modifier on Non-Tanks" } },
-		{ LEASH, { "Range" } },
-		{ TETHER, { "Range" } },
-		{ FLEE_PERCENT, { "Health Percentage", "Chance" } },
+		{ SpecialAbility::TunnelVision, { "Aggro Modifier on Non-Tanks" } },
+		{ SpecialAbility::Leash, { "Range" } },
+		{ SpecialAbility::Tether, { "Range" } },
+		{ SpecialAbility::FleePercent, { "Health Percentage", "Chance" } },
 		{
-			NPC_CHASE_DISTANCE,
+			SpecialAbility::NPCChaseDistance,
 			{
 				"Maximum Distance",
 				"Minimum Distance",
 				"Ignore Line of Sight"
 			}
 		},
-		{ CASTING_RESIST_DIFF, { "Resist Difficulty Value" } },
+		{ SpecialAbility::CastingResistDifficulty, { "Resist Difficulty Value" } },
 		{
-			COUNTER_AVOID_DAMAGE,
+			SpecialAbility::CounterAvoidDamage,
 			{
 				"Reduction Percentage for Block, Dodge, Parry, and Riposte",
 				"Reduction Percentage for Riposte",
@@ -3877,7 +4135,7 @@ void NPC::DescribeSpecialAbilities(Client* c)
 			}
 		},
 		{
-			MODIFY_AVOID_DAMAGE,
+			SpecialAbility::ModifyAvoidDamage,
 			{
 				"Addition Percentage for Block, Dodge, Parry, and Riposte",
 				"Addition Percentage for Riposte",
@@ -3895,7 +4153,7 @@ void NPC::DescribeSpecialAbilities(Client* c)
 			messages.emplace_back(
 				fmt::format(
 					"{} ({})",
-					EQ::constants::GetSpecialAbilityName(e),
+					SpecialAbility::GetName(e),
 					e
 				)
 			);
@@ -3912,7 +4170,7 @@ void NPC::DescribeSpecialAbilities(Client* c)
 				messages.emplace_back(
 					fmt::format(
 						"{} ({}) | {}: {}",
-						EQ::constants::GetSpecialAbilityName(e.first),
+						SpecialAbility::GetName(e.first),
 						e.first,
 						a,
 						GetSpecialAbilityParam(e.first, slot_id)
@@ -3955,4 +4213,28 @@ void NPC::DescribeSpecialAbilities(Client* c)
 	for (const auto& e : messages) {
 		c->Message(Chat::White, e.c_str());
 	}
+}
+
+void NPC::DoNpcToNpcAggroScan()
+{
+	for (auto &close_mob : GetCloseMobList(GetAggroRange())) {
+		Mob *mob = close_mob.second;
+		if (!mob) {
+			continue;
+		}
+
+		if (!mob->IsNPC()) {
+			continue;
+		}
+
+		if (CheckWillAggro(mob)) {
+			AddToHateList(mob);
+		}
+	}
+
+	AI_scan_area_timer->Disable();
+	AI_scan_area_timer->Start(
+		RandomTimer(RuleI(NPC, NPCToNPCAggroTimerMin), RuleI(NPC, NPCToNPCAggroTimerMax)),
+		false
+	);
 }

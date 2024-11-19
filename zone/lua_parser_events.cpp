@@ -638,6 +638,39 @@ void handle_npc_entity_variable(
 	}
 }
 
+void handle_npc_spell_blocked(
+	QuestInterface *parse,
+	lua_State* L,
+	NPC* npc,
+	Mob *init,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+)
+{
+	Seperator sep(data.c_str());
+
+	lua_pushinteger(L, Strings::ToUnsignedInt(sep.arg[0]));
+	lua_setfield(L, -2, "blocking_spell_id");
+
+	lua_pushinteger(L, Strings::ToUnsignedInt(sep.arg[1]));
+	lua_setfield(L, -2, "cast_spell_id");
+
+	const uint32 blocking_spell_id = Strings::ToUnsignedInt(sep.arg[0]);
+
+	Lua_Spell l_spell_one(IsValidSpell(blocking_spell_id) ? &spells[blocking_spell_id] : nullptr);
+	luabind::adl::object l_spell_one_o = luabind::adl::object(L, l_spell_one);
+	l_spell_one_o.push(L);
+	lua_setfield(L, -2, "blocking_spell");
+
+	const uint32 cast_spell_id = Strings::ToUnsignedInt(sep.arg[0]);
+
+	Lua_Spell l_spell_two(IsValidSpell(cast_spell_id) ? &spells[cast_spell_id] : nullptr);
+	luabind::adl::object l_spell_two_o = luabind::adl::object(L, l_spell_two);
+	l_spell_two_o.push(L);
+	lua_setfield(L, -2, "cast_spell");
+}
+
 // Player
 void handle_player_say(
 	QuestInterface *parse,
@@ -713,6 +746,18 @@ void handle_player_death(
 
 	lua_pushinteger(L, Strings::ToUnsignedInt(sep.arg[4]));
 	lua_setfield(L, -2, "killed_entity_id");
+
+	lua_pushinteger(L, Strings::ToUnsignedInt(sep.arg[5]));
+	lua_setfield(L, -2, "combat_start_time");
+
+	lua_pushinteger(L, Strings::ToUnsignedInt(sep.arg[6]));
+	lua_setfield(L, -2, "combat_end_time");
+
+	lua_pushinteger(L, Strings::ToBigInt(sep.arg[7]));
+	lua_setfield(L, -2, "damage_received");
+
+	lua_pushinteger(L, Strings::ToBigInt(sep.arg[8]));
+	lua_setfield(L, -2, "healing_received");
 }
 
 void handle_player_timer(
@@ -1693,9 +1738,85 @@ void handle_player_aa_loss(
 	std::string data,
 	uint32 extra_data,
 	std::vector<std::any> *extra_pointers
-) {
+)
+{
 	lua_pushinteger(L, Strings::ToInt(data));
 	lua_setfield(L, -2, "aa_lost");
+}
+
+void handle_player_spell_blocked(
+	QuestInterface *parse,
+	lua_State* L,
+	Client* client,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+)
+{
+	Seperator sep(data.c_str());
+
+	lua_pushinteger(L, Strings::ToUnsignedInt(sep.arg[0]));
+	lua_setfield(L, -2, "blocking_spell_id");
+
+	lua_pushinteger(L, Strings::ToUnsignedInt(sep.arg[1]));
+	lua_setfield(L, -2, "cast_spell_id");
+
+	const uint32 blocking_spell_id = Strings::ToUnsignedInt(sep.arg[0]);
+
+	Lua_Spell l_spell_one(IsValidSpell(blocking_spell_id) ? &spells[blocking_spell_id] : nullptr);
+	luabind::adl::object l_spell_one_o = luabind::adl::object(L, l_spell_one);
+	l_spell_one_o.push(L);
+	lua_setfield(L, -2, "blocking_spell");
+
+	const uint32 cast_spell_id = Strings::ToUnsignedInt(sep.arg[0]);
+
+	Lua_Spell l_spell_two(IsValidSpell(cast_spell_id) ? &spells[cast_spell_id] : nullptr);
+	luabind::adl::object l_spell_two_o = luabind::adl::object(L, l_spell_two);
+	l_spell_two_o.push(L);
+	lua_setfield(L, -2, "cast_spell");
+}
+
+void handle_player_read_item(
+	QuestInterface *parse,
+	lua_State* L,
+	Client* client,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+)
+{
+	lua_pushstring(L, data.c_str());
+	lua_setfield(L, -2, "text_file");
+
+	lua_pushinteger(L, extra_data);
+	lua_setfield(L, -2, "item_id");
+
+	if (extra_pointers) {
+		if (extra_pointers->size() == 7) {
+			lua_pushstring(L, std::any_cast<std::string>(extra_pointers->at(0)).c_str());
+			lua_setfield(L, -2, "book_text");
+
+			lua_pushboolean(L, std::any_cast<int8>(extra_pointers->at(1)));
+			lua_setfield(L, -2, "can_cast");
+
+			lua_pushboolean(L, std::any_cast<int8>(extra_pointers->at(2)));
+			lua_setfield(L, -2, "can_scribe");
+
+			lua_pushinteger(L, std::any_cast<int16>(extra_pointers->at(3)));
+			lua_setfield(L, -2, "slot_id");
+
+			lua_pushinteger(L, std::any_cast<int>(extra_pointers->at(4)));
+			lua_setfield(L, -2, "target_id");
+
+			lua_pushinteger(L, std::any_cast<uint8>(extra_pointers->at(5)));
+			lua_setfield(L, -2, "type");
+
+			Lua_ItemInst l_item(std::any_cast<EQ::ItemInstance*>(extra_pointers->at(6)));
+			luabind::adl::object l_item_o = luabind::adl::object(L, l_item);
+			l_item_o.push(L);
+			lua_setfield(L, -2, "item");
+		}
+	}
 }
 
 // Item
@@ -2707,6 +2828,39 @@ void handle_bot_entity_variable(
 			lua_setfield(L, -2, "new_value");
 		}
 	}
+}
+
+void handle_bot_spell_blocked(
+	QuestInterface *parse,
+	lua_State* L,
+	Bot* bot,
+	Mob *init,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+)
+{
+	Seperator sep(data.c_str());
+
+	lua_pushinteger(L, Strings::ToUnsignedInt(sep.arg[0]));
+	lua_setfield(L, -2, "blocking_spell_id");
+
+	lua_pushinteger(L, Strings::ToUnsignedInt(sep.arg[1]));
+	lua_setfield(L, -2, "cast_spell_id");
+
+	const uint32 blocking_spell_id = Strings::ToUnsignedInt(sep.arg[0]);
+
+	Lua_Spell l_spell_one(IsValidSpell(blocking_spell_id) ? &spells[blocking_spell_id] : nullptr);
+	luabind::adl::object l_spell_one_o = luabind::adl::object(L, l_spell_one);
+	l_spell_one_o.push(L);
+	lua_setfield(L, -2, "blocking_spell");
+
+	const uint32 cast_spell_id = Strings::ToUnsignedInt(sep.arg[0]);
+
+	Lua_Spell l_spell_two(IsValidSpell(cast_spell_id) ? &spells[cast_spell_id] : nullptr);
+	luabind::adl::object l_spell_two_o = luabind::adl::object(L, l_spell_two);
+	l_spell_two_o.push(L);
+	lua_setfield(L, -2, "cast_spell");
 }
 
 #endif

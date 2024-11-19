@@ -115,7 +115,7 @@ public:
 	bool CheckBannedIPs(const std::string& login_ip); //Check incoming connection against banned IP table.
 	bool CheckGMIPs(const std::string& login_ip, uint32 account_id);
 	bool CheckNameFilter(const std::string& name, bool surname = false);
-	bool CheckUsedName(const std::string& name);
+	bool IsNameUsed(const std::string& name);
 
 	uint32 GetAccountIDByChar(const std::string& name, uint32* character_id = 0);
 	uint32 GetAccountIDByChar(uint32 character_id);
@@ -170,7 +170,7 @@ public:
 	bool SetAccountStatus(const std::string& account_name, int16 status);
 	bool SetLocalPassword(uint32 account_id, const std::string& password);
 	bool UpdateLiveChar(const std::string& name, uint32 account_id);
-	int16 CheckStatus(uint32 account_id);
+	int16 GetAccountStatus(uint32 account_id);
 	void SetAccountCRCField(uint32 account_id, const std::string& field_name, uint64 checksum);
 	uint32 CheckLogin(const std::string& name, const std::string& password, const std::string& loginserver, int16* status = 0);
 	uint32 CreateAccount(
@@ -243,6 +243,9 @@ public:
 	void SetRaidGroupLeaderInfo(uint32 group_id, uint32 raid_id);
 
 	void PurgeAllDeletedDataBuckets();
+	void ClearGuildOnlineStatus();
+	void ClearTraderDetails();
+	void ClearBuyerDetails();
 
 
 	/* Database Variables */
@@ -267,6 +270,9 @@ public:
 
 	void SourceDatabaseTableFromUrl(const std::string& table_name, const std::string& url);
 	void SourceSqlFromUrl(const std::string& url);
+	void PurgeCharacterParcels();
+	void Encode(std::string &in);
+	void Decode(std::string &in);
 
 private:
 	Mutex           Mvarcache;

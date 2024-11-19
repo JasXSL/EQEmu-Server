@@ -135,7 +135,7 @@ bool BotDatabase::LoadBotSpellCastingChances()
 		if (
 			e.spell_type_index >= Bot::SPELL_TYPE_COUNT ||
 			!IsPlayerClass(e.class_id) ||
-			e.stance_index >= EQ::constants::STANCE_TYPE_COUNT
+			e.stance_index >= Stance::AEBurn
 		) {
 			continue;
 		}
@@ -184,7 +184,7 @@ bool BotDatabase::QueryNameAvailablity(const std::string& bot_name, bool& availa
 	if (
 		bot_name.empty() ||
 		bot_name.size() > 60 ||
-		!database.CheckUsedName(bot_name)
+		database.IsNameUsed(bot_name)
 	) {
 		LogError(
 			"Name too long, empty, or used [{}], empty {}, size {}",
@@ -192,30 +192,6 @@ bool BotDatabase::QueryNameAvailablity(const std::string& bot_name, bool& availa
 			bot_name.empty(),
 			bot_name.size()
 		);
-		return false;
-	}
-
-	const auto& bot_data = BotDataRepository::GetWhere(
-		database,
-		fmt::format(
-			"`name` LIKE '{}' LIMIT 1",
-			bot_name
-		)
-	);
-
-	if (!bot_data.empty()) {
-		return false;
-	}
-
-	const auto& character_data = CharacterDataRepository::GetWhere(
-		database,
-		fmt::format(
-			"`name` LIKE '{}' LIMIT 1",
-			bot_name
-		)
-	);
-
-	if (!character_data.empty()) {
 		return false;
 	}
 
@@ -791,7 +767,7 @@ bool BotDatabase::LoadStance(Bot* b, bool& stance_flag)
 
 	auto e = l.front();
 
-	b->SetBotStance(static_cast<EQ::constants::StanceType>(e.stance_id));
+	b->SetBotStance(e.stance_id);
 
 	stance_flag = true;
 
@@ -823,7 +799,7 @@ bool BotDatabase::SaveStance(Bot* b)
 		database,
 		BotStancesRepository::BotStances{
 			.bot_id = b->GetBotID(),
-			.stance_id = static_cast<uint8_t>(b->GetBotStance())
+			.stance_id = b->GetBotStance()
 		}
 	);
 }
@@ -858,7 +834,7 @@ bool BotDatabase::LoadTimers(Bot* b)
 	BotTimer_Struct t{ };
 
 	for (const auto& e : l) {
-		if (t.timer_value < (Timer::GetCurrentTime() + t.recast_time)) {
+		if (e.timer_value < (Timer::GetCurrentTime() + e.recast_time)) {
 			t.timer_id    = e.timer_id;
 			t.timer_value = e.timer_value;
 			t.recast_time = e.recast_time;
@@ -1481,7 +1457,7 @@ bool BotDatabase::DeletePetBuffs(const uint32 bot_id)
 		return true;
 	}
 
-	BotPetBuffsRepository::DeleteOne(database, saved_pet_index);
+	BotPetBuffsRepository::DeleteWhere(database, fmt::format("pets_index = {}", saved_pet_index));
 
 	return true;
 }
@@ -2238,7 +2214,7 @@ uint8 BotDatabase::GetSpellCastingChance(uint8 spell_type_index, uint8 class_ind
 	if (
 		spell_type_index >= Bot::SPELL_TYPE_COUNT ||
 		class_index >= Class::PLAYER_CLASS_COUNT ||
-		stance_index >= EQ::constants::STANCE_TYPE_COUNT ||
+		stance_index >= Stance::AEBurn ||
 		conditional_index >= cntHSND
 	) {
 		return 0;
@@ -2382,4 +2358,11 @@ const uint16 BotDatabase::GetBotRaceByID(const uint32 bot_id)
 	const auto& e = BotDataRepository::FindOne(database, bot_id);
 
 	return e.bot_id ? e.race : Race::Doug;
+}
+
+const int BotDatabase::GetBotExtraHasteByID(const uint32 bot_id)
+{
+	const auto& e = BotDataRepository::FindOne(database, bot_id);
+
+	return e.bot_id ? e.extra_haste : 0;
 }
