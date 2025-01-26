@@ -182,8 +182,8 @@ bool Mob::CastSpell(uint16 spell_id, uint16 target_id, CastingSlot slot,
 	}
 
 	//Goal of Spells:UseSpellImpliedTargeting is to replicate the EQ2 feature where spells will 'pass through' invalid targets to target's target to try to find a valid target.
-    Mob* spell_target = entity_list.GetMobID(target_id);
 	if (RuleB(Spells,UseSpellImpliedTargeting) && IsClient()) {
+		Mob* spell_target = entity_list.GetMobID(target_id);
 		if (spell_target) {
 			Mob* targets_target = spell_target->GetTarget();
 			if (targets_target) {
