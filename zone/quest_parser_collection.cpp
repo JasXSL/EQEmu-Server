@@ -49,6 +49,8 @@ QuestParserCollection::QuestParserCollection()
 	_global_bot_quest_status    = QuestUnloaded;
 	_merc_quest_status          = QuestUnloaded;
 	_global_merc_quest_status   = QuestUnloaded;
+	_zone_quest_status          = QuestUnloaded;
+	_global_zone_quest_status   = QuestUnloaded;
 }
 
 QuestParserCollection::~QuestParserCollection() { }
@@ -85,6 +87,7 @@ void QuestParserCollection::ReloadQuests(bool reset_timers)
 {
 	if (reset_timers) {
 		quest_manager.ClearAllTimers();
+		zone->StopAllTimers();
 	}
 
 	MapOpcodes();
@@ -98,6 +101,8 @@ void QuestParserCollection::ReloadQuests(bool reset_timers)
 	_global_bot_quest_status    = QuestUnloaded;
 	_merc_quest_status          = QuestUnloaded;
 	_global_merc_quest_status   = QuestUnloaded;
+	_zone_quest_status          = QuestUnloaded;
+	_global_zone_quest_status   = QuestUnloaded;
 
 	_spell_quest_status.clear();
 	_item_quest_status.clear();
@@ -426,6 +431,49 @@ bool QuestParserCollection::MercHasQuestSub(QuestEventID event_id)
 	return MercHasQuestSubLocal(event_id) || MercHasQuestSubGlobal(event_id);
 }
 
+bool QuestParserCollection::ZoneHasQuestSubLocal(QuestEventID event_id)
+{
+	if (_zone_quest_status == QuestUnloaded) {
+		std::string filename;
+		auto        qi = GetQIByZoneQuest(filename);
+
+		if (qi) {
+			_zone_quest_status = qi->GetIdentifier();
+			qi->LoadZoneScript(filename);
+			return qi->ZoneHasQuestSub(event_id);
+		}
+	} else if (_zone_quest_status != QuestFailedToLoad) {
+		auto iter = _interfaces.find(_zone_quest_status);
+		return iter->second->ZoneHasQuestSub(event_id);
+	}
+
+	return false;
+}
+
+bool QuestParserCollection::ZoneHasQuestSubGlobal(QuestEventID event_id)
+{
+	if (_global_zone_quest_status == QuestUnloaded) {
+		std::string filename;
+		auto        qi = GetQIByGlobalZoneQuest(filename);
+
+		if (qi) {
+			_global_zone_quest_status = qi->GetIdentifier();
+			qi->LoadGlobalZoneScript(filename);
+			return qi->GlobalZoneHasQuestSub(event_id);
+		}
+	} else if (_global_zone_quest_status != QuestFailedToLoad) {
+		auto iter = _interfaces.find(_global_zone_quest_status);
+		return iter->second->GlobalZoneHasQuestSub(event_id);
+	}
+
+	return false;
+}
+
+bool QuestParserCollection::ZoneHasQuestSub(QuestEventID event_id)
+{
+	return ZoneHasQuestSubLocal(event_id) || ZoneHasQuestSubGlobal(event_id);
+}
+
 int QuestParserCollection::EventNPC(
 	QuestEventID event_id,
 	NPC* npc,
@@ -435,6 +483,10 @@ int QuestParserCollection::EventNPC(
 	std::vector<std::any>* extra_pointers
 )
 {
+	if (npc->IsResumedFromZoneSuspend() && npc->IsQueuedForCorpse()) {
+		return 0;
+	}
+
 	const int local_return   = EventNPCLocal(event_id, npc, init, data, extra_data, extra_pointers);
 	const int global_return  = EventNPCGlobal(event_id, npc, init, data, extra_data, extra_pointers);
 	const int default_return = DispatchEventNPC(event_id, npc, init, data, extra_data, extra_pointers);
@@ -920,6 +972,83 @@ int QuestParserCollection::EventMercGlobal(
 	return 0;
 }
 
+int QuestParserCollection::EventZone(
+	QuestEventID event_id,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any>* extra_pointers
+)
+{
+	const int local_return   = EventZoneLocal(event_id, zone, data, extra_data, extra_pointers);
+	const int global_return  = EventZoneGlobal(event_id, zone, data, extra_data, extra_pointers);
+	const int default_return = DispatchEventZone(event_id, zone, data, extra_data, extra_pointers);
+
+	if (local_return != 0) {
+		return local_return;
+	} else if (global_return != 0) {
+		return global_return;
+	} else if (default_return != 0) {
+		return default_return;
+	}
+
+	return 0;
+}
+
+int QuestParserCollection::EventZoneLocal(
+	QuestEventID event_id,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any>* extra_pointers
+)
+{
+	if (_zone_quest_status == QuestUnloaded) {
+		std::string filename;
+		auto        qi = GetQIByZoneQuest(filename);
+
+		if (qi) {
+			_zone_quest_status = qi->GetIdentifier();
+			qi->LoadZoneScript(filename);
+			return qi->EventZone(event_id, zone, data, extra_data, extra_pointers);
+		}
+	} else {
+		if (_zone_quest_status != QuestFailedToLoad) {
+			auto iter = _interfaces.find(_zone_quest_status);
+			return iter->second->EventZone(event_id, zone, data, extra_data, extra_pointers);
+		}
+	}
+
+	return 0;
+}
+
+int QuestParserCollection::EventZoneGlobal(
+	QuestEventID event_id,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any>* extra_pointers
+)
+{
+	if (_global_zone_quest_status == QuestUnloaded) {
+		std::string filename;
+		auto        qi = GetQIByGlobalZoneQuest(filename);
+
+		if (qi) {
+			_global_zone_quest_status = qi->GetIdentifier();
+			qi->LoadGlobalZoneScript(filename);
+			return qi->EventGlobalZone(event_id, zone, data, extra_data, extra_pointers);
+		}
+	} else {
+		if (_global_zone_quest_status != QuestFailedToLoad) {
+			auto iter = _interfaces.find(_global_zone_quest_status);
+			return iter->second->EventGlobalZone(event_id, zone, data, extra_data, extra_pointers);
+		}
+	}
+
+	return 0;
+}
+
 QuestInterface* QuestParserCollection::GetQIByNPCQuest(uint32 npc_id, std::string& filename)
 {
 	if (!zone) {
@@ -935,50 +1064,61 @@ QuestInterface* QuestParserCollection::GetQIByNPCQuest(uint32 npc_id, std::strin
 
 	Strings::FindReplace(npc_name, "`", "-");
 
-	const std::string& global_path = fmt::format(
-		"{}/{}",
-		path.GetQuestsPath(),
-		QUEST_GLOBAL_DIRECTORY
-	);
+	for (auto & dir : PathManager::Instance()->GetQuestPaths()) {
+		const std::string& npc_id_and_name = fmt::format(
+			"{}_{}",
+			npc_name,
+			npc_id
+		);
 
-	const std::string& zone_path = fmt::format(
-		"{}/{}",
-		path.GetQuestsPath(),
-		zone->GetShortName()
-	);
+		const std::string& global_path = fmt::format(
+			"{}/{}",
+			dir,
+			QUEST_GLOBAL_DIRECTORY
+		);
 
-	const std::string& zone_versioned_path = fmt::format(
-		"{}/{}/v{}",
-		path.GetQuestsPath(),
-		zone->GetShortName(),
-		zone->GetInstanceVersion()
-	);
+		const std::string& zone_path = fmt::format(
+			"{}/{}",
+			dir,
+			zone->GetShortName()
+		);
 
-	std::vector<std::string> file_names = {
-		fmt::format("{}/{}", zone_versioned_path, npc_id), // Local versioned by NPC ID ./quests/zone/v0/10.ext
-		fmt::format("{}/{}", zone_versioned_path, npc_name), // Local versioned by NPC Name ./quests/zone/v0/npc.ext
-		fmt::format("{}/{}", zone_path, npc_id), // Local by NPC ID
-		fmt::format("{}/{}", zone_path, npc_name), // Local by NPC Name
-		fmt::format("{}/{}", global_path, npc_id), // Global by NPC ID
-		fmt::format("{}/{}", global_path, npc_name), // Global by NPC ID
-		fmt::format("{}/default", zone_versioned_path), // Zone Default ./quests/zone/v0/default.ext
-		fmt::format("{}/default", zone_path), // Zone Default
-		fmt::format("{}/default", global_path), // Global Default
-	};
+		const std::string& zone_versioned_path = fmt::format(
+			"{}/{}/v{}",
+			dir,
+			zone->GetShortName(),
+			zone->GetInstanceVersion()
+		);
 
-	std::string file_name;
+		std::vector<std::string> file_names = {
+			fmt::format("{}/{}", zone_versioned_path, npc_id), // Local versioned by NPC ID (./quests/zone/v0/10.ext)
+			fmt::format("{}/{}", zone_versioned_path, npc_name), // Local versioned by NPC Name (./quests/zone/v0/name.ext)
+			fmt::format("{}/{}", zone_versioned_path, npc_id_and_name), // Local versioned by NPC ID and NPC Name (./quests/zone/v0/10_name.ext)
+			fmt::format("{}/{}", zone_path, npc_id), // Local by NPC ID
+			fmt::format("{}/{}", zone_path, npc_name), // Local by NPC Name
+			fmt::format("{}/{}", zone_path, npc_id_and_name), // Local by NPC ID and NPC Name
+			fmt::format("{}/{}", global_path, npc_id), // Global by NPC ID
+			fmt::format("{}/{}", global_path, npc_name), // Global by NPC ID
+			fmt::format("{}/{}", global_path, npc_id_and_name), // Global by NPC ID and NPC Name
+			fmt::format("{}/default", zone_versioned_path), // Zone Versioned Default (./quests/zone/v0/default.ext)
+			fmt::format("{}/default", zone_path), // Zone Default
+			fmt::format("{}/default", global_path), // Global Default
+		};
 
-	for (auto & file : file_names) {
-		for (auto* e: _load_precedence) {
-			file_name = fmt::format(
-				"{}.{}",
-				file,
-				_extensions.find(e->GetIdentifier())->second
-			);
+		std::string file_name;
 
-			if (File::Exists(file_name)) {
-				filename = file_name;
-				return e;
+		for (auto & file : file_names) {
+			for (auto* e: _load_precedence) {
+				file_name = fmt::format(
+					"{}.{}",
+					file,
+					_extensions.find(e->GetIdentifier())->second
+				);
+
+				if (File::Exists(file_name)) {
+					filename = file_name;
+					return e;
+				}
 			}
 		}
 	}
@@ -992,44 +1132,46 @@ QuestInterface* QuestParserCollection::GetQIByPlayerQuest(std::string& filename)
 		return nullptr;
 	}
 
-	const std::string& global_path = fmt::format(
-		"{}/{}",
-		path.GetQuestsPath(),
-		QUEST_GLOBAL_DIRECTORY
-	);
+	for (auto & dir : PathManager::Instance()->GetQuestPaths()) {
+		const std::string& global_path = fmt::format(
+			"{}/{}",
+			dir,
+			QUEST_GLOBAL_DIRECTORY
+		);
 
-	const std::string& zone_path = fmt::format(
-		"{}/{}",
-		path.GetQuestsPath(),
-		zone->GetShortName()
-	);
+		const std::string& zone_path = fmt::format(
+			"{}/{}",
+			dir,
+			zone->GetShortName()
+		);
 
-	const std::string& zone_versioned_path = fmt::format(
-		"{}/{}/v{}",
-		path.GetQuestsPath(),
-		zone->GetShortName(),
-		zone->GetInstanceVersion()
-	);
+		const std::string& zone_versioned_path = fmt::format(
+			"{}/{}/v{}",
+			dir,
+			zone->GetShortName(),
+			zone->GetInstanceVersion()
+		);
 
-	std::vector<std::string> file_names = {
-		fmt::format("{}/player", zone_versioned_path), // Local by Instance Version ./quests/zone/v0/player.ext
-		fmt::format("{}/player_v{}", zone_path, zone->GetInstanceVersion()), // Local by Instance Version
-		fmt::format("{}/player", zone_path), // Local
-		fmt::format("{}/player", global_path) // Global
-	};
+		std::vector<std::string> file_names = {
+			fmt::format("{}/player", zone_versioned_path), // Local by Instance Version ./quests/zone/v0/player.ext
+			fmt::format("{}/player_v{}", zone_path, zone->GetInstanceVersion()), // Local by Instance Version
+			fmt::format("{}/player", zone_path), // Local
+			fmt::format("{}/player", global_path) // Global
+		};
 
-	std::string file_name;
-	for (auto & file : file_names) {
-		for (auto* e: _load_precedence) {
-			file_name = fmt::format(
-				"{}.{}",
-				file,
-				_extensions.find(e->GetIdentifier())->second
-			);
+		std::string file_name;
+		for (auto & file : file_names) {
+			for (auto* e: _load_precedence) {
+				file_name = fmt::format(
+					"{}.{}",
+					file,
+					_extensions.find(e->GetIdentifier())->second
+				);
 
-			if (File::Exists(file_name)) {
-				filename = file_name;
-				return e;
+				if (File::Exists(file_name)) {
+					filename = file_name;
+					return e;
+				}
 			}
 		}
 	}
@@ -1045,17 +1187,19 @@ QuestInterface* QuestParserCollection::GetQIByGlobalNPCQuest(std::string& filena
 
 	std::string file_name;
 
-	for (auto* e: _load_precedence) {
-		file_name = fmt::format(
-			"{}/{}/global_npc.{}",
-			path.GetQuestsPath(),
-			QUEST_GLOBAL_DIRECTORY,
-			_extensions.find(e->GetIdentifier())->second
-		);
+	for (auto & dir : PathManager::Instance()->GetQuestPaths()) {
+		for (auto* e: _load_precedence) {
+			file_name = fmt::format(
+				"{}/{}/global_npc.{}",
+				dir,
+				QUEST_GLOBAL_DIRECTORY,
+				_extensions.find(e->GetIdentifier())->second
+			);
 
-		if (File::Exists(file_name)) {
-			filename = file_name;
-			return e;
+			if (File::Exists(file_name)) {
+				filename = file_name;
+				return e;
+			}
 		}
 	}
 
@@ -1069,17 +1213,19 @@ QuestInterface* QuestParserCollection::GetQIByGlobalPlayerQuest(std::string& fil
 	}
 
 	std::string file_name;
-	for (auto* e: _load_precedence) {
-		file_name = fmt::format(
-			"{}/{}/global_player.{}",
-			path.GetQuestsPath(),
-			QUEST_GLOBAL_DIRECTORY,
-			_extensions.find(e->GetIdentifier())->second
-		);
+	for (auto & dir : PathManager::Instance()->GetQuestPaths()) {
+		for (auto* e: _load_precedence) {
+			file_name = fmt::format(
+				"{}/{}/global_player.{}",
+				dir,
+				QUEST_GLOBAL_DIRECTORY,
+				_extensions.find(e->GetIdentifier())->second
+			);
 
-		if (File::Exists(file_name)) {
-			filename = file_name;
-			return e;
+			if (File::Exists(file_name)) {
+				filename = file_name;
+				return e;
+			}
 		}
 	}
 
@@ -1092,45 +1238,47 @@ QuestInterface* QuestParserCollection::GetQIBySpellQuest(uint32 spell_id, std::s
 		return nullptr;
 	}
 
-	const std::string& global_path = fmt::format(
-		"{}/{}/spells",
-		path.GetQuestsPath(),
-		QUEST_GLOBAL_DIRECTORY
-	);
+	for (auto & dir : PathManager::Instance()->GetQuestPaths()) {
+		const std::string& global_path = fmt::format(
+			"{}/{}/spells",
+			dir,
+			QUEST_GLOBAL_DIRECTORY
+		);
 
-	const std::string& zone_path = fmt::format(
-		"{}/{}/spells",
-		path.GetQuestsPath(),
-		zone->GetShortName()
-	);
+		const std::string& zone_path = fmt::format(
+			"{}/{}/spells",
+			dir,
+			zone->GetShortName()
+		);
 
-	const std::string& zone_versioned_path = fmt::format(
-		"{}/{}/v{}/spells",
-		path.GetQuestsPath(),
-		zone->GetShortName(),
-		zone->GetInstanceVersion()
-	);
+		const std::string& zone_versioned_path = fmt::format(
+			"{}/{}/v{}/spells",
+			dir,
+			zone->GetShortName(),
+			zone->GetInstanceVersion()
+		);
 
-	std::vector<std::string> file_names = {
-		fmt::format("{}/{}", zone_versioned_path, spell_id), // Local versioned by Spell ID ./quests/zone/v0/spells/10.ext
-		fmt::format("{}/{}", zone_path, spell_id), // Local
-		fmt::format("{}/{}", global_path, spell_id), // Global
-		fmt::format("{}/default", zone_path), // Local Default
-		fmt::format("{}/default", global_path) // Global Default
-	};
+		std::vector<std::string> file_names = {
+			fmt::format("{}/{}", zone_versioned_path, spell_id), // Local versioned by Spell ID ./quests/zone/v0/spells/10.ext
+			fmt::format("{}/{}", zone_path, spell_id), // Local
+			fmt::format("{}/{}", global_path, spell_id), // Global
+			fmt::format("{}/default", zone_path), // Local Default
+			fmt::format("{}/default", global_path) // Global Default
+		};
 
-	std::string file_name;
-	for (auto & file : file_names) {
-		for (auto* e: _load_precedence) {
-			file_name = fmt::format(
-				"{}.{}",
-				file,
-				_extensions.find(e->GetIdentifier())->second
-			);
+		std::string file_name;
+		for (auto & file : file_names) {
+			for (auto* e: _load_precedence) {
+				file_name = fmt::format(
+					"{}.{}",
+					file,
+					_extensions.find(e->GetIdentifier())->second
+				);
 
-			if (File::Exists(file_name)) {
-				filename = file_name;
-				return e;
+				if (File::Exists(file_name)) {
+					filename = file_name;
+					return e;
+				}
 			}
 		}
 	}
@@ -1144,45 +1292,47 @@ QuestInterface* QuestParserCollection::GetQIByItemQuest(std::string item_script,
 		return nullptr;
 	}
 
-	const std::string& global_path = fmt::format(
-		"{}/{}/items",
-		path.GetQuestsPath(),
-		QUEST_GLOBAL_DIRECTORY
-	);
+	for (auto & dir : PathManager::Instance()->GetQuestPaths()) {
+		const std::string& global_path = fmt::format(
+			"{}/{}/items",
+			dir,
+			QUEST_GLOBAL_DIRECTORY
+		);
 
-	const std::string& zone_path = fmt::format(
-		"{}/{}/items",
-		path.GetQuestsPath(),
-		zone->GetShortName()
-	);
+		const std::string& zone_path = fmt::format(
+			"{}/{}/items",
+			dir,
+			zone->GetShortName()
+		);
 
-	const std::string& zone_versioned_path = fmt::format(
-		"{}/{}/v{}/items",
-		path.GetQuestsPath(),
-		zone->GetShortName(),
-		zone->GetInstanceVersion()
-	);
+		const std::string& zone_versioned_path = fmt::format(
+			"{}/{}/v{}/items",
+			dir,
+			zone->GetShortName(),
+			zone->GetInstanceVersion()
+		);
 
-	std::vector<std::string> file_names = {
-		fmt::format("{}/{}", zone_versioned_path, item_script), // Local versioned by Item Script ./quests/zone/v0/items/10.ext
-		fmt::format("{}/{}", zone_path, item_script), // Local
-		fmt::format("{}/{}", global_path, item_script), // Global
-		fmt::format("{}/default", zone_path), // Local Default
-		fmt::format("{}/default", global_path) // Global Default
-	};
+		std::vector<std::string> file_names = {
+			fmt::format("{}/{}", zone_versioned_path, item_script), // Local versioned by Item Script ./quests/zone/v0/items/10.ext
+			fmt::format("{}/{}", zone_path, item_script), // Local
+			fmt::format("{}/{}", global_path, item_script), // Global
+			fmt::format("{}/default", zone_path), // Local Default
+			fmt::format("{}/default", global_path) // Global Default
+		};
 
-	std::string file_name;
-	for (auto & file : file_names) {
-		for (auto* e: _load_precedence) {
-			file_name = fmt::format(
-				"{}.{}",
-				file,
-				_extensions.find(e->GetIdentifier())->second
-			);
+		std::string file_name;
+		for (auto & file : file_names) {
+			for (auto* e: _load_precedence) {
+				file_name = fmt::format(
+					"{}.{}",
+					file,
+					_extensions.find(e->GetIdentifier())->second
+				);
 
-			if (File::Exists(file_name)) {
-				filename = file_name;
-				return e;
+				if (File::Exists(file_name)) {
+					filename = file_name;
+					return e;
+				}
 			}
 		}
 	}
@@ -1196,43 +1346,45 @@ QuestInterface* QuestParserCollection::GetQIByEncounterQuest(std::string encount
 		return nullptr;
 	}
 
-	const std::string& global_path = fmt::format(
-		"{}/{}/encounters",
-		path.GetQuestsPath(),
-		QUEST_GLOBAL_DIRECTORY
-	);
+	for (auto & dir : PathManager::Instance()->GetQuestPaths()) {
+		const std::string& global_path = fmt::format(
+			"{}/{}/encounters",
+			dir,
+			QUEST_GLOBAL_DIRECTORY
+		);
 
-	const std::string& zone_path = fmt::format(
-		"{}/{}/encounters",
-		path.GetQuestsPath(),
-		zone->GetShortName()
-	);
+		const std::string& zone_path = fmt::format(
+			"{}/{}/encounters",
+			dir,
+			zone->GetShortName()
+		);
 
-	const std::string& zone_versioned_path = fmt::format(
-		"{}/{}/v{}/encounters",
-		path.GetQuestsPath(),
-		zone->GetShortName(),
-		zone->GetInstanceVersion()
-	);
+		const std::string& zone_versioned_path = fmt::format(
+			"{}/{}/v{}/encounters",
+			dir,
+			zone->GetShortName(),
+			zone->GetInstanceVersion()
+		);
 
-	std::vector<std::string> file_names = {
-		fmt::format("{}/{}", zone_versioned_path, encounter_name), // Local versioned ./quests/zone/v0/encounters/name.ext
-		fmt::format("{}/{}", zone_path, encounter_name), // Local
-		fmt::format("{}/{}", global_path, encounter_name) // Global
-	};
+		std::vector<std::string> file_names = {
+			fmt::format("{}/{}", zone_versioned_path, encounter_name), // Local versioned ./quests/zone/v0/encounters/name.ext
+			fmt::format("{}/{}", zone_path, encounter_name), // Local
+			fmt::format("{}/{}", global_path, encounter_name) // Global
+		};
 
-	std::string file_name;
-	for (auto & file : file_names) {
-		for (auto* e: _load_precedence) {
-			file_name = fmt::format(
-				"{}.{}",
-				file,
-				_extensions.find(e->GetIdentifier())->second
-			);
+		std::string file_name;
+		for (auto & file : file_names) {
+			for (auto* e: _load_precedence) {
+				file_name = fmt::format(
+					"{}.{}",
+					file,
+					_extensions.find(e->GetIdentifier())->second
+				);
 
-			if (File::Exists(file_name)) {
-				filename = file_name;
-				return e;
+				if (File::Exists(file_name)) {
+					filename = file_name;
+					return e;
+				}
 			}
 		}
 	}
@@ -1246,44 +1398,46 @@ QuestInterface* QuestParserCollection::GetQIByBotQuest(std::string& filename)
 		return nullptr;
 	}
 
-	const std::string& global_path = fmt::format(
-		"{}/{}",
-		path.GetQuestsPath(),
-		QUEST_GLOBAL_DIRECTORY
-	);
+	for (auto & dir : PathManager::Instance()->GetQuestPaths()) {
+		const std::string& global_path = fmt::format(
+			"{}/{}",
+			dir,
+			QUEST_GLOBAL_DIRECTORY
+		);
 
-	const std::string& zone_path = fmt::format(
-		"{}/{}",
-		path.GetQuestsPath(),
-		zone->GetShortName()
-	);
+		const std::string& zone_path = fmt::format(
+			"{}/{}",
+			dir,
+			zone->GetShortName()
+		);
 
-	const std::string& zone_versioned_path = fmt::format(
-		"{}/{}/v{}",
-		path.GetQuestsPath(),
-		zone->GetShortName(),
-		zone->GetInstanceVersion()
-	);
+		const std::string& zone_versioned_path = fmt::format(
+			"{}/{}/v{}",
+			dir,
+			zone->GetShortName(),
+			zone->GetInstanceVersion()
+		);
 
-	std::vector<std::string> file_names = {
-		fmt::format("{}/bot", zone_versioned_path), // Local versioned by Instance Version ./quests/zone/v0/bot.ext
-		fmt::format("{}/bot_v{}", zone_path, zone->GetInstanceVersion()), // Local by Instance Version
-		fmt::format("{}/bot", zone_path), // Local
-		fmt::format("{}/bot", global_path) // Global
-	};
+		std::vector<std::string> file_names = {
+			fmt::format("{}/bot", zone_versioned_path), // Local versioned by Instance Version ./quests/zone/v0/bot.ext
+			fmt::format("{}/bot_v{}", zone_path, zone->GetInstanceVersion()), // Local by Instance Version
+			fmt::format("{}/bot", zone_path), // Local
+			fmt::format("{}/bot", global_path) // Global
+		};
 
-	std::string file_name;
-	for (auto & file : file_names) {
-		for (auto* e: _load_precedence) {
-			file_name = fmt::format(
-				"{}.{}",
-				file,
-				_extensions.find(e->GetIdentifier())->second
-			);
+		std::string file_name;
+		for (auto & file : file_names) {
+			for (auto* e: _load_precedence) {
+				file_name = fmt::format(
+					"{}.{}",
+					file,
+					_extensions.find(e->GetIdentifier())->second
+				);
 
-			if (File::Exists(file_name)) {
-				filename = file_name;
-				return e;
+				if (File::Exists(file_name)) {
+					filename = file_name;
+					return e;
+				}
 			}
 		}
 	}
@@ -1298,17 +1452,19 @@ QuestInterface* QuestParserCollection::GetQIByGlobalBotQuest(std::string& filena
 	}
 
 	std::string file_name;
-	for (auto* e: _load_precedence) {
-		file_name = fmt::format(
-			"{}/{}/global_bot.{}",
-			path.GetQuestsPath(),
-			QUEST_GLOBAL_DIRECTORY,
-			_extensions.find(e->GetIdentifier())->second
-		);
+	for (auto & dir : PathManager::Instance()->GetQuestPaths()) {
+		for (auto* e: _load_precedence) {
+			file_name = fmt::format(
+				"{}/{}/global_bot.{}",
+				dir,
+				QUEST_GLOBAL_DIRECTORY,
+				_extensions.find(e->GetIdentifier())->second
+			);
 
-		if (File::Exists(file_name)) {
-			filename = file_name;
-			return e;
+			if (File::Exists(file_name)) {
+				filename = file_name;
+				return e;
+			}
 		}
 	}
 
@@ -1321,44 +1477,46 @@ QuestInterface* QuestParserCollection::GetQIByMercQuest(std::string& filename)
 		return nullptr;
 	}
 
-	const std::string& global_path = fmt::format(
-		"{}/{}",
-		path.GetQuestsPath(),
-		QUEST_GLOBAL_DIRECTORY
-	);
+	for (auto & dir : PathManager::Instance()->GetQuestPaths()) {
+		const std::string& global_path = fmt::format(
+			"{}/{}",
+			dir,
+			QUEST_GLOBAL_DIRECTORY
+		);
 
-	const std::string& zone_path = fmt::format(
-		"{}/{}",
-		path.GetQuestsPath(),
-		zone->GetShortName()
-	);
+		const std::string& zone_path = fmt::format(
+			"{}/{}",
+			dir,
+			zone->GetShortName()
+		);
 
-	const std::string& zone_versioned_path = fmt::format(
-		"{}/{}/v{}",
-		path.GetQuestsPath(),
-		zone->GetShortName(),
-		zone->GetInstanceVersion()
-	);
+		const std::string& zone_versioned_path = fmt::format(
+			"{}/{}/v{}",
+			dir,
+			zone->GetShortName(),
+			zone->GetInstanceVersion()
+		);
 
-	std::vector<std::string> file_names = {
-		fmt::format("{}/merc", zone_versioned_path), // Local versioned by Instance Version ./quests/zone/v0/merc.ext
-		fmt::format("{}/merc_v{}", zone_path, zone->GetInstanceVersion()), // Local by Instance Version
-		fmt::format("{}/merc", zone_path), // Local
-		fmt::format("{}/merc", global_path) // Global
-	};
+		std::vector<std::string> file_names = {
+			fmt::format("{}/merc", zone_versioned_path), // Local versioned by Instance Version ./quests/zone/v0/merc.ext
+			fmt::format("{}/merc_v{}", zone_path, zone->GetInstanceVersion()), // Local by Instance Version
+			fmt::format("{}/merc", zone_path), // Local
+			fmt::format("{}/merc", global_path) // Global
+		};
 
-	std::string file_name;
-	for (auto & file : file_names) {
-		for (auto* e: _load_precedence) {
-			file_name = fmt::format(
-				"{}.{}",
-				file,
-				_extensions.find(e->GetIdentifier())->second
-			);
+		std::string file_name;
+		for (auto & file : file_names) {
+			for (auto* e: _load_precedence) {
+				file_name = fmt::format(
+					"{}.{}",
+					file,
+					_extensions.find(e->GetIdentifier())->second
+				);
 
-			if (File::Exists(file_name)) {
-				filename = file_name;
-				return e;
+				if (File::Exists(file_name)) {
+					filename = file_name;
+					return e;
+				}
 			}
 		}
 	}
@@ -1373,17 +1531,99 @@ QuestInterface* QuestParserCollection::GetQIByGlobalMercQuest(std::string& filen
 	}
 
 	std::string file_name;
-	for (auto* e: _load_precedence) {
-		file_name = fmt::format(
-			"{}/{}/global_merc.{}",
-			path.GetQuestsPath(),
-			QUEST_GLOBAL_DIRECTORY,
-			_extensions.find(e->GetIdentifier())->second
+	for (auto & dir : PathManager::Instance()->GetQuestPaths()) {
+		for (auto* e: _load_precedence) {
+			file_name = fmt::format(
+				"{}/{}/global_merc.{}",
+				dir,
+				QUEST_GLOBAL_DIRECTORY,
+				_extensions.find(e->GetIdentifier())->second
+			);
+
+			if (File::Exists(file_name)) {
+				filename = file_name;
+				return e;
+			}
+		}
+	}
+
+	return nullptr;
+}
+
+QuestInterface* QuestParserCollection::GetQIByZoneQuest(std::string& filename)
+{
+	if (!zone || !zone->IsLoaded()) {
+		return nullptr;
+	}
+
+	std::string file_name;
+	for (auto& dir: PathManager::Instance()->GetQuestPaths()) {
+		const std::string& global_path = fmt::format(
+			"{}/{}",
+			dir,
+			QUEST_GLOBAL_DIRECTORY
 		);
 
-		if (File::Exists(file_name)) {
-			filename = file_name;
-			return e;
+		const std::string& zone_path = fmt::format(
+			"{}/{}",
+			dir,
+			zone->GetShortName()
+		);
+
+		const std::string& zone_versioned_path = fmt::format(
+			"{}/{}/v{}",
+			dir,
+			zone->GetShortName(),
+			zone->GetInstanceVersion()
+		);
+
+		std::vector<std::string> file_names = {
+			fmt::format("{}/zone", zone_versioned_path), // Local versioned by Instance Version ./quests/zone/v0/zone.ext
+			fmt::format("{}/zone_v{}", zone_path, zone->GetInstanceVersion()), // Local by Instance Version
+			fmt::format("{}/zone", zone_path), // Local
+			fmt::format("{}/zone", global_path) // Global
+		};
+
+		for (auto& file: file_names) {
+			for (auto* e: _load_precedence) {
+				file_name = fmt::format(
+					"{}.{}",
+					file,
+					_extensions.find(e->GetIdentifier())->second
+				);
+
+				if (File::Exists(file_name)) {
+					filename = file_name;
+					return e;
+				}
+			}
+		}
+	}
+
+	return nullptr;
+}
+
+QuestInterface* QuestParserCollection::GetQIByGlobalZoneQuest(std::string& filename)
+{
+	if (!zone) {
+		return nullptr;
+	}
+
+	std::string file_name;
+
+	for (auto& dir: PathManager::Instance()->GetQuestPaths()) {
+		for (auto* e: _load_precedence) {
+			file_name = fmt::format(
+				"{}/{}/global_zone.{}",
+				dir,
+				QUEST_GLOBAL_DIRECTORY,
+				_extensions.find(e->GetIdentifier())->second
+			);
+
+			if (File::Exists(file_name)) {
+				filename = file_name;
+				return e;
+			}
 		}
 	}
 
@@ -1518,6 +1758,26 @@ int QuestParserCollection::DispatchEventMerc(
 
 	for (const auto& e: _load_precedence) {
 		int i = e->DispatchEventMerc(event_id, merc, init, data, extra_data, extra_pointers);
+		if (i != 0) {
+			ret = i;
+		}
+	}
+
+	return ret;
+}
+
+int QuestParserCollection::DispatchEventZone(
+	QuestEventID event_id,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any>* extra_pointers
+)
+{
+	int ret = 0;
+
+	for (const auto& e: _load_precedence) {
+		int i = e->DispatchEventZone(event_id, zone, data, extra_data, extra_pointers);
 		if (i != 0) {
 			ret = i;
 		}

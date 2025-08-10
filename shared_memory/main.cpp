@@ -33,12 +33,7 @@
 #include "../common/zone_store.h"
 #include "../common/path_manager.h"
 #include "../common/events/player_event_logs.h"
-
-EQEmuLogSys         LogSys;
-WorldContentService content_service;
-ZoneStore           zone_store;
-PathManager         path;
-PlayerEventLogs     player_event_logs;
+#include "../common/evolving_items.h"
 
 #ifdef _WINDOWS
 #include <direct.h>
@@ -79,10 +74,10 @@ inline bool MakeDirectory(const std::string &directory_name)
 int main(int argc, char **argv)
 {
 	RegisterExecutablePlatform(ExePlatformSharedMemory);
-	LogSys.LoadLogSettingsDefaults();
+	EQEmuLogSys::Instance()->LoadLogSettingsDefaults();
 	set_exception_handler();
 
-	path.LoadPaths();
+	PathManager::Instance()->Init();
 
 	LogInfo("Shared Memory Loader Program");
 	if (!EQEmuConfig::LoadConfig()) {
@@ -124,8 +119,8 @@ int main(int argc, char **argv)
 		content_db.SetMySQL(database);
 	}
 
-	LogSys.SetDatabase(&database)
-		->SetLogPath(path.GetLogPath())
+	EQEmuLogSys::Instance()->SetDatabase(&database)
+		->SetLogPath(PathManager::Instance()->GetLogPath())
 		->LoadLogDatabaseSettings()
 		->StartFileLogs();
 
@@ -167,16 +162,16 @@ int main(int argc, char **argv)
 	}
 
 
-	content_service.SetCurrentExpansion(RuleI(Expansion, CurrentExpansion));
-	content_service.SetDatabase(&database)
+	WorldContentService::Instance()->SetCurrentExpansion(RuleI(Expansion, CurrentExpansion));
+	WorldContentService::Instance()->SetDatabase(&database)
 		->SetContentDatabase(&content_db)
 		->SetExpansionContext()
 		->ReloadContentFlags();
 
 	LogInfo(
 		"Current expansion is [{}] ({})",
-		content_service.GetCurrentExpansion(),
-		content_service.GetCurrentExpansionName()
+		WorldContentService::Instance()->GetCurrentExpansion(),
+		WorldContentService::Instance()->GetCurrentExpansionName()
 	);
 
 	std::string hotfix_name = "";
@@ -242,6 +237,6 @@ int main(int argc, char **argv)
 		}
 	}
 
-	LogSys.CloseFileLogs();
+	EQEmuLogSys::Instance()->CloseFileLogs();
 	return 0;
 }

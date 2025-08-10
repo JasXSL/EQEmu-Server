@@ -28,6 +28,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include "database.h"
 #include "../common/discord/discord_manager.h"
 #include "../common/events/player_event_logs.h"
+#include "../common/server_reload_types.h"
 
 #include <iostream>
 #include <string.h>
@@ -41,7 +42,6 @@ extern WorldServer     worldserver;
 extern Clientlist      *g_Clientlist;
 extern const ucsconfig *Config;
 extern UCSDatabase       database;
-extern DiscordManager  discord_manager;
 
 void ProcessMailTo(Client *c, const std::string& from, const std::string& subject, const std::string& message);
 
@@ -75,9 +75,13 @@ void WorldServer::ProcessMessage(uint16 opcode, EQ::Net::Packet &p)
 	{
 		break;
 	}
-	case ServerOP_ReloadLogs: {
-		LogSys.LoadLogDatabaseSettings();
-		player_event_logs.ReloadSettings();
+	case ServerOP_ServerReloadRequest: {
+		auto o = (ServerReload::Request*) pack->pBuffer;
+		if (o->type == ServerReload::Type::Logs) {
+			EQEmuLogSys::Instance()->LoadLogDatabaseSettings();
+			PlayerEventLogs::Instance()->ReloadSettings();
+		}
+
 		break;
 	}
 	case ServerOP_PlayerEvent: {
@@ -87,14 +91,14 @@ void WorldServer::ProcessMessage(uint16 opcode, EQ::Net::Packet &p)
 		cereal::BinaryInputArchive archive(ss);
 		archive(n);
 
-		discord_manager.QueuePlayerEventMessage(n);
+		DiscordManager::Instance()->QueuePlayerEventMessage(n);
 
 		break;
 	}
 	case ServerOP_DiscordWebhookMessage: {
 		auto *q = (DiscordWebhookMessage_Struct *) p.Data();
 
-		discord_manager.QueueWebhookMessage(
+		DiscordManager::Instance()->QueueWebhookMessage(
 			q->webhook_id,
 			q->message
 		);

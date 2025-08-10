@@ -36,12 +36,7 @@
 #include "../../common/file.h"
 #include "../../common/events/player_event_logs.h"
 #include "../../common/skill_caps.h"
-
-EQEmuLogSys         LogSys;
-WorldContentService content_service;
-ZoneStore           zone_store;
-PathManager         path;
-PlayerEventLogs     player_event_logs;
+#include "../../common/evolving_items.h"
 
 void ExportSpells(SharedDatabase *db);
 void ExportSkillCaps(SharedDatabase *db);
@@ -51,10 +46,10 @@ void ExportDBStrings(SharedDatabase *db);
 int main(int argc, char **argv)
 {
 	RegisterExecutablePlatform(ExePlatformClientExport);
-	LogSys.LoadLogSettingsDefaults();
+	EQEmuLogSys::Instance()->LoadLogSettingsDefaults();
 	set_exception_handler();
 
-	path.LoadPaths();
+	PathManager::Instance()->Init();
 
 	LogInfo("Client Files Export Utility");
 	if (!EQEmuConfig::LoadConfig()) {
@@ -97,8 +92,8 @@ int main(int argc, char **argv)
 		content_db.SetMySQL(database);
 	}
 
-	LogSys.SetDatabase(&database)
-		->SetLogPath(path.GetLogPath())
+	EQEmuLogSys::Instance()->SetDatabase(&database)
+		->SetLogPath(PathManager::Instance()->GetLogPath())
 		->LoadLogDatabaseSettings()
 		->StartFileLogs();
 
@@ -127,14 +122,14 @@ int main(int argc, char **argv)
 	ExportBaseData(&content_db);
 	ExportDBStrings(&database);
 
-	LogSys.CloseFileLogs();
+	EQEmuLogSys::Instance()->CloseFileLogs();
 
 	return 0;
 }
 
 void ExportSpells(SharedDatabase* db)
 {
-	std::ofstream file(fmt::format("{}/export/spells_us.txt", path.GetServerPath()));
+	std::ofstream file(fmt::format("{}/export/spells_us.txt", PathManager::Instance()->GetServerPath()));
 	if (!file || !file.is_open()) {
 		LogError("Unable to open export/spells_us.txt to write, skipping.");
 		return;
@@ -153,7 +148,7 @@ void ExportSpells(SharedDatabase* db)
 
 void ExportSkillCaps(SharedDatabase* db)
 {
-	std::ofstream file(fmt::format("{}/export/SkillCaps.txt", path.GetServerPath()));
+	std::ofstream file(fmt::format("{}/export/SkillCaps.txt", PathManager::Instance()->GetServerPath()));
 	if (!file || !file.is_open()) {
 		LogError("Unable to open export/SkillCaps.txt to write, skipping.");
 		return;
@@ -172,7 +167,7 @@ void ExportSkillCaps(SharedDatabase* db)
 
 void ExportBaseData(SharedDatabase *db)
 {
-	std::ofstream file(fmt::format("{}/export/BaseData.txt", path.GetServerPath()));
+	std::ofstream file(fmt::format("{}/export/BaseData.txt", PathManager::Instance()->GetServerPath()));
 	if (!file || !file.is_open()) {
 		LogError("Unable to open export/BaseData.txt to write, skipping.");
 		return;
@@ -191,7 +186,7 @@ void ExportBaseData(SharedDatabase *db)
 
 void ExportDBStrings(SharedDatabase *db)
 {
-	std::ofstream file(fmt::format("{}/export/dbstr_us.txt", path.GetServerPath()));
+	std::ofstream file(fmt::format("{}/export/dbstr_us.txt", PathManager::Instance()->GetServerPath()));
 	if (!file || !file.is_open()) {
 		LogError("Unable to open export/dbstr_us.txt to write, skipping.");
 		return;

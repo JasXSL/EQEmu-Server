@@ -67,7 +67,7 @@ Merc::Merc(const NPCType* d, float x, float y, float z, float heading)
 
 	int r;
 	for (r = 0; r <= EQ::skills::HIGHEST_SKILL; r++) {
-		skills[r] = skill_caps.GetSkillCap(GetClass(), (EQ::skills::SkillType)r, GetLevel()).cap;
+		skills[r] = SkillCaps::Instance()->GetSkillCap(GetClass(), (EQ::skills::SkillType)r, GetLevel()).cap;
 	}
 
 	size = d->size;
@@ -774,12 +774,12 @@ bool Merc::HasSkill(EQ::skills::SkillType skill_id) const {
 }
 
 bool Merc::CanHaveSkill(EQ::skills::SkillType skill_id) const {
-	return skill_caps.GetSkillCap(GetClass(), skill_id, RuleI(Character, MaxLevel)).cap > 0;
+	return SkillCaps::Instance()->GetSkillCap(GetClass(), skill_id, RuleI(Character, MaxLevel)).cap > 0;
 	//if you don't have it by max level, then odds are you never will?
 }
 
 uint16 Merc::MaxSkill(EQ::skills::SkillType skillid, uint16 class_, uint16 level) const {
-	return skill_caps.GetSkillCap(class_, skillid, level).cap;
+	return SkillCaps::Instance()->GetSkillCap(class_, skillid, level).cap;
 }
 
 void Merc::FillSpawnStruct(NewSpawn_Struct* ns, Mob* ForWho) {
@@ -1500,7 +1500,7 @@ bool Merc::AI_IdleCastCheck() {
 
 bool EntityList::Merc_AICheckCloseBeneficialSpells(Merc* caster, uint8 iChance, float iRange, uint32 iSpellTypes) {
 
-	if((iSpellTypes & SPELL_TYPES_DETRIMENTAL) != 0) {
+	if ((iSpellTypes & SPELL_TYPES_DETRIMENTAL) != 0) {
 		//according to live, you can buff and heal through walls...
 		//now with PCs, this only applies if you can TARGET the target, but
 		// according to Rogean, Live NPCs will just cast through walls/floors, no problem..

@@ -1,8 +1,22 @@
 #include "../client.h"
+#include "../queryserv.h"
 #include "../worldserver.h"
-#include "../../common/events/player_events.h"
+#include "../../common/events/player_event_logs.h"
+#include "../string_ids.h"
 
+extern QueryServ  *QServ;
 extern WorldServer worldserver;
+
+void SendParcelsSubCommands(Client *c)
+{
+	c->Message(Chat::White, "#parcels listdb [Character Name]");
+	c->Message(Chat::White, "#parcels listmemory [Character Name] (Must be in the same zone)");
+	c->Message(
+		Chat::White,
+		"#parcels add [Character Name] [item id] [quantity] [note].  To send money use item id of 99990. Quantity is valid for stackable items, charges on an item, or amount of copper."
+	);
+	c->Message(Chat::White, "#parcels details [Character Name]");
+}
 
 void command_parcels(Client *c, const Seperator *sep)
 {
@@ -197,11 +211,17 @@ void command_parcels(Client *c, const Seperator *sep)
 				send_to_client.at(0).character_name.c_str()
 			);
 
-			if (player_event_logs.IsEventEnabled(PlayerEvent::PARCEL_SEND)) {
+			if (inst && PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::PARCEL_SEND)) {
 				PlayerEvent::ParcelSend e{};
 				e.from_player_name = parcel_out.from_name;
 				e.to_player_name   = send_to_client.at(0).character_name;
 				e.item_id          = parcel_out.item_id;
+				e.augment_1_id     = inst->GetAugmentItemID(0);
+				e.augment_2_id     = inst->GetAugmentItemID(1);
+				e.augment_3_id     = inst->GetAugmentItemID(2);
+				e.augment_4_id     = inst->GetAugmentItemID(3);
+				e.augment_5_id     = inst->GetAugmentItemID(4);
+				e.augment_6_id     = inst->GetAugmentItemID(5);
 				e.quantity         = parcel_out.quantity;
 				e.sent_date        = parcel_out.sent_date;
 
@@ -275,11 +295,17 @@ void command_parcels(Client *c, const Seperator *sep)
 				send_to_client.at(0).character_name.c_str()
 			);
 
-			if (player_event_logs.IsEventEnabled(PlayerEvent::PARCEL_SEND)) {
+			if (inst && PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::PARCEL_SEND)) {
 				PlayerEvent::ParcelSend e{};
 				e.from_player_name = parcel_out.from_name;
 				e.to_player_name   = send_to_client.at(0).character_name;
 				e.item_id          = parcel_out.item_id;
+				e.augment_1_id     = inst->GetAugmentItemID(0);
+				e.augment_2_id     = inst->GetAugmentItemID(1);
+				e.augment_3_id     = inst->GetAugmentItemID(2);
+				e.augment_4_id     = inst->GetAugmentItemID(3);
+				e.augment_5_id     = inst->GetAugmentItemID(4);
+				e.augment_6_id     = inst->GetAugmentItemID(5);
 				e.quantity         = parcel_out.quantity;
 				e.sent_date        = parcel_out.sent_date;
 
@@ -293,15 +319,4 @@ void command_parcels(Client *c, const Seperator *sep)
 			c->SendParcelDeliveryToWorld(ps);
 		}
 	}
-}
-
-void SendParcelsSubCommands(Client *c)
-{
-	c->Message(Chat::White, "#parcels listdb [Character Name]");
-	c->Message(Chat::White, "#parcels listmemory [Character Name] (Must be in the same zone)");
-	c->Message(
-		Chat::White,
-		"#parcels add [Character Name] [item id] [quantity] [note].  To send money use item id of 99990. Quantity is valid for stackable items, charges on an item, or amount of copper."
-	);
-	c->Message(Chat::White, "#parcels details [Character Name]");
 }

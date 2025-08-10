@@ -4,8 +4,7 @@
 #include <string>
 #include "../common/types.h"
 #include "../common/discord/discord.h"
-
-extern UCSConnection UCSLink;
+#include "ucs.h"
 
 class WorldBoot {
 public:

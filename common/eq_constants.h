@@ -974,43 +974,6 @@ namespace ZoneBlockedSpellTypes {
 	const uint8 Region   = 2;
 };
 
-enum class DynamicZoneType
-{
-	None = 0,
-	Expedition,
-	Tutorial,
-	Task,
-	Mission, // Shared Task
-	Quest
-};
-
-enum class DynamicZoneMemberStatus : uint8_t
-{
-	Unknown = 0,
-	Online,
-	Offline,
-	InDynamicZone,
-	LinkDead
-};
-
-enum LDoNThemes {
-	Unused = 0,
-	GUK,
-	MIR,
-	MMC,
-	RUJ,
-	TAK
-};
-
-enum LDoNThemeBits {
-	UnusedBit = 0,
-	GUKBit = 1,
-	MIRBit = 2,
-	MMCBit = 4,
-	RUJBit = 8,
-	TAKBit = 16
-};
-
 enum StartZoneIndex {
     Odus = 0,
     Qeynos,
@@ -1025,7 +988,8 @@ enum StartZoneIndex {
     Felwithe,
     Akanon,
     Cabilis,
-    SharVahl
+    SharVahl,
+    RatheMtn
 };
 
 enum FVNoDropFlagRule
@@ -1132,4 +1096,5 @@ enum ExpSource
 namespace DoorType {
 	constexpr uint32 BuyerStall = 155;
 }
+
 #endif /*COMMON_EQ_CONSTANTS_H*/

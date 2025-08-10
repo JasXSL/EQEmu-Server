@@ -7,12 +7,11 @@ SET(world_sources
     cliententry.cpp
     clientlist.cpp
     console.cpp
+    ../common/data_bucket.cpp
     dynamic_zone.cpp
     dynamic_zone_manager.cpp
     eql_config.cpp
     eqemu_api_world_data_service.cpp
-    expedition_database.cpp
-    expedition_message.cpp
     launcher_link.cpp
     launcher_list.cpp
     lfplist.cpp
@@ -44,12 +43,11 @@ SET(world_headers
     cliententry.h
     clientlist.h
     console.h
+    ../common/data_bucket.h
     dynamic_zone.h
     dynamic_zone_manager.h
     eql_config.h
     eqemu_api_world_data_service.h
-    expedition_database.h
-    expedition_message.h
     launcher_link.h
     launcher_list.h
     lfplist.h
@@ -79,7 +77,7 @@ ADD_EXECUTABLE(world ${world_sources} ${world_headers})
 INSTALL(TARGETS world RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 
 IF (WIN32 AND EQEMU_BUILD_PCH)
-    TARGET_PRECOMPILE_HEADERS(world PRIVATE ../common/pch/pch.h)
+    TARGET_PRECOMPILE_HEADERS(world PRIVATE ../common/pch/std-pch.h)
 ENDIF ()
 
 ADD_DEFINITIONS(-DWORLD)

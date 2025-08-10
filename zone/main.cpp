@@ -52,6 +52,7 @@
 #include "task_manager.h"
 #include "quest_parser_collection.h"
 #include "embparser.h"
+#include "../common/evolving_items.h"
 #include "lua_parser.h"
 #include "questmgr.h"
 #include "npc_scale_manager.h"
@@ -87,12 +88,10 @@ extern volatile bool is_zone_loaded;
 #include "../common/path_manager.h"
 #include "../common/database/database_update.h"
 #include "../common/skill_caps.h"
-#include "zone_event_scheduler.h"
 #include "zone_cli.h"
 
 EntityList  entity_list;
 WorldServer worldserver;
-ZoneStore   zone_store;
 uint32      numclients = 0;
 char        errorname[32];
 extern Zone *zone;
@@ -100,16 +99,8 @@ extern Zone *zone;
 npcDecayTimes_Struct  npcCorpseDecayTimes[100];
 TitleManager          title_manager;
 QueryServ             *QServ        = 0;
-TaskManager           *task_manager = 0;
 NpcScaleManager       *npc_scale_manager;
 QuestParserCollection *parse        = 0;
-EQEmuLogSys           LogSys;
-ZoneEventScheduler    event_scheduler;
-WorldContentService   content_service;
-PathManager           path;
-PlayerEventLogs       player_event_logs;
-DatabaseUpdate        database_update;
-SkillCaps             skill_caps;
 
 const SPDat_Spell_Struct* spells;
 int32 SPDAT_RECORDS = -1;
@@ -122,19 +113,20 @@ void CatchSignal(int sig_num);
 
 extern void MapOpcodes();
 
+bool CheckForCompatibleQuestPlugins();
 int main(int argc, char **argv)
 {
 	RegisterExecutablePlatform(ExePlatformZone);
-	LogSys.LoadLogSettingsDefaults();
+	EQEmuLogSys::Instance()->LoadLogSettingsDefaults();
 
 	set_exception_handler();
 
 	// silence logging if we ran a command
-	if (ZoneCLI::RanConsoleCommand(argc, argv)) {
-		LogSys.SilenceConsoleLogging();
+	if (ZoneCLI::RanConsoleCommand(argc, argv) || ZoneCLI::RanTestCommand(argc, argv)) {
+		EQEmuLogSys::Instance()->SilenceConsoleLogging();
 	}
 
-	path.LoadPaths();
+	PathManager::Instance()->Init();
 
 #ifdef USE_MAP_MMFS
 	if (argc == 3 && strcasecmp(argv[1], "convert_map") == 0) {
@@ -295,25 +287,29 @@ int main(int argc, char **argv)
 		EQ::InitializeDynamicLookups();
 	}
 
-	// command handler
-	if (ZoneCLI::RanConsoleCommand(argc, argv) && !ZoneCLI::RanSidecarCommand(argc, argv)) {
-		LogSys.EnableConsoleLogging();
+	// command handler (no sidecar or test commands)
+	if (ZoneCLI::RanConsoleCommand(argc, argv) && !(ZoneCLI::RanSidecarCommand(argc, argv) || ZoneCLI::RanTestCommand(argc, argv))) {
+		EQEmuLogSys::Instance()->EnableConsoleLogging();
 		ZoneCLI::CommandHandler(argc, argv);
 	}
 
-	LogSys.SetDatabase(&database)
-		->SetLogPath(path.GetLogPath())
-		->LoadLogDatabaseSettings()
+	EQEmuLogSys::Instance()->SetDatabase(&database)
+		->SetLogPath(PathManager::Instance()->GetLogPath())
+		->LoadLogDatabaseSettings(ZoneCLI::RanTestCommand(argc, argv))
 		->SetGMSayHandler(&Zone::GMSayHookCallBackProcess)
 		->StartFileLogs();
 
-	player_event_logs.SetDatabase(&database)->Init();
+	if (ZoneCLI::RanTestCommand(argc, argv)) {
+		EQEmuLogSys::Instance()->SilenceConsoleLogging();
+	}
 
-	skill_caps.SetContentDatabase(&content_db)->LoadSkillCaps();
+	PlayerEventLogs::Instance()->SetDatabase(&database)->Init();
+
+	SkillCaps::Instance()->SetContentDatabase(&content_db)->LoadSkillCaps();
 
 	const auto c = EQEmuConfig::get();
 	if (c->auto_database_updates) {
-		if (database_update.SetDatabase(&database)->HasPendingUpdates()) {
+		if (DatabaseUpdate::Instance()->SetDatabase(&database)->HasPendingUpdates()) {
 			LogWarning("Database is not up to date [world] needs to be ran to apply updates, shutting down in 5 seconds");
 			std::this_thread::sleep_for(std::chrono::milliseconds(5000));
 			LogInfo("Exiting due to pending database updates");
@@ -360,10 +356,15 @@ int main(int argc, char **argv)
 		}
 	}
 
-	zone_store.LoadZones(content_db);
+	ZoneStore::Instance()->LoadZones(content_db);
 
-	if (zone_store.GetZones().empty()) {
+	if (ZoneStore::Instance()->GetZones().empty()) {
 		LogError("Failed to load zones data, check your schema for possible errors");
+		return 1;
+	}
+
+	if (!CheckForCompatibleQuestPlugins()) {
+		LogError("Incompatible quest plugins detected, please update your plugins to the latest version");
 		return 1;
 	}
 
@@ -387,6 +388,11 @@ int main(int argc, char **argv)
 	title_manager.LoadTitles();
 	content_db.LoadTributes();
 
+	// Load evolving item data
+	EvolvingItemsManager::Instance()->SetDatabase(&database);
+	EvolvingItemsManager::Instance()->SetContentDatabase(&content_db);
+	EvolvingItemsManager::Instance()->LoadEvolvingItems();
+
 	database.GetDecayTimes(npcCorpseDecayTimes);
 
 	if (!EQ::ProfanityManager::LoadProfanityList(&database)) {
@@ -401,12 +407,12 @@ int main(int argc, char **argv)
 		LogInfo("Loaded [{}] commands loaded", Strings::Commify(std::to_string(retval)));
 	}
 
-	content_service.SetDatabase(&database)
+	WorldContentService::Instance()->SetDatabase(&database)
 		->SetContentDatabase(&content_db)
 		->SetExpansionContext()
 		->ReloadContentFlags();
 
-	event_scheduler.SetDatabase(&database)->LoadScheduledEvents();
+	ZoneEventScheduler::Instance()->SetDatabase(&database)->LoadScheduledEvents();
 
 	EQ::SayLinkEngine::LoadCachedSaylinks();
 
@@ -433,8 +439,7 @@ int main(int argc, char **argv)
 	npc_scale_manager->LoadScaleData();
 
 	if (RuleB(TaskSystem, EnableTaskSystem)) {
-		task_manager = new TaskManager;
-		task_manager->LoadTasks();
+		TaskManager::Instance()->LoadTasks();
 	}
 
 	parse = new QuestParserCollection();
@@ -470,15 +475,22 @@ int main(int argc, char **argv)
 	LogInfo("Loading quests");
 	parse->ReloadQuests();
 
+	QServ->CheckForConnectState();
+
 	worldserver.Connect();
-	worldserver.SetScheduler(&event_scheduler);
+	worldserver.SetScheduler(ZoneEventScheduler::Instance());
 
 	// sidecar command handler
-	if (ZoneCLI::RanConsoleCommand(argc, argv) && ZoneCLI::RanSidecarCommand(argc, argv)) {
+	if (ZoneCLI::RanConsoleCommand(argc, argv)
+		&& (ZoneCLI::RanSidecarCommand(argc, argv) || ZoneCLI::RanTestCommand(argc, argv))) {
+		EQEmuLogSys::Instance()->EnableConsoleLogging();
 		ZoneCLI::CommandHandler(argc, argv);
 	}
 
 	Timer InterserverTimer(INTERSERVER_TIMER); // does MySQL pings and auto-reconnect
+	Timer UpdateWhoTimer(RuleI(Zone, UpdateWhoTimer) * 1000); // updates who list every 2 minutes
+	Timer WorldserverProcess(1000);
+
 #ifdef EQPROFILE
 #ifdef PROFILE_DUMP_TIME
 	Timer profile_dump_timer(PROFILE_DUMP_TIME * 1000);
@@ -594,6 +606,10 @@ int main(int argc, char **argv)
 			}
 		}
 
+		if (WorldserverProcess.Check()) {
+			worldserver.Process();
+		}
+
 		if (is_zone_loaded) {
 			{
 				entity_list.GroupProcess();
@@ -606,26 +622,31 @@ int main(int argc, char **argv)
 				entity_list.MobProcess();
 				entity_list.BeaconProcess();
 				entity_list.EncounterProcess();
-				event_scheduler.Process(zone, &content_service);
+
+				ZoneEventScheduler::Instance()->Process(zone, WorldContentService::Instance());
 
 				if (zone) {
 					if (!zone->Process()) {
-						Zone::Shutdown();
+						zone->Shutdown();
 					}
 				}
 
 				if (quest_timers.Check()) {
 					quest_manager.Process();
 				}
-
 			}
 		}
+
+		QServ->CheckForConnectState();
 
 		if (InterserverTimer.Check()) {
 			InterserverTimer.Start();
 			database.ping();
 			content_db.ping();
-			entity_list.UpdateWho();
+			if (UpdateWhoTimer.Check()) {
+				UpdateWhoTimer.SetTimer(RuleI(Zone, UpdateWhoTimer) * 1000); // in-case it was changed
+				entity_list.UpdateWho();
+			}
 		}
 	};
 
@@ -646,27 +667,28 @@ int main(int argc, char **argv)
 	safe_delete(Config);
 
 	if (zone != 0) {
-		Zone::Shutdown(true);
+		zone->SetSaveZoneState(false);
+		zone->Shutdown(true);
 	}
 	//Fix for Linux world server problem.
-	safe_delete(task_manager);
 	safe_delete(npc_scale_manager);
 	command_deinit();
 	bot_command_deinit();
 	safe_delete(parse);
 	LogInfo("Proper zone shutdown complete.");
-	LogSys.CloseFileLogs();
+	EQEmuLogSys::Instance()->CloseFileLogs();
 
 	safe_delete(mutex);
+	safe_delete(QServ);
 
 	return 0;
 }
 
 void Shutdown()
 {
-	Zone::Shutdown(true);
+	zone->Shutdown(true);
 	LogInfo("Shutting down...");
-	LogSys.CloseFileLogs();
+	EQEmuLogSys::Instance()->CloseFileLogs();
 	EQ::EventLoop::Get().Shutdown();
 }
 
@@ -704,4 +726,52 @@ void UpdateWindowTitle(char *iNewTitle)
 	}
 	SetConsoleTitle(tmp);
 #endif
+}
+
+bool CheckForCompatibleQuestPlugins()
+{
+	const std::vector<std::pair<std::string, bool *>> directories = {
+		{"lua_modules", nullptr},
+		{"plugins",     nullptr}
+	};
+
+	bool lua_found  = false;
+	bool perl_found = false;
+
+	try {
+		for (const auto &[directory, flag]: directories) {
+			std::string dir_path = PathManager::Instance()->GetServerPath() + "/" + directory;
+			if (!File::Exists(dir_path)) { continue; }
+
+			for (const auto &file: fs::directory_iterator(dir_path)) {
+				if (!file.is_regular_file()) { continue; }
+
+				std::string file_path = file.path().string();
+				if (!File::Exists(file_path)) { continue; }
+
+				auto r = File::GetContents(file_path);
+				if (!Strings::Contains(r.contents, "CheckHandin")) { continue; }
+
+				if (directory == "lua_modules") {
+					lua_found = true;
+				}
+				else {
+					perl_found = true;
+				}
+
+				if (lua_found && perl_found) { return true; }
+			}
+		}
+	} catch (const fs::filesystem_error &ex) {
+		LogError("Failed to check for compatible quest plugins: {}", ex.what());
+	}
+
+	if (!lua_found) {
+		LogError("Failed to find CheckHandin in lua_modules");
+	}
+	if (!perl_found) {
+		LogError("Failed to find CheckHandin in plugins");
+	}
+
+	return lua_found && perl_found;
 }

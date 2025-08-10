@@ -18,16 +18,18 @@
 #include "lua_entity_list.h"
 #include "lua_expedition.h"
 #include "lua_spell.h"
+#include "lua_zone.h"
 #include "quest_parser_collection.h"
 #include "questmgr.h"
 #include "qglobals.h"
 #include "encounter.h"
 #include "lua_encounter.h"
-#include "data_bucket.h"
-#include "expedition.h"
+#include "../common/data_bucket.h"
 #include "dialogue_window.h"
+#include "dynamic_zone.h"
 #include "../common/events/player_event_logs.h"
 #include "worldserver.h"
+#include "zone.h"
 
 struct Events { };
 struct Factions { };
@@ -466,7 +468,7 @@ void lua_set_sky(int sky) {
 }
 
 void lua_set_guild(int guild_id, int rank) {
-	quest_manager.setguild(guild_id, rank);
+	quest_manager.SetGuild(guild_id, rank);
 }
 
 void lua_create_guild(const char *name, const char *leader) {
@@ -718,6 +720,14 @@ void lua_assign_task(int task_id) {
 
 void lua_fail_task(int task_id) {
 	quest_manager.failtask(task_id);
+}
+
+bool lua_complete_task(int task_id) {
+	return quest_manager.completetask(task_id);
+}
+
+bool lua_uncomplete_task(int task_id) {
+	return quest_manager.uncompletetask(task_id);
 }
 
 int lua_task_time_left(int task_id) {
@@ -1092,8 +1102,8 @@ int lua_faction_value() {
 	return quest_manager.FactionValue();
 }
 
-void lua_check_title(uint32 title_set) {
-	quest_manager.checktitle(title_set);
+bool lua_check_title(uint32 title_set) {
+	return quest_manager.checktitle(title_set);
 }
 
 void lua_enable_title(uint32 title_set) {
@@ -1599,263 +1609,263 @@ void lua_update_zone_header(std::string type, std::string value) {
  */
 
 bool lua_is_classic_enabled() {
-	return content_service.IsClassicEnabled();
+	return WorldContentService::Instance()->IsClassicEnabled();
 }
 
 bool lua_is_the_ruins_of_kunark_enabled() {
-	return content_service.IsTheRuinsOfKunarkEnabled();
+	return WorldContentService::Instance()->IsTheRuinsOfKunarkEnabled();
 }
 
 bool lua_is_the_scars_of_velious_enabled() {
-	return content_service.IsTheScarsOfVeliousEnabled();
+	return WorldContentService::Instance()->IsTheScarsOfVeliousEnabled();
 }
 
 bool lua_is_the_shadows_of_luclin_enabled() {
-	return content_service.IsTheShadowsOfLuclinEnabled();
+	return WorldContentService::Instance()->IsTheShadowsOfLuclinEnabled();
 }
 
 bool lua_is_the_planes_of_power_enabled() {
-	return content_service.IsThePlanesOfPowerEnabled();
+	return WorldContentService::Instance()->IsThePlanesOfPowerEnabled();
 }
 
 bool lua_is_the_legacy_of_ykesha_enabled() {
-	return content_service.IsTheLegacyOfYkeshaEnabled();
+	return WorldContentService::Instance()->IsTheLegacyOfYkeshaEnabled();
 }
 
 bool lua_is_lost_dungeons_of_norrath_enabled() {
-	return content_service.IsLostDungeonsOfNorrathEnabled();
+	return WorldContentService::Instance()->IsLostDungeonsOfNorrathEnabled();
 }
 
 bool lua_is_gates_of_discord_enabled() {
-	return content_service.IsGatesOfDiscordEnabled();
+	return WorldContentService::Instance()->IsGatesOfDiscordEnabled();
 }
 
 bool lua_is_omens_of_war_enabled() {
-	return content_service.IsOmensOfWarEnabled();
+	return WorldContentService::Instance()->IsOmensOfWarEnabled();
 }
 
 bool lua_is_dragons_of_norrath_enabled() {
-	return content_service.IsDragonsOfNorrathEnabled();
+	return WorldContentService::Instance()->IsDragonsOfNorrathEnabled();
 }
 
 bool lua_is_depths_of_darkhollow_enabled() {
-	return content_service.IsDepthsOfDarkhollowEnabled();
+	return WorldContentService::Instance()->IsDepthsOfDarkhollowEnabled();
 }
 
 bool lua_is_prophecy_of_ro_enabled() {
-	return content_service.IsProphecyOfRoEnabled();
+	return WorldContentService::Instance()->IsProphecyOfRoEnabled();
 }
 
 bool lua_is_the_serpents_spine_enabled() {
-	return content_service.IsTheSerpentsSpineEnabled();
+	return WorldContentService::Instance()->IsTheSerpentsSpineEnabled();
 }
 
 bool lua_is_the_buried_sea_enabled() {
-	return content_service.IsTheBuriedSeaEnabled();
+	return WorldContentService::Instance()->IsTheBuriedSeaEnabled();
 }
 
 bool lua_is_secrets_of_faydwer_enabled() {
-	return content_service.IsSecretsOfFaydwerEnabled();
+	return WorldContentService::Instance()->IsSecretsOfFaydwerEnabled();
 }
 
 bool lua_is_seeds_of_destruction_enabled() {
-	return content_service.IsSeedsOfDestructionEnabled();
+	return WorldContentService::Instance()->IsSeedsOfDestructionEnabled();
 }
 
 bool lua_is_underfoot_enabled() {
-	return content_service.IsUnderfootEnabled();
+	return WorldContentService::Instance()->IsUnderfootEnabled();
 }
 
 bool lua_is_house_of_thule_enabled() {
-	return content_service.IsHouseOfThuleEnabled();
+	return WorldContentService::Instance()->IsHouseOfThuleEnabled();
 }
 
 bool lua_is_veil_of_alaris_enabled() {
-	return content_service.IsVeilOfAlarisEnabled();
+	return WorldContentService::Instance()->IsVeilOfAlarisEnabled();
 }
 
 bool lua_is_rain_of_fear_enabled() {
-	return content_service.IsRainOfFearEnabled();
+	return WorldContentService::Instance()->IsRainOfFearEnabled();
 }
 
 bool lua_is_call_of_the_forsaken_enabled() {
-	return content_service.IsCallOfTheForsakenEnabled();
+	return WorldContentService::Instance()->IsCallOfTheForsakenEnabled();
 }
 
 bool lua_is_the_darkened_sea_enabled() {
-	return content_service.IsTheDarkenedSeaEnabled();
+	return WorldContentService::Instance()->IsTheDarkenedSeaEnabled();
 }
 
 bool lua_is_the_broken_mirror_enabled() {
-	return content_service.IsTheBrokenMirrorEnabled();
+	return WorldContentService::Instance()->IsTheBrokenMirrorEnabled();
 }
 
 bool lua_is_empires_of_kunark_enabled() {
-	return content_service.IsEmpiresOfKunarkEnabled();
+	return WorldContentService::Instance()->IsEmpiresOfKunarkEnabled();
 }
 
 bool lua_is_ring_of_scale_enabled() {
-	return content_service.IsRingOfScaleEnabled();
+	return WorldContentService::Instance()->IsRingOfScaleEnabled();
 }
 
 bool lua_is_the_burning_lands_enabled() {
-	return content_service.IsTheBurningLandsEnabled();
+	return WorldContentService::Instance()->IsTheBurningLandsEnabled();
 }
 
 bool lua_is_torment_of_velious_enabled() {
-	return content_service.IsTormentOfVeliousEnabled();
+	return WorldContentService::Instance()->IsTormentOfVeliousEnabled();
 }
 
 bool lua_is_current_expansion_classic() {
-	return content_service.IsCurrentExpansionClassic();
+	return WorldContentService::Instance()->IsCurrentExpansionClassic();
 }
 
 bool lua_is_current_expansion_the_ruins_of_kunark() {
-	return content_service.IsCurrentExpansionTheRuinsOfKunark();
+	return WorldContentService::Instance()->IsCurrentExpansionTheRuinsOfKunark();
 }
 
 bool lua_is_current_expansion_the_scars_of_velious() {
-	return content_service.IsCurrentExpansionTheScarsOfVelious();
+	return WorldContentService::Instance()->IsCurrentExpansionTheScarsOfVelious();
 }
 
 bool lua_is_current_expansion_the_shadows_of_luclin() {
-	return content_service.IsCurrentExpansionTheShadowsOfLuclin();
+	return WorldContentService::Instance()->IsCurrentExpansionTheShadowsOfLuclin();
 }
 
 bool lua_is_current_expansion_the_planes_of_power() {
-	return content_service.IsCurrentExpansionThePlanesOfPower();
+	return WorldContentService::Instance()->IsCurrentExpansionThePlanesOfPower();
 }
 
 bool lua_is_current_expansion_the_legacy_of_ykesha() {
-	return content_service.IsCurrentExpansionTheLegacyOfYkesha();
+	return WorldContentService::Instance()->IsCurrentExpansionTheLegacyOfYkesha();
 }
 
 bool lua_is_current_expansion_lost_dungeons_of_norrath() {
-	return content_service.IsCurrentExpansionLostDungeonsOfNorrath();
+	return WorldContentService::Instance()->IsCurrentExpansionLostDungeonsOfNorrath();
 }
 
 bool lua_is_current_expansion_gates_of_discord() {
-	return content_service.IsCurrentExpansionGatesOfDiscord();
+	return WorldContentService::Instance()->IsCurrentExpansionGatesOfDiscord();
 }
 
 bool lua_is_current_expansion_omens_of_war() {
-	return content_service.IsCurrentExpansionOmensOfWar();
+	return WorldContentService::Instance()->IsCurrentExpansionOmensOfWar();
 }
 
 bool lua_is_current_expansion_dragons_of_norrath() {
-	return content_service.IsCurrentExpansionDragonsOfNorrath();
+	return WorldContentService::Instance()->IsCurrentExpansionDragonsOfNorrath();
 }
 
 bool lua_is_current_expansion_depths_of_darkhollow() {
-	return content_service.IsCurrentExpansionDepthsOfDarkhollow();
+	return WorldContentService::Instance()->IsCurrentExpansionDepthsOfDarkhollow();
 }
 
 bool lua_is_current_expansion_prophecy_of_ro() {
-	return content_service.IsCurrentExpansionProphecyOfRo();
+	return WorldContentService::Instance()->IsCurrentExpansionProphecyOfRo();
 }
 
 bool lua_is_current_expansion_the_serpents_spine() {
-	return content_service.IsCurrentExpansionTheSerpentsSpine();
+	return WorldContentService::Instance()->IsCurrentExpansionTheSerpentsSpine();
 }
 
 bool lua_is_current_expansion_the_buried_sea() {
-	return content_service.IsCurrentExpansionTheBuriedSea();
+	return WorldContentService::Instance()->IsCurrentExpansionTheBuriedSea();
 }
 
 bool lua_is_current_expansion_secrets_of_faydwer() {
-	return content_service.IsCurrentExpansionSecretsOfFaydwer();
+	return WorldContentService::Instance()->IsCurrentExpansionSecretsOfFaydwer();
 }
 
 bool lua_is_current_expansion_seeds_of_destruction() {
-	return content_service.IsCurrentExpansionSeedsOfDestruction();
+	return WorldContentService::Instance()->IsCurrentExpansionSeedsOfDestruction();
 }
 
 bool lua_is_current_expansion_underfoot() {
-	return content_service.IsCurrentExpansionUnderfoot();
+	return WorldContentService::Instance()->IsCurrentExpansionUnderfoot();
 }
 
 bool lua_is_current_expansion_house_of_thule() {
-	return content_service.IsCurrentExpansionHouseOfThule();
+	return WorldContentService::Instance()->IsCurrentExpansionHouseOfThule();
 }
 
 bool lua_is_current_expansion_veil_of_alaris() {
-	return content_service.IsCurrentExpansionVeilOfAlaris();
+	return WorldContentService::Instance()->IsCurrentExpansionVeilOfAlaris();
 }
 
 bool lua_is_current_expansion_rain_of_fear() {
-	return content_service.IsCurrentExpansionRainOfFear();
+	return WorldContentService::Instance()->IsCurrentExpansionRainOfFear();
 }
 
 bool lua_is_current_expansion_call_of_the_forsaken() {
-	return content_service.IsCurrentExpansionCallOfTheForsaken();
+	return WorldContentService::Instance()->IsCurrentExpansionCallOfTheForsaken();
 }
 
 bool lua_is_current_expansion_the_darkened_sea() {
-	return content_service.IsCurrentExpansionTheDarkenedSea();
+	return WorldContentService::Instance()->IsCurrentExpansionTheDarkenedSea();
 }
 
 bool lua_is_current_expansion_the_broken_mirror() {
-	return content_service.IsCurrentExpansionTheBrokenMirror();
+	return WorldContentService::Instance()->IsCurrentExpansionTheBrokenMirror();
 }
 
 bool lua_is_current_expansion_empires_of_kunark() {
-	return content_service.IsCurrentExpansionEmpiresOfKunark();
+	return WorldContentService::Instance()->IsCurrentExpansionEmpiresOfKunark();
 }
 
 bool lua_is_current_expansion_ring_of_scale() {
-	return content_service.IsCurrentExpansionRingOfScale();
+	return WorldContentService::Instance()->IsCurrentExpansionRingOfScale();
 }
 
 bool lua_is_current_expansion_the_burning_lands() {
-	return content_service.IsCurrentExpansionTheBurningLands();
+	return WorldContentService::Instance()->IsCurrentExpansionTheBurningLands();
 }
 
 bool lua_is_current_expansion_torment_of_velious() {
-	return content_service.IsCurrentExpansionTormentOfVelious();
+	return WorldContentService::Instance()->IsCurrentExpansionTormentOfVelious();
 }
 
 bool lua_is_content_flag_enabled(std::string content_flag){
-	return content_service.IsContentFlagEnabled(content_flag);
+	return WorldContentService::Instance()->IsContentFlagEnabled(content_flag);
 }
 
 void lua_set_content_flag(std::string flag_name, bool enabled){
-	content_service.SetContentFlag(flag_name, enabled);
+	WorldContentService::Instance()->SetContentFlag(flag_name, enabled);
 	zone->ReloadContentFlags();
 }
 
 Lua_Expedition lua_get_expedition() {
 	if (zone && zone->GetInstanceID() != 0)
 	{
-		return Expedition::FindCachedExpeditionByZoneInstance(zone->GetZoneID(), zone->GetInstanceID());
+		return DynamicZone::FindExpeditionByZone(zone->GetZoneID(), zone->GetInstanceID());
 	}
 	return nullptr;
 }
 
 Lua_Expedition lua_get_expedition_by_char_id(uint32 char_id) {
-	return Expedition::FindCachedExpeditionByCharacterID(char_id);
+	return DynamicZone::FindExpeditionByCharacter(char_id);
 }
 
 Lua_Expedition lua_get_expedition_by_dz_id(uint32 dz_id) {
-	return Expedition::FindCachedExpeditionByDynamicZoneID(dz_id);
+	return DynamicZone::FindDynamicZoneByID(dz_id, DynamicZoneType::Expedition);
 }
 
 Lua_Expedition lua_get_expedition_by_zone_instance(uint32 zone_id, uint32 instance_id) {
-	return Expedition::FindCachedExpeditionByZoneInstance(zone_id, instance_id);
+	return DynamicZone::FindExpeditionByZone(zone_id, instance_id);
 }
 
 luabind::object lua_get_expedition_lockout_by_char_id(lua_State* L, uint32 char_id, std::string expedition_name, std::string event_name) {
 	luabind::adl::object lua_table = luabind::newtable(L);
 
-	auto lockouts = Expedition::GetExpeditionLockoutsByCharacterID(char_id);
+	auto lockouts = DynamicZone::GetCharacterLockouts(char_id);
 
-	auto it = std::find_if(lockouts.begin(), lockouts.end(), [&](const ExpeditionLockoutTimer& lockout) {
-		return lockout.IsSameLockout(expedition_name, event_name);
+	auto it = std::find_if(lockouts.begin(), lockouts.end(), [&](const DzLockout& lockout) {
+		return lockout.IsSame(expedition_name, event_name);
 	});
 
 	if (it != lockouts.end())
 	{
 		lua_table["remaining"] = it->GetSecondsRemaining();
-		lua_table["uuid"] = it->GetExpeditionUUID();
+		lua_table["uuid"] = it->UUID();
 	}
 
 	return lua_table;
@@ -1864,23 +1874,23 @@ luabind::object lua_get_expedition_lockout_by_char_id(lua_State* L, uint32 char_
 luabind::object lua_get_expedition_lockouts_by_char_id(lua_State* L, uint32 char_id) {
 	luabind::adl::object lua_table = luabind::newtable(L);
 
-	auto lockouts = Expedition::GetExpeditionLockoutsByCharacterID(char_id);
+	auto lockouts = DynamicZone::GetCharacterLockouts(char_id);
 	for (const auto& lockout : lockouts)
 	{
-		auto lockout_table = lua_table[lockout.GetExpeditionName()];
+		auto lockout_table = lua_table[lockout.DzName()];
 		if (luabind::type(lockout_table) != LUA_TTABLE)
 		{
 			lockout_table = luabind::newtable(L);
 		}
 
-		auto event_table = lockout_table[lockout.GetEventName()];
+		auto event_table = lockout_table[lockout.Event()];
 		if (luabind::type(event_table) != LUA_TTABLE)
 		{
 			event_table = luabind::newtable(L);
 		}
 
 		event_table["remaining"] = lockout.GetSecondsRemaining();
-		event_table["uuid"] = lockout.GetExpeditionUUID();
+		event_table["uuid"] = lockout.UUID();
 	}
 	return lua_table;
 }
@@ -1888,51 +1898,51 @@ luabind::object lua_get_expedition_lockouts_by_char_id(lua_State* L, uint32 char
 luabind::object lua_get_expedition_lockouts_by_char_id(lua_State* L, uint32 char_id, std::string expedition_name) {
 	luabind::adl::object lua_table = luabind::newtable(L);
 
-	auto lockouts = Expedition::GetExpeditionLockoutsByCharacterID(char_id);
+	auto lockouts = DynamicZone::GetCharacterLockouts(char_id);
 	for (const auto& lockout : lockouts)
 	{
-		if (lockout.GetExpeditionName() == expedition_name)
+		if (lockout.DzName() == expedition_name)
 		{
-			auto event_table = lua_table[lockout.GetEventName()];
+			auto event_table = lua_table[lockout.Event()];
 			if (luabind::type(event_table) != LUA_TTABLE)
 			{
 				event_table = luabind::newtable(L);
 			}
 			event_table["remaining"] = lockout.GetSecondsRemaining();
-			event_table["uuid"] = lockout.GetExpeditionUUID();
+			event_table["uuid"] = lockout.UUID();
 		}
 	}
 	return lua_table;
 }
 
 void lua_add_expedition_lockout_all_clients(std::string expedition_name, std::string event_name, uint32 seconds) {
-	auto lockout = ExpeditionLockoutTimer::CreateLockout(expedition_name, event_name, seconds);
-	Expedition::AddLockoutClients(lockout);
+	auto lockout = DzLockout::Create(expedition_name, event_name, seconds);
+	DynamicZone::AddClientsLockout(lockout);
 }
 
 void lua_add_expedition_lockout_all_clients(std::string expedition_name, std::string event_name, uint32 seconds, std::string uuid) {
-	auto lockout = ExpeditionLockoutTimer::CreateLockout(expedition_name, event_name, seconds, uuid);
-	Expedition::AddLockoutClients(lockout);
+	auto lockout = DzLockout::Create(expedition_name, event_name, seconds, uuid);
+	DynamicZone::AddClientsLockout(lockout);
 }
 
 void lua_add_expedition_lockout_by_char_id(uint32 char_id, std::string expedition_name, std::string event_name, uint32 seconds) {
-	Expedition::AddLockoutByCharacterID(char_id, expedition_name, event_name, seconds);
+	DynamicZone::AddCharacterLockout(char_id, expedition_name, event_name, seconds);
 }
 
 void lua_add_expedition_lockout_by_char_id(uint32 char_id, std::string expedition_name, std::string event_name, uint32 seconds, std::string uuid) {
-	Expedition::AddLockoutByCharacterID(char_id, expedition_name, event_name, seconds, uuid);
+	DynamicZone::AddCharacterLockout(char_id, expedition_name, event_name, seconds, uuid);
 }
 
 void lua_remove_expedition_lockout_by_char_id(uint32 char_id, std::string expedition_name, std::string event_name) {
-	Expedition::RemoveLockoutsByCharacterID(char_id, expedition_name, event_name);
+	DynamicZone::RemoveCharacterLockouts(char_id, expedition_name, event_name);
 }
 
 void lua_remove_all_expedition_lockouts_by_char_id(uint32 char_id) {
-	Expedition::RemoveLockoutsByCharacterID(char_id);
+	DynamicZone::RemoveCharacterLockouts(char_id);
 }
 
 void lua_remove_all_expedition_lockouts_by_char_id(uint32 char_id, std::string expedition_name) {
-	Expedition::RemoveLockoutsByCharacterID(char_id, expedition_name);
+	DynamicZone::RemoveCharacterLockouts(char_id, expedition_name);
 }
 
 std::string lua_seconds_to_time(int duration) {
@@ -4155,617 +4165,607 @@ void lua_send_player_handin_event()
 
 float lua_get_zone_safe_x(uint32 zone_id)
 {
-	return zone_store.GetZoneSafeCoordinates(zone_id).x;
+	return ZoneStore::Instance()->GetZoneSafeCoordinates(zone_id).x;
 }
 
 float lua_get_zone_safe_x(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneSafeCoordinates(zone_id, version).x;
+	return ZoneStore::Instance()->GetZoneSafeCoordinates(zone_id, version).x;
 }
 
 float lua_get_zone_safe_y(uint32 zone_id)
 {
-	return zone_store.GetZoneSafeCoordinates(zone_id).y;
+	return ZoneStore::Instance()->GetZoneSafeCoordinates(zone_id).y;
 }
 
 float lua_get_zone_safe_y(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneSafeCoordinates(zone_id, version).y;
+	return ZoneStore::Instance()->GetZoneSafeCoordinates(zone_id, version).y;
 }
 
 float lua_get_zone_safe_z(uint32 zone_id)
 {
-	return zone_store.GetZoneSafeCoordinates(zone_id).z;
+	return ZoneStore::Instance()->GetZoneSafeCoordinates(zone_id).z;
 }
 
 float lua_get_zone_safe_z(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneSafeCoordinates(zone_id, version).z;
+	return ZoneStore::Instance()->GetZoneSafeCoordinates(zone_id, version).z;
 }
 
 float lua_get_zone_safe_heading(uint32 zone_id)
 {
-	return zone_store.GetZoneSafeCoordinates(zone_id).w;
+	return ZoneStore::Instance()->GetZoneSafeCoordinates(zone_id).w;
 }
 
 float lua_get_zone_safe_heading(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneSafeCoordinates(zone_id, version).w;
+	return ZoneStore::Instance()->GetZoneSafeCoordinates(zone_id, version).w;
 }
 
 float lua_get_zone_graveyard_id(uint32 zone_id)
 {
-	return zone_store.GetZoneGraveyardID(zone_id);
+	return ZoneStore::Instance()->GetZoneGraveyardID(zone_id);
 }
 
 float lua_get_zone_graveyard_id(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneGraveyardID(zone_id, version);
+	return ZoneStore::Instance()->GetZoneGraveyardID(zone_id, version);
 }
 
 uint8 lua_get_zone_minimum_level(uint32 zone_id)
 {
-	return zone_store.GetZoneMinimumLevel(zone_id);
+	return ZoneStore::Instance()->GetZoneMinimumLevel(zone_id);
 }
 
 uint8 lua_get_zone_minimum_level(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneMinimumLevel(zone_id, version);
+	return ZoneStore::Instance()->GetZoneMinimumLevel(zone_id, version);
 }
 
 uint8 lua_get_zone_maximum_level(uint32 zone_id)
 {
-	return zone_store.GetZoneMaximumLevel(zone_id);
+	return ZoneStore::Instance()->GetZoneMaximumLevel(zone_id);
 }
 
 uint8 lua_get_zone_maximum_level(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneMaximumLevel(zone_id, version);
+	return ZoneStore::Instance()->GetZoneMaximumLevel(zone_id, version);
 }
 
 uint8 lua_get_zone_minimum_status(uint32 zone_id)
 {
-	return zone_store.GetZoneMinimumStatus(zone_id);
+	return ZoneStore::Instance()->GetZoneMinimumStatus(zone_id);
 }
 
 uint8 lua_get_zone_minimum_status(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneMinimumStatus(zone_id, version);
+	return ZoneStore::Instance()->GetZoneMinimumStatus(zone_id, version);
 }
 
 int lua_get_zone_time_zone(uint32 zone_id)
 {
-	return zone_store.GetZoneTimeZone(zone_id);
+	return ZoneStore::Instance()->GetZoneTimeZone(zone_id);
 }
 
 int lua_get_zone_time_zone(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneTimeZone(zone_id, version);
+	return ZoneStore::Instance()->GetZoneTimeZone(zone_id, version);
 }
 
 int lua_get_zone_maximum_players(uint32 zone_id)
 {
-	return zone_store.GetZoneMaximumPlayers(zone_id);
+	return ZoneStore::Instance()->GetZoneMaximumPlayers(zone_id);
 }
 
 int lua_get_zone_maximum_players(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneMaximumPlayers(zone_id, version);
+	return ZoneStore::Instance()->GetZoneMaximumPlayers(zone_id, version);
 }
 
 uint32 lua_get_zone_rule_set(uint32 zone_id)
 {
-	return zone_store.GetZoneRuleSet(zone_id);
+	return ZoneStore::Instance()->GetZoneRuleSet(zone_id);
 }
 
 uint32 lua_get_zone_rule_set(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneRuleSet(zone_id, version);
+	return ZoneStore::Instance()->GetZoneRuleSet(zone_id, version);
 }
 
 std::string lua_get_zone_note(uint32 zone_id)
 {
-	return zone_store.GetZoneNote(zone_id);
+	return ZoneStore::Instance()->GetZoneNote(zone_id);
 }
 
 std::string lua_get_zone_note(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneNote(zone_id, version);
+	return ZoneStore::Instance()->GetZoneNote(zone_id, version);
 }
 
 float lua_get_zone_underworld(uint32 zone_id)
 {
-	return zone_store.GetZoneUnderworld(zone_id);
+	return ZoneStore::Instance()->GetZoneUnderworld(zone_id);
 }
 
 float lua_get_zone_underworld(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneUnderworld(zone_id, version);
+	return ZoneStore::Instance()->GetZoneUnderworld(zone_id, version);
 }
 
 float lua_get_zone_minimum_clip(uint32 zone_id)
 {
-	return zone_store.GetZoneMinimumClip(zone_id);
+	return ZoneStore::Instance()->GetZoneMinimumClip(zone_id);
 }
 
 float lua_get_zone_minimum_clip(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneMinimumClip(zone_id, version);
+	return ZoneStore::Instance()->GetZoneMinimumClip(zone_id, version);
 }
 
 float lua_get_zone_maximum_clip(uint32 zone_id)
 {
-	return zone_store.GetZoneMaximumClip(zone_id);
+	return ZoneStore::Instance()->GetZoneMaximumClip(zone_id);
 }
 
 float lua_get_zone_maximum_clip(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneMaximumClip(zone_id, version);
+	return ZoneStore::Instance()->GetZoneMaximumClip(zone_id, version);
 }
 
 float lua_get_zone_fog_minimum_clip(uint32 zone_id)
 {
-	return zone_store.GetZoneFogMinimumClip(zone_id);
+	return ZoneStore::Instance()->GetZoneFogMinimumClip(zone_id);
 }
 
 float lua_get_zone_fog_minimum_clip(uint32 zone_id, uint8 slot)
 {
-	return zone_store.GetZoneFogMinimumClip(zone_id, slot);
+	return ZoneStore::Instance()->GetZoneFogMinimumClip(zone_id, slot);
 }
 
 float lua_get_zone_fog_minimum_clip(uint32 zone_id, uint8 slot, int version)
 {
-	return zone_store.GetZoneFogMinimumClip(zone_id, slot);
+	return ZoneStore::Instance()->GetZoneFogMinimumClip(zone_id, slot);
 }
 
 float lua_get_zone_fog_maximum_clip(uint32 zone_id)
 {
-	return zone_store.GetZoneFogMaximumClip(zone_id);
+	return ZoneStore::Instance()->GetZoneFogMaximumClip(zone_id);
 }
 
 float lua_get_zone_fog_maximum_clip(uint32 zone_id, uint8 slot)
 {
-	return zone_store.GetZoneFogMaximumClip(zone_id, slot);
+	return ZoneStore::Instance()->GetZoneFogMaximumClip(zone_id, slot);
 }
 
 float lua_get_zone_fog_maximum_clip(uint32 zone_id, uint8 slot, int version)
 {
-	return zone_store.GetZoneFogMaximumClip(zone_id, slot, version);
+	return ZoneStore::Instance()->GetZoneFogMaximumClip(zone_id, slot, version);
 }
 
 uint8 lua_get_zone_fog_red(uint32 zone_id)
 {
-	return zone_store.GetZoneFogRed(zone_id);
+	return ZoneStore::Instance()->GetZoneFogRed(zone_id);
 }
 
 uint8 lua_get_zone_fog_red(uint32 zone_id, uint8 slot)
 {
-	return zone_store.GetZoneFogRed(zone_id, slot);
+	return ZoneStore::Instance()->GetZoneFogRed(zone_id, slot);
 }
 
 uint8 lua_get_zone_fog_red(uint32 zone_id, uint8 slot, int version)
 {
-	return zone_store.GetZoneFogRed(zone_id, slot, version);
+	return ZoneStore::Instance()->GetZoneFogRed(zone_id, slot, version);
 }
 
 uint8 lua_get_zone_fog_green(uint32 zone_id)
 {
-	return zone_store.GetZoneFogGreen(zone_id);
+	return ZoneStore::Instance()->GetZoneFogGreen(zone_id);
 }
 
 uint8 lua_get_zone_fog_green(uint32 zone_id, uint8 slot)
 {
-	return zone_store.GetZoneFogGreen(zone_id, slot);
+	return ZoneStore::Instance()->GetZoneFogGreen(zone_id, slot);
 }
 
 uint8 lua_get_zone_fog_green(uint32 zone_id, uint8 slot, int version)
 {
-	return zone_store.GetZoneFogGreen(zone_id, slot, version);
+	return ZoneStore::Instance()->GetZoneFogGreen(zone_id, slot, version);
 }
 
 uint8 lua_get_zone_fog_blue(uint32 zone_id)
 {
-	return zone_store.GetZoneFogBlue(zone_id);
+	return ZoneStore::Instance()->GetZoneFogBlue(zone_id);
 }
 
 uint8 lua_get_zone_fog_blue(uint32 zone_id, uint8 slot)
 {
-	return zone_store.GetZoneFogBlue(zone_id, slot);
+	return ZoneStore::Instance()->GetZoneFogBlue(zone_id, slot);
 }
 
 uint8 lua_get_zone_fog_blue(uint32 zone_id, uint8 slot, int version)
 {
-	return zone_store.GetZoneFogBlue(zone_id, slot, version);
+	return ZoneStore::Instance()->GetZoneFogBlue(zone_id, slot, version);
 }
 
 uint8 lua_get_zone_sky(uint32 zone_id)
 {
-	return zone_store.GetZoneSky(zone_id);
+	return ZoneStore::Instance()->GetZoneSky(zone_id);
 }
 
 uint8 lua_get_zone_sky(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneSky(zone_id, version);
+	return ZoneStore::Instance()->GetZoneSky(zone_id, version);
 }
 
 uint8 lua_get_zone_ztype(uint32 zone_id)
 {
-	return zone_store.GetZoneZType(zone_id);
+	return ZoneStore::Instance()->GetZoneZType(zone_id);
 }
 
 uint8 lua_get_zone_ztype(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneZType(zone_id, version);
+	return ZoneStore::Instance()->GetZoneZType(zone_id, version);
 }
 
 float lua_get_zone_experience_multiplier(uint32 zone_id)
 {
-	return zone_store.GetZoneExperienceMultiplier(zone_id);
+	return ZoneStore::Instance()->GetZoneExperienceMultiplier(zone_id);
 }
 
 float lua_get_zone_experience_multiplier(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneExperienceMultiplier(zone_id, version);
+	return ZoneStore::Instance()->GetZoneExperienceMultiplier(zone_id, version);
 }
 
 float lua_get_zone_walk_speed(uint32 zone_id)
 {
-	return zone_store.GetZoneWalkSpeed(zone_id);
+	return ZoneStore::Instance()->GetZoneWalkSpeed(zone_id);
 }
 
 float lua_get_zone_walk_speed(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneWalkSpeed(zone_id, version);
+	return ZoneStore::Instance()->GetZoneWalkSpeed(zone_id, version);
 }
 
 uint8 lua_get_zone_time_type(uint32 zone_id)
 {
-	return zone_store.GetZoneTimeType(zone_id);
+	return ZoneStore::Instance()->GetZoneTimeType(zone_id);
 }
 
 uint8 lua_get_zone_time_type(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneTimeType(zone_id, version);
+	return ZoneStore::Instance()->GetZoneTimeType(zone_id, version);
 }
 
 float lua_get_zone_fog_density(uint32 zone_id)
 {
-	return zone_store.GetZoneFogDensity(zone_id);
+	return ZoneStore::Instance()->GetZoneFogDensity(zone_id);
 }
 
 float lua_get_zone_fog_density(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneFogDensity(zone_id, version);
+	return ZoneStore::Instance()->GetZoneFogDensity(zone_id, version);
 }
 
 std::string lua_get_zone_flag_needed(uint32 zone_id)
 {
-	return zone_store.GetZoneFlagNeeded(zone_id);
+	return ZoneStore::Instance()->GetZoneFlagNeeded(zone_id);
 }
 
 std::string lua_get_zone_flag_needed(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneFlagNeeded(zone_id, version);
+	return ZoneStore::Instance()->GetZoneFlagNeeded(zone_id, version);
 }
 
 int8 lua_get_zone_can_bind(uint32 zone_id)
 {
-	return zone_store.GetZoneCanBind(zone_id);
+	return ZoneStore::Instance()->GetZoneCanBind(zone_id);
 }
 
 int8 lua_get_zone_can_bind(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneCanBind(zone_id, version);
+	return ZoneStore::Instance()->GetZoneCanBind(zone_id, version);
 }
 
 int8 lua_get_zone_can_combat(uint32 zone_id)
 {
-	return zone_store.GetZoneCanCombat(zone_id);
+	return ZoneStore::Instance()->GetZoneCanCombat(zone_id);
 }
 
 int8 lua_get_zone_can_combat(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneCanCombat(zone_id, version);
+	return ZoneStore::Instance()->GetZoneCanCombat(zone_id, version);
 }
 
 int8 lua_get_zone_can_levitate(uint32 zone_id)
 {
-	return zone_store.GetZoneCanLevitate(zone_id);
+	return ZoneStore::Instance()->GetZoneCanLevitate(zone_id);
 }
 
 int8 lua_get_zone_can_levitate(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneCanLevitate(zone_id, version);
+	return ZoneStore::Instance()->GetZoneCanLevitate(zone_id, version);
 }
 
 int8 lua_get_zone_cast_outdoor(uint32 zone_id)
 {
-	return zone_store.GetZoneCastOutdoor(zone_id);
+	return ZoneStore::Instance()->GetZoneCastOutdoor(zone_id);
 }
 
 int8 lua_get_zone_cast_outdoor(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneCastOutdoor(zone_id, version);
+	return ZoneStore::Instance()->GetZoneCastOutdoor(zone_id, version);
 }
 
 uint8 lua_get_zone_hotzone(uint32 zone_id)
 {
-	return zone_store.GetZoneHotzone(zone_id);
+	return ZoneStore::Instance()->GetZoneHotzone(zone_id);
 }
 
 uint8 lua_get_zone_hotzone(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneHotzone(zone_id, version);
+	return ZoneStore::Instance()->GetZoneHotzone(zone_id, version);
 }
 
 uint8 lua_get_zone_instance_type(uint32 zone_id)
 {
-	return zone_store.GetZoneInstanceType(zone_id);
+	return ZoneStore::Instance()->GetZoneInstanceType(zone_id);
 }
 
 uint8 lua_get_zone_instance_type(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneInstanceType(zone_id, version);
+	return ZoneStore::Instance()->GetZoneInstanceType(zone_id, version);
 }
 
 uint64 lua_get_zone_shutdown_delay(uint32 zone_id)
 {
-	return zone_store.GetZoneShutdownDelay(zone_id);
+	return ZoneStore::Instance()->GetZoneShutdownDelay(zone_id);
 }
 
 uint64 lua_get_zone_shutdown_delay(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneShutdownDelay(zone_id, version);
+	return ZoneStore::Instance()->GetZoneShutdownDelay(zone_id, version);
 }
 
 int8 lua_get_zone_peqzone(uint32 zone_id)
 {
-	return zone_store.GetZonePEQZone(zone_id);
+	return ZoneStore::Instance()->GetZonePEQZone(zone_id);
 }
 
 int8 lua_get_zone_peqzone(uint32 zone_id, int version)
 {
-	return zone_store.GetZonePEQZone(zone_id, version);
+	return ZoneStore::Instance()->GetZonePEQZone(zone_id, version);
 }
 
 int8 lua_get_zone_expansion(uint32 zone_id)
 {
-	return zone_store.GetZoneExpansion(zone_id);
+	return ZoneStore::Instance()->GetZoneExpansion(zone_id);
 }
 
 int8 lua_get_zone_expansion(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneExpansion(zone_id, version);
+	return ZoneStore::Instance()->GetZoneExpansion(zone_id, version);
 }
 
 int8 lua_get_zone_bypass_expansion_check(uint32 zone_id)
 {
-	return zone_store.GetZoneBypassExpansionCheck(zone_id);
+	return ZoneStore::Instance()->GetZoneBypassExpansionCheck(zone_id);
 }
 
 int8 lua_get_zone_bypass_expansion_check(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneBypassExpansionCheck(zone_id, version);
+	return ZoneStore::Instance()->GetZoneBypassExpansionCheck(zone_id, version);
 }
 
 int8 lua_get_zone_suspend_buffs(uint32 zone_id)
 {
-	return zone_store.GetZoneSuspendBuffs(zone_id);
+	return ZoneStore::Instance()->GetZoneSuspendBuffs(zone_id);
 }
 
 int8 lua_get_zone_suspend_buffs(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneSuspendBuffs(zone_id, version);
+	return ZoneStore::Instance()->GetZoneSuspendBuffs(zone_id, version);
 }
 
 int lua_get_zone_rain_chance(uint32 zone_id)
 {
-	return zone_store.GetZoneRainChance(zone_id);
+	return ZoneStore::Instance()->GetZoneRainChance(zone_id);
 }
 
 int lua_get_zone_rain_chance(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneRainChance(zone_id, version);
+	return ZoneStore::Instance()->GetZoneRainChance(zone_id, version);
 }
 
 int lua_get_zone_rain_duration(uint32 zone_id)
 {
-	return zone_store.GetZoneRainDuration(zone_id);
+	return ZoneStore::Instance()->GetZoneRainDuration(zone_id);
 }
 
 int lua_get_zone_rain_duration(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneRainDuration(zone_id, version);
+	return ZoneStore::Instance()->GetZoneRainDuration(zone_id, version);
 }
 
 int lua_get_zone_snow_chance(uint32 zone_id)
 {
-	return zone_store.GetZoneSnowChance(zone_id);
+	return ZoneStore::Instance()->GetZoneSnowChance(zone_id);
 }
 
 int lua_get_zone_snow_chance(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneSnowChance(zone_id, version);
+	return ZoneStore::Instance()->GetZoneSnowChance(zone_id, version);
 }
 
 int lua_get_zone_snow_duration(uint32 zone_id)
 {
-	return zone_store.GetZoneSnowDuration(zone_id);
+	return ZoneStore::Instance()->GetZoneSnowDuration(zone_id);
 }
 
 int lua_get_zone_snow_duration(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneSnowDuration(zone_id, version);
+	return ZoneStore::Instance()->GetZoneSnowDuration(zone_id, version);
 }
 
 float lua_get_zone_gravity(uint32 zone_id)
 {
-	return zone_store.GetZoneGravity(zone_id);
+	return ZoneStore::Instance()->GetZoneGravity(zone_id);
 }
 
 float lua_get_zone_gravity(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneGravity(zone_id, version);
+	return ZoneStore::Instance()->GetZoneGravity(zone_id, version);
 }
 
 int lua_get_zone_type(uint32 zone_id)
 {
-	return zone_store.GetZoneType(zone_id);
+	return ZoneStore::Instance()->GetZoneType(zone_id);
 }
 
 int lua_get_zone_type(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneType(zone_id, version);
+	return ZoneStore::Instance()->GetZoneType(zone_id, version);
 }
 
 int lua_get_zone_sky_lock(uint32 zone_id)
 {
-	return zone_store.GetZoneSkyLock(zone_id);
+	return ZoneStore::Instance()->GetZoneSkyLock(zone_id);
 }
 
 int lua_get_zone_sky_lock(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneSkyLock(zone_id, version);
+	return ZoneStore::Instance()->GetZoneSkyLock(zone_id, version);
 }
 
 int lua_get_zone_fast_regen_hp(uint32 zone_id)
 {
-	return zone_store.GetZoneFastRegenHP(zone_id);
+	return ZoneStore::Instance()->GetZoneFastRegenHP(zone_id);
 }
 
 int lua_get_zone_fast_regen_hp(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneFastRegenHP(zone_id, version);
+	return ZoneStore::Instance()->GetZoneFastRegenHP(zone_id, version);
 }
 
 int lua_get_zone_fast_regen_mana(uint32 zone_id)
 {
-	return zone_store.GetZoneFastRegenMana(zone_id);
+	return ZoneStore::Instance()->GetZoneFastRegenMana(zone_id);
 }
 
 int lua_get_zone_fast_regen_mana(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneFastRegenMana(zone_id, version);
+	return ZoneStore::Instance()->GetZoneFastRegenMana(zone_id, version);
 }
 
 int lua_get_zone_fast_regen_endurance(uint32 zone_id)
 {
-	return zone_store.GetZoneFastRegenEndurance(zone_id);
+	return ZoneStore::Instance()->GetZoneFastRegenEndurance(zone_id);
 }
 
 int lua_get_zone_fast_regen_endurance(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneFastRegenEndurance(zone_id, version);
+	return ZoneStore::Instance()->GetZoneFastRegenEndurance(zone_id, version);
 }
 
 int lua_get_zone_npc_maximum_aggro_distance(uint32 zone_id)
 {
-	return zone_store.GetZoneNPCMaximumAggroDistance(zone_id);
+	return ZoneStore::Instance()->GetZoneNPCMaximumAggroDistance(zone_id);
 }
 
 int lua_get_zone_npc_maximum_aggro_distance(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneNPCMaximumAggroDistance(zone_id, version);
-}
-
-uint32 lua_get_zone_maximum_movement_update_range(uint32 zone_id)
-{
-	return zone_store.GetZoneMaximumMovementUpdateRange(zone_id);
-}
-
-uint32 lua_get_zone_maximum_movement_update_range(uint32 zone_id, int version)
-{
-	return zone_store.GetZoneMaximumMovementUpdateRange(zone_id, version);
+	return ZoneStore::Instance()->GetZoneNPCMaximumAggroDistance(zone_id, version);
 }
 
 int8 lua_get_zone_minimum_expansion(uint32 zone_id)
 {
-	return zone_store.GetZoneMinimumExpansion(zone_id);
+	return ZoneStore::Instance()->GetZoneMinimumExpansion(zone_id);
 }
 
 int8 lua_get_zone_minimum_expansion(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneMinimumExpansion(zone_id, version);
+	return ZoneStore::Instance()->GetZoneMinimumExpansion(zone_id, version);
 }
 
 int8 lua_get_zone_maximum_expansion(uint32 zone_id)
 {
-	return zone_store.GetZoneMaximumExpansion(zone_id);
+	return ZoneStore::Instance()->GetZoneMaximumExpansion(zone_id);
 }
 
 int8 lua_get_zone_maximum_expansion(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneMaximumExpansion(zone_id, version);
+	return ZoneStore::Instance()->GetZoneMaximumExpansion(zone_id, version);
 }
 
 std::string lua_get_zone_content_flags(uint32 zone_id)
 {
-	return zone_store.GetZoneContentFlags(zone_id);
+	return ZoneStore::Instance()->GetZoneContentFlags(zone_id);
 }
 
 std::string lua_get_zone_content_flags(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneContentFlags(zone_id, version);
+	return ZoneStore::Instance()->GetZoneContentFlags(zone_id, version);
 }
 
 std::string lua_get_zone_content_flags_disabled(uint32 zone_id)
 {
-	return zone_store.GetZoneContentFlagsDisabled(zone_id);
+	return ZoneStore::Instance()->GetZoneContentFlagsDisabled(zone_id);
 }
 
 std::string lua_get_zone_content_flags_disabled(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneContentFlagsDisabled(zone_id, version);
+	return ZoneStore::Instance()->GetZoneContentFlagsDisabled(zone_id, version);
 }
 
 int lua_get_zone_underworld_teleport_index(uint32 zone_id)
 {
-	return zone_store.GetZoneUnderworldTeleportIndex(zone_id);
+	return ZoneStore::Instance()->GetZoneUnderworldTeleportIndex(zone_id);
 }
 
 int lua_get_zone_underworld_teleport_index(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneUnderworldTeleportIndex(zone_id, version);
+	return ZoneStore::Instance()->GetZoneUnderworldTeleportIndex(zone_id, version);
 }
 
 int lua_get_zone_lava_damage(uint32 zone_id)
 {
-	return zone_store.GetZoneLavaDamage(zone_id);
+	return ZoneStore::Instance()->GetZoneLavaDamage(zone_id);
 }
 
 int lua_get_zone_lava_damage(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneLavaDamage(zone_id, version);
+	return ZoneStore::Instance()->GetZoneLavaDamage(zone_id, version);
 }
 
 int lua_get_zone_minimum_lava_damage(uint32 zone_id)
 {
-	return zone_store.GetZoneMinimumLavaDamage(zone_id);
+	return ZoneStore::Instance()->GetZoneMinimumLavaDamage(zone_id);
 }
 
 int lua_get_zone_minimum_lava_damage(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneMinimumLavaDamage(zone_id, version);
+	return ZoneStore::Instance()->GetZoneMinimumLavaDamage(zone_id, version);
 }
 
 uint8 lua_get_zone_idle_when_empty(uint32 zone_id)
 {
-	return zone_store.GetZoneIdleWhenEmpty(zone_id);
+	return ZoneStore::Instance()->GetZoneIdleWhenEmpty(zone_id);
 }
 
 uint8 lua_get_zone_idle_when_empty(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneIdleWhenEmpty(zone_id, version);
+	return ZoneStore::Instance()->GetZoneIdleWhenEmpty(zone_id, version);
 }
 
 uint32 lua_get_zone_seconds_before_idle(uint32 zone_id)
 {
-	return zone_store.GetZoneSecondsBeforeIdle(zone_id);
+	return ZoneStore::Instance()->GetZoneSecondsBeforeIdle(zone_id);
 }
 
 uint32 lua_get_zone_seconds_before_idle(uint32 zone_id, int version)
 {
-	return zone_store.GetZoneSecondsBeforeIdle(zone_id, version);
+	return ZoneStore::Instance()->GetZoneSecondsBeforeIdle(zone_id, version);
 }
 
 void lua_send_channel_message(uint8 channel_number, uint32 guild_id, uint8 language_id, uint8 language_skill, const char* message)
@@ -5505,11 +5505,11 @@ bool lua_set_auto_login_character_name_by_account_id(uint32 account_id, std::str
 }
 
 uint32 lua_get_zone_id_by_long_name(std::string zone_long_name) {
-	return zone_store.GetZoneIDByLongName(zone_long_name);
+	return ZoneStore::Instance()->GetZoneIDByLongName(zone_long_name);
 }
 
 std::string lua_get_zone_short_name_by_long_name(std::string zone_long_name) {
-	return zone_store.GetZoneShortNameByLongName(zone_long_name);
+	return ZoneStore::Instance()->GetZoneShortNameByLongName(zone_long_name);
 }
 
 bool lua_send_parcel(luabind::object lua_table)
@@ -5643,6 +5643,62 @@ void lua_spawn_circle(uint32 npc_id, float x, float y, float z, float heading, f
 void lua_spawn_grid(uint32 npc_id, float x, float y, float z, float heading, float spacing, uint32 spawn_count)
 {
 	quest_manager.SpawnGrid(npc_id, glm::vec4(x, y, z, heading), spacing, spawn_count);
+}
+
+Lua_Zone lua_get_zone()
+{
+	return Lua_Zone(zone);
+}
+
+bool lua_handin(luabind::adl::object handin_table)
+{
+	std::map<std::string, uint32> handin_map;
+
+	for (luabind::iterator i(handin_table), end; i != end; i++) {
+		std::string key;
+		if (luabind::type(i.key()) == LUA_TSTRING) {
+			key = luabind::object_cast<std::string>(i.key());
+		}
+		else if (luabind::type(i.key()) == LUA_TNUMBER) {
+			key = fmt::format("{}", luabind::object_cast<int>(i.key()));
+		}
+		else {
+			LogError("Handin key type [{}] not supported", luabind::type(i.key()));
+		}
+
+		if (!key.empty()) {
+			handin_map[key] = luabind::object_cast<uint32>(handin_table[i.key()]);
+			LogNpcHandinDetail("Handin key [{}] value [{}]", key, handin_map[key]);
+		}
+	}
+
+	return quest_manager.handin(handin_map);
+}
+
+luabind::object lua_get_paused_timers(lua_State* L, Mob* m) {
+	auto t = luabind::newtable(L);
+	auto v = quest_manager.GetPausedTimers(m);
+	int  i = 1;
+
+	for (const auto& e : v) {
+		t[i] = e;
+		i++;
+	}
+
+	return t;
+}
+
+luabind::object lua_get_timers(lua_State* L, Mob* m) {
+	auto t = luabind::newtable(L);
+	auto v = quest_manager.GetTimers(m);
+	int  i = 1;
+
+	for (const auto& e : v) {
+		t[i] = e;
+		i++;
+	}
+
+	return t;
 }
 
 #define LuaCreateNPCParse(name, c_type, default_value) do { \
@@ -5948,6 +6004,8 @@ luabind::scope lua_register_general() {
 		luabind::def("reset_task_activity", &lua_reset_task_activity),
 		luabind::def("assign_task", &lua_assign_task),
 		luabind::def("fail_task", &lua_fail_task),
+		luabind::def("complete_task", &lua_complete_task),
+		luabind::def("uncomplete_task", &lua_uncomplete_task),
 		luabind::def("task_time_left", &lua_task_time_left),
 		luabind::def("is_task_completed", &lua_is_task_completed),
 		luabind::def("enabled_task_count", &lua_enabled_task_count),
@@ -6287,8 +6345,6 @@ luabind::scope lua_register_general() {
 		luabind::def("get_zone_fast_regen_endurance", (int(*)(uint32,int))&lua_get_zone_fast_regen_endurance),
 		luabind::def("get_zone_npc_maximum_aggro_distance", (int(*)(uint32))&lua_get_zone_npc_maximum_aggro_distance),
 		luabind::def("get_zone_npc_maximum_aggro_distance", (int(*)(uint32,int))&lua_get_zone_npc_maximum_aggro_distance),
-		luabind::def("get_zone_npc_maximum_movement_update_range", (uint32(*)(uint32))&lua_get_zone_maximum_movement_update_range),
-		luabind::def("get_zone_npc_maximum_movement_update_range", (uint32(*)(uint32,int))&lua_get_zone_maximum_movement_update_range),
 		luabind::def("get_zone_minimum_expansion", (int8(*)(uint32))&lua_get_zone_minimum_expansion),
 		luabind::def("get_zone_minimum_expansion", (int8(*)(uint32,int))&lua_get_zone_minimum_expansion),
 		luabind::def("get_zone_maximum_expansion", (int8(*)(uint32))&lua_get_zone_maximum_expansion),
@@ -6454,6 +6510,10 @@ luabind::scope lua_register_general() {
 		luabind::def("are_tasks_completed", &lua_are_tasks_completed),
 		luabind::def("spawn_circle", &lua_spawn_circle),
 		luabind::def("spawn_grid", &lua_spawn_grid),
+		luabind::def("get_zone", &lua_get_zone),
+		luabind::def("handin", &lua_handin),
+		luabind::def("get_paused_timers", &lua_get_paused_timers),
+		luabind::def("get_timers", &lua_get_timers),
 		/*
 			Cross Zone
 		*/
@@ -7938,33 +7998,6 @@ luabind::scope lua_register_languages() {
 			luabind::value("Hadal", Language::Hadal),
 			luabind::value("Unknown27", Language::Unknown27),
 			luabind::value("MaxValue", Language::MaxValue)
-	)];
-}
-
-luabind::scope lua_register_rules_const() {
-	return luabind::class_<Rule>("Rule")
-		.enum_("constants")
-	[(
-#define RULE_INT(cat, rule, default_value, notes) \
-		luabind::value(#rule, RuleManager::Int__##rule),
-#include "../common/ruletypes.h"
-		luabind::value("_IntRuleCount", RuleManager::_IntRuleCount),
-#undef RULE_INT
-#define RULE_REAL(cat, rule, default_value, notes) \
-		luabind::value(#rule, RuleManager::Real__##rule),
-#include "../common/ruletypes.h"
-		luabind::value("_RealRuleCount", RuleManager::_RealRuleCount),
-#undef RULE_REAL
-#define RULE_BOOL(cat, rule, default_value, notes) \
-		luabind::value(#rule, RuleManager::Bool__##rule),
-#include "../common/ruletypes.h"
-		luabind::value("_BoolRuleCount", RuleManager::_BoolRuleCount),
-#undef RULE_BOOL
-#define RULE_STRING(cat, rule, default_value, notes) \
-		luabind::value(#rule, RuleManager::String__##rule),
-#include "../common/ruletypes.h"
-		luabind::value("_StringRuleCount", RuleManager::_StringRuleCount)
-#undef RULE_STRING
 	)];
 }
 

@@ -45,10 +45,7 @@
 
 #include <algorithm>
 
-extern ZSList	zoneserver_list;
-extern ClientList	client_list;
 extern uint32	numzones;
-extern LoginServerList loginserverlist;
 extern LauncherList launcher_list;
 extern volatile bool	RunLoops;
 
@@ -86,15 +83,15 @@ const std::string &EQW::GetOutput() const {
 
 void EQW::LockWorld() {
 	WorldConfig::LockWorld();
-	if (loginserverlist.Connected()) {
-		loginserverlist.SendStatus();
+	if (LoginServerList::Instance()->Connected()) {
+		LoginServerList::Instance()->SendStatus();
 	}
 }
 
 void EQW::UnlockWorld() {
 	WorldConfig::UnlockWorld();
-	if (loginserverlist.Connected()) {
-		loginserverlist.SendStatus();
+	if (LoginServerList::Instance()->Connected()) {
+		LoginServerList::Instance()->SendStatus();
 	}
 }
 
@@ -104,11 +101,11 @@ Const_char *EQW::GetConfig(Const_char *var_name) {
 }
 
 bool EQW::LSConnected() {
-	return(loginserverlist.Connected());
+	return(LoginServerList::Instance()->Connected());
 }
 
 int EQW::CountZones() {
-	return(zoneserver_list.GetZoneCount());
+	return(ZSList::Instance()->GetZoneCount());
 }
 
 //returns an array of zone_refs (opaque)
@@ -116,7 +113,7 @@ std::vector<std::string> EQW::ListBootedZones() {
 	std::vector<std::string> res;
 
 	std::vector<uint32> zones;
-	zoneserver_list.GetZoneIDList(zones);
+	ZSList::Instance()->GetZoneIDList(zones);
 
 	std::vector<uint32>::iterator cur, end;
 	cur = zones.begin();
@@ -131,7 +128,7 @@ std::vector<std::string> EQW::ListBootedZones() {
 std::map<std::string,std::string> EQW::GetZoneDetails(Const_char *zone_ref) {
 	std::map<std::string,std::string> res;
 
-	ZoneServer *zs = zoneserver_list.FindByID(Strings::ToInt(zone_ref));
+	ZoneServer *zs = ZSList::Instance()->FindByID(Strings::ToInt(zone_ref));
 	if(zs == nullptr) {
 		res["error"] = "Invalid zone.";
 		return(res);
@@ -158,7 +155,7 @@ std::map<std::string,std::string> EQW::GetZoneDetails(Const_char *zone_ref) {
 }
 
 int EQW::CountPlayers() {
-	return(client_list.GetClientCount());
+	return(ClientList::Instance()->GetClientCount());
 }
 
 //returns an array of character names in the zone (empty=all zones)
@@ -166,7 +163,7 @@ std::vector<std::string> EQW::ListPlayers(Const_char *zone_name) {
 	std::vector<std::string> res;
 
 	std::vector<ClientListEntry *> list;
-	client_list.GetClients(zone_name, list);
+	ClientList::Instance()->GetClients(zone_name, list);
 
 	std::vector<ClientListEntry *>::iterator cur, end;
 	cur = list.begin();
@@ -180,7 +177,7 @@ std::vector<std::string> EQW::ListPlayers(Const_char *zone_name) {
 std::map<std::string,std::string> EQW::GetPlayerDetails(Const_char *char_name) {
 	std::map<std::string,std::string> res;
 
-	ClientListEntry *cle = client_list.FindCharacter(char_name);
+	ClientListEntry *cle = ClientList::Instance()->FindCharacter(char_name);
 	if(cle == nullptr) {
 		res["error"] = "1";
 		return(res);
@@ -265,7 +262,7 @@ void EQW::CreateLauncher(Const_char *launcher_name, int dynamic_count) {
 uint32 EQW::CreateGuild(const char* name, uint32 leader_char_id) {
 	uint32 id = guild_mgr.CreateGuild(name, leader_char_id);
 	if(id != GUILD_NONE)
-		client_list.UpdateClientGuild(leader_char_id, id);
+		ClientList::Instance()->UpdateClientGuild(leader_char_id, id);
 	return(id);
 }
 
@@ -286,7 +283,7 @@ bool EQW::SetGuildLeader(uint32 guild_id, uint32 leader_char_id) {
 }
 
 bool EQW::SetGuild(uint32 charid, uint32 guild_id, uint8 rank) {
-	client_list.UpdateClientGuild(charid, guild_id);
+	ClientList::Instance()->UpdateClientGuild(charid, guild_id);
 	return(guild_mgr.SetGuild(charid, guild_id, rank));
 }
 
@@ -361,7 +358,7 @@ void EQW::ResolveBug(const char *id) {
 }
 
 void EQW::SendMessage(uint32 type, const char *msg) {
-    zoneserver_list.SendEmoteMessage(
+    ZSList::Instance()->SendEmoteMessage(
 		0,
 		0,
 		AccountStatus::Player,
@@ -371,7 +368,7 @@ void EQW::SendMessage(uint32 type, const char *msg) {
 }
 
 void EQW::WorldShutDown(uint32 time, uint32 interval) {
-	zoneserver_list.WorldShutDown(time, interval);
+	ZSList::Instance()->WorldShutDown(time, interval);
 }
 
 #endif //EMBPERL

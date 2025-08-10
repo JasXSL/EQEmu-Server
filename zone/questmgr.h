@@ -33,15 +33,17 @@ namespace EQ
 	class ItemInstance;
 }
 
+struct RunningQuest {
+	Mob* owner = nullptr;
+	Client* initiator = nullptr;
+	EQ::ItemInstance* questitem = nullptr;
+	const SPDat_Spell_Struct* questspell = nullptr;
+	bool depop_npc = false;
+	std::string encounter = "";
+	Zone* zone = nullptr;
+};
+
 class QuestManager {
-	struct running_quest {
-		Mob *owner;
-		Client *initiator;
-		EQ::ItemInstance* questitem;
-		const SPDat_Spell_Struct* questspell;
-		bool depop_npc;
-		std::string encounter;
-	};
 
 	struct PausedTimer {
 		Mob*        owner;
@@ -49,12 +51,13 @@ class QuestManager {
 		uint32      time;
 	};
 public:
+
 	QuestManager();
 	virtual ~QuestManager();
 
-	void StartQuest(Mob *_owner, Client *_initiator = nullptr, EQ::ItemInstance* _questitem = nullptr, const SPDat_Spell_Struct* _questspell = nullptr, std::string encounter = "");
+	void StartQuest(const RunningQuest& q);
 	void EndQuest();
-	bool QuestsRunning() { return !quests_running_.empty(); }
+	bool QuestsRunning() { return !m_running_quests.empty(); }
 
 	void Process();
 
@@ -152,7 +155,7 @@ public:
 	void faction(int faction_id, int faction_value, int temp);
 	void rewardfaction(int faction_id, int faction_value);
 	void setsky(uint8 new_sky);
-	void setguild(uint32 new_guild_id, uint8 new_rank);
+	void SetGuild(uint32 new_guild_id, uint8 new_rank);
 	void CreateGuild(const char *guild_name, const char *leader);
 	void settime(uint8 new_hour, uint8 new_min, bool update_world = true);
 	void itemlink(int item_id);
@@ -224,6 +227,8 @@ public:
 	void resettaskactivity(int task, int activity);
 	void assigntask(int taskid, bool enforce_level_requirement = false);
 	void failtask(int taskid);
+	bool completetask(int task_id);
+	bool uncompletetask(int task_id);
 	int tasktimeleft(int taskid);
 	bool istaskcompleted(int task_id);
 	bool aretaskscompleted(const std::vector<int>& task_ids);
@@ -249,7 +254,7 @@ public:
 	int getlevel(uint8 type);
 	int collectitems(uint32 item_id, bool remove);
 	int collectitems_processSlot(int16 slot_id, uint32 item_id, bool remove);
-	int countitem(uint32 item_id);
+	uint32 countitem(uint32 item_id);
 	void removeitem(uint32 item_id, uint32 quantity = 1);
 	std::string getitemcomment(uint32 item_id);
 	std::string getitemlore(uint32 item_id);
@@ -359,6 +364,8 @@ public:
 	bool SetAutoLoginCharacterNameByAccountID(uint32 account_id, const std::string& character_name);
 	void SpawnCircle(uint32 npc_id, glm::vec4 position, float radius, uint32 points);
 	void SpawnGrid(uint32 npc_id, glm::vec4 position, float spacing, uint32 spawn_count);
+	std::vector<std::string> GetPausedTimers(Mob* m);
+	std::vector<std::string> GetTimers(Mob* m);
 
 	Bot *GetBot() const;
 	Client *GetInitiator() const;
@@ -376,9 +383,10 @@ public:
 	bool botquest();
 	bool createBot(const char *name, const char *lastname, uint8 level, uint16 race, uint8 botclass, uint8 gender);
 
+	bool handin(std::map<std::string, uint32> required);
 
 private:
-	std::stack<running_quest> quests_running_;
+	std::stack<RunningQuest> m_running_quests;
 
 	bool HaveProximitySays;
 

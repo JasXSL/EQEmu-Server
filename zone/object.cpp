@@ -31,15 +31,17 @@
 #include "../common/events/player_event_logs.h"
 #include "../common/repositories/ground_spawns_repository.h"
 #include "../common/repositories/object_repository.h"
+#include "queryserv.h"
 
 
 const char DEFAULT_OBJECT_NAME[] = "IT63_ACTORDEF";
 const char DEFAULT_OBJECT_NAME_SUFFIX[] = "_ACTORDEF";
 
 
-extern Zone* zone;
-extern EntityList entity_list;
+extern Zone       *zone;
+extern EntityList  entity_list;
 extern WorldServer worldserver;
+extern QueryServ  *QServ;
 
 // Loading object from database
 Object::Object(
@@ -72,6 +74,8 @@ decay_timer(300000)
 	} else {
 		decay_timer.Disable();
 	}
+
+	memset(m_display_name, 0, sizeof(m_display_name));
 
 	respawn_timer.Disable();
 
@@ -120,6 +124,8 @@ decay_timer(300000)
 	// Set as much struct data as we can
 	memset(&m_data, 0, sizeof(Object_Struct));
 
+	memset(m_display_name, 0, sizeof(m_display_name));
+
 	m_data.heading = heading;
 	m_data.z       = z;
 	m_data.zone_id = zone->GetZoneID();
@@ -161,6 +167,8 @@ decay_timer(300000)
 
 	// Set as much struct data as we can
 	memset(&m_data, 0, sizeof(Object_Struct));
+
+	memset(m_display_name, 0, sizeof(m_display_name));
 
 	m_data.heading = client->GetHeading();
 	m_data.x       = client->GetX();
@@ -233,6 +241,8 @@ decay_timer(decay_time)
 
 	// Set as much struct data as we can
 	memset(&m_data, 0, sizeof(Object_Struct));
+
+	memset(m_display_name, 0, sizeof(m_display_name));
 
 	m_data.heading = heading;
 	m_data.x       = x;
@@ -310,6 +320,8 @@ decay_timer(decay_time)
 	m_data.z       = z;
 	m_data.zone_id = zone->GetZoneID();
 
+	memset(m_display_name, 0, sizeof(m_display_name));
+
 	if (!IsFixZEnabled()) {
 		FixZ();
 	}
@@ -351,6 +363,8 @@ void Object::SetID(uint16 set_id)
 // Reset state of object back to zero
 void Object::ResetState()
 {
+	Close();
+
 	safe_delete(m_inst);
 
 	m_id   = 0;
@@ -437,6 +451,12 @@ void Object::Close() {
 				}
 			}
 		}
+
+		auto outapp = new EQApplicationPacket(OP_ClearObject, sizeof(ClearObject_Struct));
+		ClearObject_Struct *cos = (ClearObject_Struct *)outapp->pBuffer;
+		cos->Clear = 1;
+		user->QueuePacket(outapp);
+		safe_delete(outapp);
 
 		user->SetTradeskillObject(nullptr);
 	}
@@ -605,7 +625,7 @@ bool Object::HandleClick(Client* sender, const ClickObject_Struct* click_object)
 				}
 			}
 
-			if (player_event_logs.IsEventEnabled(PlayerEvent::GROUNDSPAWN_PICKUP)) {
+			if (PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::GROUNDSPAWN_PICKUP)) {
 				auto e = PlayerEvent::GroundSpawnPickupEvent{
 					.item_id = item->ID,
 					.item_name = item->Name,
@@ -637,31 +657,39 @@ bool Object::HandleClick(Client* sender, const ClickObject_Struct* click_object)
 				}
 			}
 
+			if (parse->ZoneHasQuestSub(EVENT_PLAYER_PICKUP)) {
+				std::vector<std::any> args = { m_inst, sender };
+
+				if (parse->EventZone(EVENT_PLAYER_PICKUP, zone, std::to_string(item->ID), GetID(), &args)) {
+					auto outapp = new EQApplicationPacket(OP_ClickObject, sizeof(ClickObject_Struct));
+
+					memcpy(outapp->pBuffer, click_object, sizeof(ClickObject_Struct));
+
+					auto co = (ClickObject_Struct*) outapp->pBuffer;
+
+					co->drop_id = 0;
+
+					entity_list.QueueClients(nullptr, outapp, false);
+
+					safe_delete(outapp);
+
+					sender->SetTradeskillObject(nullptr);
+
+					user = nullptr;
+
+					return true;
+				}
+			}
+
 			// Transfer item to client
 			sender->PutItemInInventory(EQ::invslot::slotCursor, *m_inst, false);
 			sender->SendItemPacket(EQ::invslot::slotCursor, m_inst, ItemPacketTrade);
 
-			// Could be an undiscovered ground_spawn
-			if (m_ground_spawn && RuleB(Character, EnableDiscoveredItems) && !sender->IsDiscovered(item->ID)) {
-				if (!sender->GetGM()) {
-					sender->DiscoverItem(item->ID);
-				} else {
-					const std::string& item_link = database.CreateItemLink(item->ID);
-					sender->Message(
-						Chat::White,
-						fmt::format(
-							"Your GM flag prevents {} from being added to discovered items.",
-							item_link
-						).c_str()
-					);
-				}
-			}
+			sender->CheckItemDiscoverability(m_inst->GetID());
 
 			if (cursor_delete) {    // delete the item if it's a duplicate lore. We have to do this because the client expects the item packet
 				sender->DeleteItemInInventory(EQ::invslot::slotCursor, 1, true);
 			}
-
-			sender->DropItemQS(m_inst, true);
 
 			if (!m_ground_spawn) {
 				safe_delete(m_inst);

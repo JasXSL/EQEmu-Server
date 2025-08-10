@@ -7,6 +7,7 @@
 #include "../http/httplib.h"
 
 #include "database_update_manifest.cpp"
+#include "database_update_manifest_custom.cpp"
 #include "database_update_manifest_bots.cpp"
 #include "database_dump_service.h"
 
@@ -14,7 +15,7 @@ constexpr int BREAK_LENGTH = 70;
 
 DatabaseVersion DatabaseUpdate::GetDatabaseVersions()
 {
-	auto results = m_database->QueryDatabase("SELECT `version`, `bots_version` FROM `db_version` LIMIT 1");
+	auto results = m_database->QueryDatabase("SELECT `version`, `bots_version`, `custom_version` FROM `db_version` LIMIT 1");
 	if (!results.Success() || !results.RowCount()) {
 		LogError("Failed to read from [db_version] table!");
 		return DatabaseVersion{};
@@ -25,6 +26,7 @@ DatabaseVersion DatabaseUpdate::GetDatabaseVersions()
 	return DatabaseVersion{
 		.server_database_version = Strings::ToInt(r[0]),
 		.bots_database_version = Strings::ToInt(r[1]),
+		.custom_database_version = Strings::ToInt(r[2]),
 	};
 }
 
@@ -33,6 +35,7 @@ DatabaseVersion DatabaseUpdate::GetBinaryDatabaseVersions()
 	return DatabaseVersion{
 		.server_database_version = CURRENT_BINARY_DATABASE_VERSION,
 		.bots_database_version = (RuleB(Bots, Enabled) ? CURRENT_BINARY_BOTS_DATABASE_VERSION : 0),
+		.custom_database_version = CUSTOM_BINARY_DATABASE_VERSION,
 	};
 }
 
@@ -43,6 +46,7 @@ constexpr int LOOK_BACK_AMOUNT = 10;
 // this check will take action
 void DatabaseUpdate::CheckDbUpdates()
 {
+	InjectCustomVersionColumn();
 	InjectBotsVersionColumn();
 	auto v = GetDatabaseVersions();
 	auto b = GetBinaryDatabaseVersions();
@@ -57,6 +61,15 @@ void DatabaseUpdate::CheckDbUpdates()
 			v.server_database_version
 		);
 		m_database->QueryDatabase(fmt::format("UPDATE `db_version` SET `version` = {}", b.server_database_version));
+	}
+
+	if (UpdateManifest(manifest_entries_custom, v.custom_database_version, b.custom_database_version)) {
+		LogInfo(
+			"Updates ran successfully, setting database version to [{}] from [{}]",
+			b.custom_database_version,
+			v.custom_database_version
+		);
+		m_database->QueryDatabase(fmt::format("UPDATE `db_version` SET `custom_version` = {}", b.custom_database_version));
 	}
 
 	if (b.bots_database_version > 0) {
@@ -141,7 +154,8 @@ bool DatabaseUpdate::UpdateManifest(
 	std::vector<int> missing_migrations = {};
 	if (version_low != version_high) {
 
-		LogSys.DisableMySQLErrorLogs();
+		EQEmuLogSys::Instance()->DisableMySQLErrorLogs();
+		bool force_interactive = false;
 		for (int version = version_low + 1; version <= version_high; ++version) {
 			for (auto &e: entries) {
 				if (e.version == version) {
@@ -163,13 +177,20 @@ bool DatabaseUpdate::UpdateManifest(
 						prefix,
 						e.description
 					);
+
+					if (!has_migration && e.force_interactive) {
+						force_interactive = true;
+					}
 				}
 			}
 		}
-		LogSys.EnableMySQLErrorLogs();
+		EQEmuLogSys::Instance()->EnableMySQLErrorLogs();
 		LogInfo("{}", Strings::Repeat("-", BREAK_LENGTH));
 
-		if (!missing_migrations.empty()) {
+		if (!missing_migrations.empty() && m_skip_backup) {
+			LogInfo("Skipping database backup");
+		}
+		else if (!missing_migrations.empty()) {
 			LogInfo("Automatically backing up database before applying updates");
 			LogInfo("{}", Strings::Repeat("-", BREAK_LENGTH));
 			auto s = DatabaseDumpService();
@@ -182,6 +203,42 @@ bool DatabaseUpdate::UpdateManifest(
 		if (!missing_migrations.empty()) {
 			LogInfo("Running database migrations. Please wait...");
 			LogInfo("{}", Strings::Repeat("-", BREAK_LENGTH));
+		}
+
+		if (force_interactive && !std::getenv("FORCE_INTERACTIVE")) {
+			LogInfo("{}", Strings::Repeat("-", BREAK_LENGTH));
+			LogInfo("Some migrations require user input. Running interactively");
+			LogInfo("This is usually due to a major change that could cause data loss");
+			LogInfo("Your server is automatically backed up before these updates are applied");
+			LogInfo("but you should also make sure you take a backup prior to running this update");
+			LogInfo("Would you like to run this update? [y/n] (Timeout 60s)");
+			LogInfo("{}", Strings::Repeat("-", BREAK_LENGTH));
+
+			// user input
+			std::string input;
+			bool        gave_input        = false;
+			time_t      start_time        = time(nullptr);
+			time_t      wait_time_seconds = 60;
+
+			// spawn a concurrent thread that waits for input from std::cin
+			std::thread t1(
+				[&]() {
+					std::cin >> input;
+					gave_input = true;
+				}
+			);
+			t1.detach();
+
+			// check the inputReceived flag once every 50ms for 10 seconds
+			while (time(nullptr) < start_time + wait_time_seconds && !gave_input) {
+				std::this_thread::sleep_for(std::chrono::milliseconds(50));
+			}
+
+			// prompt for user skip
+			if (Strings::Trim(input) != "y") {
+				LogInfo("Exiting due to user input");
+				std::exit(1);
+			}
 		}
 
 		for (auto &m: missing_migrations) {
@@ -271,6 +328,13 @@ DatabaseUpdate *DatabaseUpdate::SetContentDatabase(Database *db)
 	return this;
 }
 
+DatabaseUpdate *DatabaseUpdate::SetSkipBackup(bool skip)
+{
+	m_skip_backup = skip;
+
+	return this;
+}
+
 bool DatabaseUpdate::CheckVersionsUpToDate(DatabaseVersion v, DatabaseVersion b)
 {
 	LogInfo("{}", Strings::Repeat("-", BREAK_LENGTH));
@@ -293,6 +357,16 @@ bool DatabaseUpdate::CheckVersionsUpToDate(DatabaseVersion v, DatabaseVersion b)
 		);
 	}
 
+	if (b.custom_database_version > 0) {
+		LogInfo(
+			"{:>8} | database [{}] binary [{}] {}",
+			"Custom",
+			v.custom_database_version,
+			b.custom_database_version,
+			(v.custom_database_version == b.custom_database_version) ? "up to date" : "checking updates"
+		);
+	}
+
 	LogInfo("{:>8} | [server.auto_database_updates] [<green>true]", "Config");
 
 	LogInfo("{}", Strings::Repeat("-", BREAK_LENGTH));
@@ -302,7 +376,10 @@ bool DatabaseUpdate::CheckVersionsUpToDate(DatabaseVersion v, DatabaseVersion b)
 	// bots database version is optional, if not enabled then it is always up-to-date
 	bool bots_up_to_date   = RuleB(Bots, Enabled) ? v.bots_database_version >= b.bots_database_version : true;
 
-	return server_up_to_date && bots_up_to_date;
+	// custom database version is optional, if not enabled then it is always up-to-date
+	bool custom_up_to_date = v.custom_database_version >= b.custom_database_version;
+
+	return server_up_to_date && bots_up_to_date && custom_up_to_date;
 }
 
 // checks to see if there are pending updates
@@ -320,5 +397,14 @@ void DatabaseUpdate::InjectBotsVersionColumn()
 	auto r = m_database->QueryDatabase("show columns from db_version where Field like '%bots_version%'");
 	if (r.RowCount() == 0) {
 		m_database->QueryDatabase("ALTER TABLE db_version ADD bots_version int(11) DEFAULT '0' AFTER version");
+	}
+}
+
+void DatabaseUpdate::InjectCustomVersionColumn()
+{
+	auto results = m_database->QueryDatabase("SHOW COLUMNS FROM `db_version` LIKE 'custom_version'");
+	if (!results.Success() || results.RowCount() == 0) {
+		LogInfo("Adding custom_version column to db_version table");
+		m_database->QueryDatabase("ALTER TABLE `db_version` ADD COLUMN `custom_version` INT(11) UNSIGNED NOT NULL DEFAULT 0");
 	}
 }

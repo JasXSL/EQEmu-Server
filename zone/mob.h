@@ -20,7 +20,7 @@
 #define MOB_H
 
 #include "common.h"
-#include "data_bucket.h"
+#include "../common/data_bucket.h"
 #include "entity.h"
 #include "hate_list.h"
 #include "pathfinder_interface.h"
@@ -192,7 +192,8 @@ public:
 		bool in_always_aggros_foes,
 		int32 in_heroic_strikethrough,
 		bool keeps_sold_items,
-		int64 in_hp_regen_per_second = 0
+		int64 in_hp_regen_per_second = 0,
+		uint32 npc_tint_id = 0
 	);
 	virtual ~Mob();
 
@@ -201,9 +202,16 @@ public:
 
 	void DisplayInfo(Mob *mob);
 
-	std::unordered_map<uint16, Mob *> m_close_mobs;
-	Timer                             m_scan_close_mobs_timer;
-	Timer                             m_mob_check_moving_timer;
+	std::unordered_map<uint16, Mob *>  m_close_mobs;
+	std::unordered_map<int, glm::vec4> m_last_seen_mob_position;
+	Timer                              m_scan_close_mobs_timer;
+	Timer                              m_see_close_mobs_timer;
+	Timer                              m_mob_check_moving_timer;
+
+	uint16 m_last_wearchange_race_id = 0;
+	// client_id -> slot_id -> key
+	std::unordered_map<uint32_t, std::unordered_map<uint8_t, uint64_t>> m_last_seen_wearchange;
+	Timer m_clear_wearchange_cache_timer;
 
 	// Bot attack flag
 	Timer bot_attack_flag_timer;
@@ -403,6 +411,7 @@ public:
 	virtual bool CheckFizzle(uint16 spell_id);
 	virtual bool CheckSpellLevelRestriction(Mob *caster, uint16 spell_id);
 	virtual bool IsImmuneToSpell(uint16 spell_id, Mob *caster);
+
 	virtual float GetAOERange(uint16 spell_id);
 	void InterruptSpell(uint16 spellid = SPELL_UNKNOWN);
 	void InterruptSpell(uint16, uint16, uint16 spellid = SPELL_UNKNOWN);
@@ -511,6 +520,7 @@ public:
 	void ApplySpellBuff(int spell_id, int duration = 0, int level_override = -1);
 	int GetBuffStatValueBySpell(int32 spell_id, const char* stat_identifier);
 	int GetBuffStatValueBySlot(uint8 slot, const char* stat_identifier);
+	virtual bool GetIllusionBlock() const { return false; }
 
 	//Basic Stats/Inventory
 	virtual void SetLevel(uint8 in_level, bool command = false) { level = in_level; }
@@ -667,6 +677,7 @@ public:
 		((static_cast<float>(current_mana) / max_mana) * 100); }
 	virtual int64 CalcMaxMana();
 	uint32 GetNPCTypeID() const { return npctype_id; }
+	inline bool IsZoneController() const { return npctype_id == ZONE_CONTROLLER_NPC_ID; }
 	void SetNPCTypeID(uint32 npctypeid) { npctype_id = npctypeid; }
 	inline const glm::vec4& GetPosition() const { return m_Position; }
 	inline void SetPosition(const float x, const float y, const float z) { m_Position.x = x; m_Position.y = y; m_Position.z = z; }
@@ -705,6 +716,7 @@ public:
 	virtual bool HasGroup() = 0;
 	virtual Raid* GetRaid() = 0;
 	virtual Group* GetGroup() = 0;
+	bool IsInGroupOrRaid(Mob* other, bool same_raid_group = false);
 
 	//Faction
 	virtual inline int32 GetPrimaryFaction() const { return 0; }
@@ -791,6 +803,10 @@ public:
 	bool CheckLosFN(float posX, float posY, float posZ, float mobSize);
 	static bool CheckLosFN(glm::vec3 posWatcher, float sizeWatcher, glm::vec3 posTarget, float sizeTarget);
 	virtual bool CheckWaterLoS(Mob* m);
+	bool CheckPositioningLosFN(Mob* other, float posX, float posY, float posZ);
+	bool CheckDoorLoSCheat(Mob* other); //door skipping checks for LoS
+	bool CheckLosCheatExempt(Mob* other); //exemptions to bypass los
+	bool DoLosChecks(Mob* other);
 	inline void SetLastLosState(bool value) { last_los_check = value; }
 	inline bool CheckLastLosState() const { return last_los_check; }
 	std::string GetMobDescription();
@@ -854,6 +870,7 @@ public:
 	void ShowStats(Client* client);
 	void ShowBuffs(Client* c);
 	bool PlotPositionAroundTarget(Mob* target, float &x_dest, float &y_dest, float &z_dest, bool lookForAftArc = true);
+
 	virtual int GetKillExpMod() const { return 100; }
 
 	// aura functions
@@ -951,7 +968,7 @@ public:
 	uint16 GetSympatheticFocusEffect(focusType type, uint16 spell_id);
 	bool TryFadeEffect(int slot);
 	void DispelMagic(Mob* casterm, uint16 spell_id, int effect_value);
-	uint16 GetSpellEffectResistChance(uint16 spell_id);
+	bool TrySpellEffectResist(uint16 spell_id);
 	int32 GetVulnerability(Mob *caster, uint32 spell_id, uint32 ticsremaining, bool from_buff_tic = false);
 	int64 GetFcDamageAmtIncoming(Mob *caster, int32 spell_id, bool from_buff_tic = false);
 	int64 GetFocusIncoming(focusType type, int effect, Mob *caster, uint32 spell_id); //**** This can be removed when bot healing focus code is updated ****
@@ -1055,6 +1072,7 @@ public:
 	void SendWearChangeAndLighting(int8 last_texture);
 	inline uint8 GetActiveLightType() { return m_Light.Type[EQ::lightsource::LightActive]; }
 	bool UpdateActiveLight(); // returns true if change, false if no change
+	uint32 GetNpcTintId() { return m_npc_tint_id; }
 
 	EQ::LightSourceProfile* GetLightProfile() { return &m_Light; }
 
@@ -1092,6 +1110,7 @@ public:
 	inline void SetPetOwnerClient(bool b) { pet_owner_client = b; }
 	inline bool IsPetOwnerNPC() const { return pet_owner_npc; }
 	inline void SetPetOwnerNPC(bool b) { pet_owner_npc = b; }
+	inline bool IsPetOwnerOfClientBot() const { return pet_owner_bot || pet_owner_client; }
 	inline bool IsTempPet() const { return _IsTempPet; }
 	inline void SetTempPet(bool value) { _IsTempPet = value; }
 	inline bool IsHorse() { return is_horse; }
@@ -1113,7 +1132,7 @@ public:
 
 	virtual void SetAttackTimer();
 	inline void SetInvul(bool invul) { invulnerable=invul; }
-	inline bool GetInvul(void) { return invulnerable; }
+	inline bool GetInvul() { return invulnerable; }
 	void SetExtraHaste(int haste, bool need_to_save = true);
 	inline int GetExtraHaste() { return extra_haste; }
 	virtual int GetHaste();
@@ -1250,19 +1269,20 @@ public:
 	float				GetFixedZ(const glm::vec3 &destination, int32 z_find_offset = 5);
 	virtual int			GetStuckBehavior() const { return 0; }
 
-	void				NPCSpecialAttacks(const char* parse, int permtag, bool reset = true, bool remove = false);
-	inline uint32		DontHealMeBefore() const { return pDontHealMeBefore; }
-	inline uint32		DontBuffMeBefore() const { return pDontBuffMeBefore; }
-	inline uint32		DontDotMeBefore() const { return pDontDotMeBefore; }
-	inline uint32		DontRootMeBefore() const { return pDontRootMeBefore; }
-	inline uint32		DontSnareMeBefore() const { return pDontSnareMeBefore; }
-	inline uint32		DontCureMeBefore() const { return pDontCureMeBefore; }
-	void				SetDontRootMeBefore(uint32 time) { pDontRootMeBefore = time; }
-	void				SetDontHealMeBefore(uint32 time) { pDontHealMeBefore = time; }
-	void				SetDontBuffMeBefore(uint32 time) { pDontBuffMeBefore = time; }
-	void				SetDontDotMeBefore(uint32 time) { pDontDotMeBefore = time; }
-	void				SetDontSnareMeBefore(uint32 time) { pDontSnareMeBefore = time; }
-	void				SetDontCureMeBefore(uint32 time) { pDontCureMeBefore = time; }
+	void NPCSpecialAttacks(const char *parse, int permtag, bool reset = true, bool remove = false);
+	inline uint32 DontHealMeBefore() const { return m_dont_heal_me_before; }
+	inline uint32 DontBuffMeBefore() const { return m_dont_buff_me_before; }
+	inline uint32 DontDotMeBefore() const { return m_dont_dot_me_before; }
+	inline uint32 DontRootMeBefore() const { return m_dont_root_me_before; }
+	inline uint32 DontSnareMeBefore() const { return m_dont_snare_me_before; }
+	inline uint32 DontCureMeBefore() const { return m_dont_cure_me_before; }
+
+	void SetDontRootMeBefore(uint32 time) { m_dont_root_me_before = time; }
+	void SetDontHealMeBefore(uint32 time) { m_dont_heal_me_before = time; }
+	void SetDontBuffMeBefore(uint32 time) { m_dont_buff_me_before = time; }
+	void SetDontDotMeBefore(uint32 time) { m_dont_dot_me_before = time; }
+	void SetDontSnareMeBefore(uint32 time) { m_dont_snare_me_before = time; }
+	void SetDontCureMeBefore(uint32 time) { m_dont_cure_me_before = time; }
 
 	// calculate interruption of spell via movement of mob
 	void SaveSpellLoc() { m_SpellLocation = glm::vec3(m_Position); }
@@ -1277,6 +1297,7 @@ public:
 	void SetLooting(uint16 val) { entity_id_being_looted = val; }
 
 	bool CheckWillAggro(Mob *mob);
+	bool IsPetAggroExempt(Mob *pet_owner);
 
 	void InstillDoubt(Mob *who);
 	bool Charmed() const { return type_of_pet == petCharmed; }
@@ -1374,6 +1395,9 @@ public:
 
 	std::string GetRacePlural();
 	std::string GetClassPlural();
+
+	inline void SetMerchantSessionEntityID(uint16 value) { m_merchant_session_entity_id = value; }
+	inline uint16 GetMerchantSessionEntityID() { return m_merchant_session_entity_id; }
 
 	//Command #Tune functions
 	void TuneGetStats(Mob* defender, Mob *attacker);
@@ -1485,11 +1509,16 @@ public:
 	void CalcHeroicBonuses(StatBonuses* newbon);
 
 	DataBucketKey GetScopedBucketKeys();
+	bool LoadDataBucketsCache();
 
 	bool IsCloseToBanker();
 
 	std::unordered_map<uint16, Mob *> &GetCloseMobList(float distance = 0.0f);
 	void CheckScanCloseMobsMovingTimer();
+
+	void ClearDataBucketCache();
+	bool IsGuildmaster() const;
+	bool IsDestroying() const { return m_destroying; }
 
 protected:
 	void CommonDamage(Mob* other, int64 &damage, const uint16 spell_id, const EQ::skills::SkillType attack_skill, bool &avoidable, const int8 buffslot, const bool iBuffTic, eSpecialAttacks specal = eSpecialAttacks::None);
@@ -1576,6 +1605,7 @@ protected:
 	bool rare_spawn;
 	int32 heroic_strikethrough;
 	bool keeps_sold_items;
+	uint32 m_npc_tint_id;
 
 	uint32 m_PlayerState;
 	uint32 GetPlayerState() { return m_PlayerState; }
@@ -1855,12 +1885,12 @@ protected:
 
 	bool pause_timer_complete;
 	bool DistractedFromGrid;
-	uint32 pDontHealMeBefore;
-	uint32 pDontBuffMeBefore;
-	uint32 pDontDotMeBefore;
-	uint32 pDontRootMeBefore;
-	uint32 pDontSnareMeBefore;
-	uint32 pDontCureMeBefore;
+	uint32 m_dont_heal_me_before;
+	uint32 m_dont_buff_me_before;
+	uint32 m_dont_dot_me_before;
+	uint32 m_dont_root_me_before;
+	uint32 m_dont_snare_me_before;
+	uint32 m_dont_cure_me_before;
 
 	// hp event
 	int nexthpevent;
@@ -1905,11 +1935,14 @@ protected:
 
 	MobMovementManager *mMovementManager;
 
+	uint16 m_merchant_session_entity_id;
+
 private:
 	Mob* target;
 	EQ::InventoryProfile m_inv;
 	std::shared_ptr<HealRotation> m_target_of_heal_rotation;
 	bool m_manual_follow;
+	bool m_destroying;
 
 	void SetHeroicStrBonuses(StatBonuses* n);
 	void SetHeroicStaBonuses(StatBonuses* n);

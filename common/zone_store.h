@@ -94,7 +94,6 @@ public:
 	int GetZoneFastRegenMana(uint32 zone_id, int version = 0);
 	int GetZoneFastRegenEndurance(uint32 zone_id, int version = 0);
 	int GetZoneNPCMaximumAggroDistance(uint32 zone_id, int version = 0);
-	uint32 GetZoneMaximumMovementUpdateRange(uint32 zone_id, int version = 0);
 	int8 GetZoneMinimumExpansion(uint32 zone_id, int version = 0);
 	int8 GetZoneMaximumExpansion(uint32 zone_id, int version = 0);
 	const std::string GetZoneContentFlags(uint32 zone_id, int version = 0);
@@ -105,36 +104,39 @@ public:
 	uint8 GetZoneIdleWhenEmpty(uint32 zone_id, int version = 0);
 	uint32 GetZoneSecondsBeforeIdle(uint32 zone_id, int version = 0);
 
+	static ZoneStore* Instance()
+	{
+		static ZoneStore instance;
+		return &instance;
+	}
 private:
 	std::vector<ZoneRepository::Zone> m_zones;
 };
 
-extern ZoneStore zone_store;
-
 /**
  * Global helpers
  */
-inline uint32 ZoneID(const char *in_zone_name) { return zone_store.GetZoneID(in_zone_name); }
-inline uint32 ZoneID(const std::string& zone_name) { return zone_store.GetZoneID(zone_name); }
+inline uint32 ZoneID(const char *in_zone_name) { return ZoneStore::Instance()->GetZoneID(in_zone_name); }
+inline uint32 ZoneID(const std::string& zone_name) { return ZoneStore::Instance()->GetZoneID(zone_name); }
 inline const char *ZoneName(uint32 zone_id, bool error_unknown = false)
 {
-	return zone_store.GetZoneName(
+	return ZoneStore::Instance()->GetZoneName(
 		zone_id,
 		error_unknown
 	);
 }
 inline const char *ZoneLongName(uint32 zone_id, bool error_unknown = false)
 {
-	return zone_store.GetZoneLongName(
+	return ZoneStore::Instance()->GetZoneLongName(
 		zone_id,
 		error_unknown
 	);
 }
-inline ZoneRepository::Zone *GetZone(uint32 zone_id, int version = 0) { return zone_store.GetZone(zone_id, version); };
-inline ZoneRepository::Zone *GetZone(const char *in_zone_name) { return zone_store.GetZone(in_zone_name); };
+inline ZoneRepository::Zone *GetZone(uint32 zone_id, int version = 0) { return ZoneStore::Instance()->GetZone(zone_id, version); };
+inline ZoneRepository::Zone *GetZone(const char *in_zone_name) { return ZoneStore::Instance()->GetZone(in_zone_name); };
 inline ZoneRepository::Zone *GetZone(const char *in_zone_name, int version = 0)
 {
-	return zone_store.GetZone(
+	return ZoneStore::Instance()->GetZone(
 		ZoneID(
 			in_zone_name
 		), version
@@ -142,7 +144,7 @@ inline ZoneRepository::Zone *GetZone(const char *in_zone_name, int version = 0)
 };
 inline ZoneRepository::Zone *GetZoneVersionWithFallback(uint32 zone_id, int version = 0)
 {
-	return zone_store.GetZoneWithFallback(
+	return ZoneStore::Instance()->GetZoneWithFallback(
 		zone_id,
 		version
 	);

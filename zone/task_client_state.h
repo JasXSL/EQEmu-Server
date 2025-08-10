@@ -42,10 +42,10 @@ public:
 	int GetTaskActivityDoneCount(TaskType task_type, int index, int activity_id);
 	int GetTaskActivityDoneCountFromTaskID(int task_id, int activity_id);
 	int GetTaskStartTime(TaskType task_type, int index);
-	void AcceptNewTask(Client *client, int task_id, int npc_type_id, time_t accept_time, bool enforce_level_requirement = false);
+	void AcceptNewTask(Client *client, int task_id, int npc_entity_id, time_t accept_time, bool enforce_level_requirement = false);
 	void FailTask(Client *client, int task_id);
 	int TaskTimeLeft(int task_id);
-	bool IsTaskCompleted(int task_id);
+	bool IsTaskCompleted(int task_id, Client *c = nullptr);
 	bool AreTasksCompleted(const std::vector<int>& task_ids);
 	bool IsTaskActive(int task_id);
 	bool IsTaskActivityActive(int task_id, int activity_id);
@@ -86,6 +86,7 @@ public:
 	bool HasExploreTask(Client* client) const;
 	void EndSharedTask(Client* client, bool send_fail);
 	bool CompleteTask(Client *c, uint32 task_id);
+	bool UncompleteTask(int task_id);
 
 	inline bool HasFreeTaskSlot() { return m_active_task.task_id == TASKSLOTEMPTY; }
 

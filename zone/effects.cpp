@@ -1110,7 +1110,7 @@ void EntityList::AESpell(
 	) {
 		max_targets_allowed = RuleI(Spells, TargetedAOEMaxTargets);
 	} else if (
-		IsPBAENukeSpell(spell_id) &&
+		IsPBAESpell(spell_id) &&
 		IsDetrimentalSpell &&
 		!is_npc
 	) {
@@ -1125,8 +1125,8 @@ void EntityList::AESpell(
 		RuleI(Range, MobCloseScanDistance),
 		distance
 	);
-
-	for (auto& it: caster_mob->GetCloseMobList(distance)) {
+	auto list = caster_mob->GetCloseMobList(distance);
+	for (auto& it: list) {
 		current_mob = it.second;
 		if (!current_mob) {
 			continue;
@@ -1142,7 +1142,7 @@ void EntityList::AESpell(
 			continue;
 		}
 
-		if (spells[spell_id].target_type == ST_TargetAENoPlayersPets && current_mob->IsPetOwnerClient()) {
+		if (spells[spell_id].target_type == ST_TargetAENoPlayersPets && current_mob->IsPetOwnerOfClientBot()) {
 			continue;
 		}
 

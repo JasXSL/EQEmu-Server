@@ -36,6 +36,7 @@
 #include "../common/shareddb.h"
 #include "../common/opcodemgr.h"
 #include "../common/data_verification.h"
+#include "../common/data_bucket.h"
 
 #include "client.h"
 #include "worlddb.h"
@@ -88,10 +89,6 @@
 std::vector<RaceClassAllocation> character_create_allocations;
 std::vector<RaceClassCombos> character_create_race_class_combos;
 
-extern ZSList zoneserver_list;
-extern LoginServerList loginserverlist;
-extern ClientList client_list;
-extern EQ::Random emu_random;
 extern uint32 numclients;
 extern volatile bool RunLoops;
 extern volatile bool UCSServerAvailable_;
@@ -135,6 +132,8 @@ Client::Client(EQStreamInterface* ieqs)
 }
 
 Client::~Client() {
+	ClearDataBucketsCache();
+
 	if (RunLoops && cle && zone_id == 0)
 		cle->SetOnline(CLE_Status::Offline);
 
@@ -447,48 +446,50 @@ void Client::SendPostEnterWorld() {
 
 bool Client::HandleSendLoginInfoPacket(const EQApplicationPacket *app)
 {
-	if (app->size != sizeof(LoginInfo_Struct)) {
+	if (app->size != sizeof(LoginInfo)) {
 		return false;
 	}
 
-	auto *login_info = (LoginInfo_Struct *) app->pBuffer;
+	auto *r = (LoginInfo *) app->pBuffer;
 
 	// Quagmire - max len for name is 18, pass 15
 	char name[19]     = {0};
 	char password[16] = {0};
-	strn0cpy(name, (char *) login_info->login_info, 18);
-	strn0cpy(password, (char *) &(login_info->login_info[strlen(name) + 1]), 15);
+	strn0cpy(name, (char *) r->login_info, 18);
+	strn0cpy(password, (char *) &(r->login_info[strlen(name) + 1]), 15);
 
-	LogDebug("Receiving Login Info Packet from Client | name [{0}] password [{1}]", name, password);
+	LogDebug("Receiving login info packet from client | name [{}] password [{}]", name, password);
 
 	if (strlen(password) <= 1) {
 		LogInfo("Login without a password");
 		return false;
 	}
 
-	is_player_zoning = (login_info->zoning == 1);
+	is_player_zoning = (r->zoning == 1);
 
 	uint32 id = Strings::ToInt(name);
 	if (id == 0) {
-		LogWarning("Receiving Login Info Packet from Client | account_id is 0 - disconnecting");
+		LogWarning("Receiving login info packet from client | account_id is 0 - disconnecting");
 		return false;
 	}
 
 	LogClientLogin("Checking authentication id [{}]", id);
 
-	if ((cle = client_list.CheckAuth(id, password))) {
+	if ((cle = ClientList::Instance()->CheckAuth(id, password))) {
+		LoadDataBucketsCache();
+
 		LogClientLogin("Checking authentication id [{}] passed", id);
 		if (!is_player_zoning) {
 			// Track who is in and who is out of the game
-			char *inout= (char *) "";
+			std::string in_out;
 
-			if (cle->GetOnline() == CLE_Status::Never){
+			if (cle->GetOnline() == CLE_Status::Never) {
 				// Desktop -> Char Select
-				inout = (char *) "In";
+				in_out = "in";
 			}
 			else {
 				// Game -> Char Select
-				inout=(char *) "Out";
+				in_out = "out";
 			}
 
 			// Always at Char select at this point.
@@ -497,7 +498,7 @@ bool Client::HandleSendLoginInfoPacket(const EQApplicationPacket *app)
 			// Could use a Logging Out Completely message somewhere.
 			cle->SetOnline(CLE_Status::CharSelect);
 
-			LogInfo("Account ({}) Logging({}) to character select :: LSID [{}] ", cle->AccountName(), inout, cle->LSID());
+			LogInfo("Account ({}) Logging ({}) to character select :: LSID [{}] ", cle->AccountName(), in_out, cle->LSID());
 		}
 		else {
 			cle->SetOnline();
@@ -514,7 +515,7 @@ bool Client::HandleSendLoginInfoPacket(const EQApplicationPacket *app)
 			ServerLSPlayerJoinWorld_Struct* join =(ServerLSPlayerJoinWorld_Struct*)pack->pBuffer;
 			strcpy(join->key,GetLSKey());
 			join->lsaccount_id = GetLSID();
-			loginserverlist.SendPacket(pack);
+			LoginServerList::Instance()->SendPacket(pack);
 			safe_delete(pack);
 		}
 
@@ -538,6 +539,17 @@ bool Client::HandleSendLoginInfoPacket(const EQApplicationPacket *app)
 							supported_clients
 						)
 					);
+					skip_char_info = true;
+				}
+			}
+			const auto& custom_files_key = RuleS(World, CustomFilesKey);
+			if (!skip_char_info && !custom_files_key.empty() && cle->Admin() < RuleI(World, CustomFilesAdminLevel)) {
+				// Modified clients can utilize this unused block in login_info to send custom payloads on login
+				// which indicates they are using custom client files with the correct version, based on key payload.
+				const auto client_key = std::string(reinterpret_cast<char*>(r->unknown064));
+				if (custom_files_key != client_key) {
+					std::string message = fmt::format("Missing Files [{}]", RuleS(World, CustomFilesUrl) );
+					SendUnsupportedClientPacket(message);
 					skip_char_info = true;
 				}
 			}
@@ -786,7 +798,7 @@ bool Client::HandleEnterWorldPacket(const EQApplicationPacket *app) {
 		RuleB(World, EnableIPExemptions) ||
 		RuleI(World, MaxClientsPerIP) > 0
 	) {
-		client_list.GetCLEIP(GetIP()); //Check current CLE Entry IPs against incoming connection
+		ClientList::Instance()->GetCLEIP(GetIP()); //Check current CLE Entry IPs against incoming connection
 	}
 
 	auto ew = (EnterWorld_Struct *) app->pBuffer;
@@ -806,7 +818,7 @@ bool Client::HandleEnterWorldPacket(const EQApplicationPacket *app) {
 		return true;
 	}
 
-	auto r = content_service.FindZone(zone_id, instance_id);
+	auto r = WorldContentService::Instance()->FindZone(zone_id, instance_id);
 	if (r.zone_id && r.instance.id != instance_id) {
 		LogInfo(
 			"Zone [{}] has been remapped to instance_id [{}] from instance_id [{}] for client [{}]",
@@ -973,7 +985,7 @@ bool Client::HandleEnterWorldPacket(const EQApplicationPacket *app) {
 	safe_delete(outapp);
 
 	// set mailkey - used for duration of character session
-	int mail_key = emu_random.Int(1, INT_MAX);
+	int mail_key = EQ::Random::Instance()->Int(1, INT_MAX);
 
 	database.SetMailKey(charid, GetIP(), mail_key);
 	if (UCSServerAvailable_) {
@@ -1086,7 +1098,7 @@ bool Client::HandlePacket(const EQApplicationPacket *app) {
 		OpcodeManager::EmuToName(app->GetOpcode()),
 		o->EmuToEQ(app->GetOpcode()) == 0 ? app->GetProtocolOpcode() : o->EmuToEQ(app->GetOpcode()),
 		app->Size(),
-		(LogSys.IsLogEnabled(Logs::Detail, Logs::PacketClientServer) ? DumpPacketToString(app) : "")
+		(EQEmuLogSys::Instance()->IsLogEnabled(Logs::Detail, Logs::PacketClientServer) ? DumpPacketToString(app) : "")
 	);
 
 	if (!eqs->CheckState(ESTABLISHED)) {
@@ -1235,7 +1247,7 @@ bool Client::Process() {
 			ServerLSPlayerLeftWorld_Struct* logout =(ServerLSPlayerLeftWorld_Struct*)pack->pBuffer;
 			strcpy(logout->key,GetLSKey());
 			logout->lsaccount_id = GetLSID();
-			loginserverlist.SendPacket(pack);
+			LoginServerList::Instance()->SendPacket(pack);
 			safe_delete(pack);
 		}
 		LogInfo("Client disconnected (not active in process)");
@@ -1401,18 +1413,18 @@ void Client::EnterWorld(bool TryBootup) {
 			return;
 		}
 
-		zone_server = zoneserver_list.FindByInstanceID(instance_id);
+		zone_server = ZSList::Instance()->FindByInstanceID(instance_id);
 	}
 	else
 	{
-		zone_server = zoneserver_list.FindByZoneID(zone_id);
+		zone_server = ZSList::Instance()->FindByZoneID(zone_id);
 	}
 
 	const char *zone_name = ZoneName(zone_id, true);
 	if (zone_server) {
 		if (false == enter_world_triggered) {
 			//Drop any clients we own in other zones.
-			zoneserver_list.DropClient(GetLSID(), zone_server);
+			ZSList::Instance()->DropClient(GetLSID(), zone_server);
 
 			// warn the zone we're coming
 			zone_server->IncomingClient(this);
@@ -1423,9 +1435,9 @@ void Client::EnterWorld(bool TryBootup) {
 	}
 	else {
 		if (TryBootup) {
-			LogInfo("Attempting autobootup of [{}] ([{}]:[{}])", zone_name, zone_id, instance_id);
+			LogInfo("Attempting autobootup of [{}] [{}] [{}]", zone_name, zone_id, instance_id);
 			autobootup_timeout.Start();
-			zone_waiting_for_bootup = zoneserver_list.TriggerBootup(zone_id, instance_id);
+			zone_waiting_for_bootup = ZSList::Instance()->TriggerBootup(zone_id, instance_id);
 			if (zone_waiting_for_bootup == 0) {
 				LogInfo("No zoneserver available to boot up");
 				TellClientZoneUnavailable();
@@ -1441,7 +1453,7 @@ void Client::EnterWorld(bool TryBootup) {
 
 	zone_waiting_for_bootup = 0;
 
-	if (GetAdmin() < 80 && zoneserver_list.IsZoneLocked(zone_id)) {
+	if (GetAdmin() < 80 && ZSList::Instance()->IsZoneLocked(zone_id)) {
 		LogInfo("Enter world failed. Zone is locked");
 		TellClientZoneUnavailable();
 		return;
@@ -1487,11 +1499,11 @@ void Client::Clearance(int8 response)
 	ZoneServer* zs = nullptr;
 	if(instance_id > 0)
 	{
-		zs = zoneserver_list.FindByInstanceID(instance_id);
+		zs = ZSList::Instance()->FindByInstanceID(instance_id);
 	}
 	else
 	{
-		zs = zoneserver_list.FindByZoneID(zone_id);
+		zs = ZSList::Instance()->FindByZoneID(zone_id);
 	}
 
 	if(zs == 0 || response == -1 || response == 0)
@@ -2160,7 +2172,7 @@ void Client::SetClassStartingSkills(PlayerProfile_Struct *pp)
 				i == EQ::skills::SkillAlcoholTolerance || i == EQ::skills::SkillBindWound)
 				continue;
 
-			pp->skills[i] = skill_caps.GetSkillCap(pp->class_, (EQ::skills::SkillType)i, 1).cap;
+			pp->skills[i] = SkillCaps::Instance()->GetSkillCap(pp->class_, (EQ::skills::SkillType)i, 1).cap;
 		}
 	}
 
@@ -2358,7 +2370,7 @@ bool Client::StoreCharacter(
 		return false;
 	}
 
-	const std::string& zone_name = zone_store.GetZoneName(p_player_profile_struct->zone_id, true);
+	const std::string& zone_name = ZoneStore::Instance()->GetZoneName(p_player_profile_struct->zone_id, true);
 	if (Strings::EqualFold(zone_name, "UNKNOWN")) {
 		p_player_profile_struct->zone_id = Zones::QEYNOS;
 	}
@@ -2369,21 +2381,26 @@ bool Client::StoreCharacter(
 
 	auto e = InventoryRepository::NewEntity();
 
-	e.charid = character_id;
+	e.character_id = character_id;
 
 	for (int16 slot_id = EQ::invslot::EQUIPMENT_BEGIN; slot_id <= EQ::invbag::BANK_BAGS_END;) {
 		const auto inst = p_inventory_profile->GetItem(slot_id);
 		if (inst) {
-			e.slotid   = slot_id;
-			e.itemid   = inst->GetItem()->ID;
-			e.charges  = inst->GetCharges();
-			e.color    = inst->GetColor();
-			e.augslot1 = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN);
-			e.augslot2 = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN + 1);
-			e.augslot3 = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN + 2);
-			e.augslot4 = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN + 3);
-			e.augslot5 = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN + 4);
-			e.augslot6 = inst->GetAugmentItemID(EQ::invaug::SOCKET_END);
+			e.slot_id             = slot_id;
+			e.item_id             = inst->GetItem()->ID;
+			e.charges             = inst->GetCharges();
+			e.color               = inst->GetColor();
+			e.augment_one         = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN);
+			e.augment_two         = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN + 1);
+			e.augment_three       = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN + 2);
+			e.augment_four        = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN + 3);
+			e.augment_five        = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN + 4);
+			e.augment_six         = inst->GetAugmentItemID(EQ::invaug::SOCKET_END);
+			e.instnodrop          = inst->IsAttuned() ? 1 : 0;
+			e.ornament_icon       = inst->GetOrnamentationIcon();
+			e.ornament_idfile     = inst->GetOrnamentationIDFile();
+			e.ornament_hero_model = inst->GetOrnamentHeroModel();
+			e.guid                = inst->GetSerialNumber();
 
 			v.emplace_back(e);
 		}
@@ -2411,7 +2428,7 @@ bool Client::StoreCharacter(
 
 void Client::RecordPossibleHack(const std::string& message)
 {
-	if (player_event_logs.IsEventEnabled(PlayerEvent::POSSIBLE_HACK)) {
+	if (PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::POSSIBLE_HACK)) {
 		auto event = PlayerEvent::PossibleHackEvent{.message = message};
 		std::stringstream ss;
 		{
@@ -2501,4 +2518,20 @@ void Client::SendUnsupportedClientPacket(const std::string& message)
 	e->Enabled     = 0;
 
 	QueuePacket(&packet);
+}
+
+void Client::LoadDataBucketsCache()
+{
+	DataBucket::BulkLoadEntitiesToCache(DataBucketLoadType::Account, {GetAccountID()});
+	const auto ids = CharacterDataRepository::GetCharacterIDsByAccountID(database, GetAccountID());
+	DataBucket::BulkLoadEntitiesToCache(DataBucketLoadType::Client, ids);
+}
+
+void Client::ClearDataBucketsCache()
+{
+	DataBucket::DeleteFromCache(GetAccountID(), DataBucketLoadType::Account);
+	auto ids = CharacterDataRepository::GetCharacterIDsByAccountID(database, GetAccountID());
+	for (const auto& id : ids) {
+		DataBucket::DeleteFromCache(id, DataBucketLoadType::Client);
+	}
 }

@@ -6,9 +6,6 @@
 #include "zonelist.h"
 #include "launcher_list.h"
 
-extern LoginServerList loginserverlist;
-extern ClientList client_list;
-extern ZSList zoneserver_list;
 extern LauncherList launcher_list;
 
 void EQW__GetConfig(WebInterface *i, const std::string& method, const std::string& id, const Json::Value& params) {
@@ -33,8 +30,8 @@ void EQW__IsLocked(WebInterface *i, const std::string& method, const std::string
 
 void EQW__Lock(WebInterface *i, const std::string& method, const std::string& id, const Json::Value& params) {
 	WorldConfig::LockWorld();
-	if (loginserverlist.Connected()) {
-		loginserverlist.SendStatus();
+	if (LoginServerList::Instance()->Connected()) {
+		LoginServerList::Instance()->SendStatus();
 	}
 
 	Json::Value ret;
@@ -44,8 +41,8 @@ void EQW__Lock(WebInterface *i, const std::string& method, const std::string& id
 
 void EQW__Unlock(WebInterface *i, const std::string& method, const std::string& id, const Json::Value& params) {
 	WorldConfig::UnlockWorld();
-	if (loginserverlist.Connected()) {
-		loginserverlist.SendStatus();
+	if (LoginServerList::Instance()->Connected()) {
+		LoginServerList::Instance()->SendStatus();
 	}
 
 	Json::Value ret;
@@ -54,12 +51,12 @@ void EQW__Unlock(WebInterface *i, const std::string& method, const std::string& 
 }
 
 void EQW__GetPlayerCount(WebInterface *i, const std::string& method, const std::string& id, const Json::Value& params) {
-	Json::Value ret = client_list.GetClientCount();
+	Json::Value ret = ClientList::Instance()->GetClientCount();
 	i->SendResponse(id, ret);
 }
 
 void EQW__GetZoneCount(WebInterface *i, const std::string& method, const std::string& id, const Json::Value& params) {
-	Json::Value ret = zoneserver_list.GetZoneCount();
+	Json::Value ret = ZSList::Instance()->GetZoneCount();
 	i->SendResponse(id, ret);
 }
 
@@ -69,7 +66,7 @@ void EQW__GetLauncherCount(WebInterface *i, const std::string& method, const std
 }
 
 void EQW__GetLoginServerCount(WebInterface *i, const std::string& method, const std::string& id, const Json::Value& params) {
-	Json::Value ret = loginserverlist.GetServerCount();
+	Json::Value ret = LoginServerList::Instance()->GetServerCount();
 	i->SendResponse(id, ret);
 }
 

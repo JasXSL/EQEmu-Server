@@ -5,9 +5,11 @@
 #include "../common/eqtime.h"
 #include "../common/timer.h"
 #include "../common/event/timer.h"
+#include "../common/server_reload_types.h"
 #include <vector>
 #include <memory>
 #include <deque>
+#include <mutex>
 
 class WorldTCPConnection;
 class ServerPacket;
@@ -28,6 +30,8 @@ public:
 	bool SendPacket(ServerPacket *pack);
 	bool SendPacket(uint32 zoneid, ServerPacket *pack);
 	bool SendPacket(uint32 zoneid, uint16 instanceid, ServerPacket *pack);
+	bool SendPacketToZonesWithGuild(uint32 guild_id, ServerPacket *pack);
+	bool SendPacketToZonesWithGMs(ServerPacket *pack);
 	bool SendPacketToBootedZones(ServerPacket* pack);
 	bool SetLockedZone(uint16 iZoneID, bool iLock);
 
@@ -69,10 +73,21 @@ public:
 	ZoneServer* FindByZoneID(uint32 ZoneID);
 
 	const std::list<std::unique_ptr<ZoneServer>> &getZoneServerList() const;
+	inline uint32_t GetServerListCount() { return zone_server_list.size(); }
+	void SendServerReload(ServerReload::Type type, uchar *packet = nullptr);
+	std::mutex m_queued_reloads_mutex;
+	std::vector<ServerReload::Type> m_queued_reloads = {};
+
+	void QueueServerReload(ServerReload::Type &type);
+
+	static ZSList* Instance()
+	{
+		static ZSList instance;
+		return &instance;
+	}
 
 private:
 	void OnTick(EQ::Timer *t);
-	void OnKeepAlive(EQ::Timer *t);
 	uint32 NextID;
 	uint16	pLockedZones[MaxLockedZones];
 	uint32 CurGroupID;

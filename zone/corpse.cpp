@@ -16,8 +16,8 @@
 #include "../common/say_link.h"
 
 #include "corpse.h"
+#include "dynamic_zone.h"
 #include "entity.h"
-#include "expedition.h"
 #include "groups.h"
 #include "mob.h"
 #include "raids.h"
@@ -31,12 +31,16 @@
 #include "../common/repositories/character_corpses_repository.h"
 #include "../common/repositories/character_corpse_items_repository.h"
 #include <iostream>
+#include "queryserv.h"
+#include "../common/json/json.hpp"
 
+using json = nlohmann::json;
 
 extern EntityList           entity_list;
-extern Zone                 *zone;
+extern Zone                *zone;
 extern WorldServer          worldserver;
 extern npcDecayTimes_Struct npcCorpseDecayTimes[100];
+extern QueryServ           *QServ;
 
 void Corpse::SendEndLootErrorPacket(Client *client)
 {
@@ -288,7 +292,7 @@ Corpse::Corpse(Client *c, int32 rez_exp, KilledByTypes in_killed_by) : Mob(
 	m_corpse_graveyard_timer.SetTimer(RuleI(Zone, GraveyardTimeMS));
 	m_loot_cooldown_timer.SetTimer(10);
 	m_check_rezzable_timer.SetTimer(1000);
-	m_check_owner_online_timer.SetTimer(RuleI(Character, CorpseOwnerOnlineTime));
+	m_check_owner_online_timer.SetTimer(RuleI(Character, CorpseOwnerOnlineCheckTime) * 1000);
 
 	m_corpse_rezzable_timer.Disable();
 	SetRezTimer(true);
@@ -366,8 +370,8 @@ Corpse::Corpse(Client *c, int32 rez_exp, KilledByTypes in_killed_by) : Mob(
 
 			if (iter != removed_list.end()) {
 				std::stringstream ss("");
-				ss << "DELETE FROM `inventory` WHERE `charid` = " << c->CharacterID();
-				ss << " AND `slotid` IN (" << (*iter);
+				ss << "DELETE FROM `inventory` WHERE `character_id` = " << c->CharacterID();
+				ss << " AND `slot_id` IN (" << (*iter);
 				++iter;
 
 				while (iter != removed_list.end()) {
@@ -581,7 +585,7 @@ Corpse::Corpse(
 	m_corpse_delay_timer.SetTimer(RuleI(NPC, CorpseUnlockTimer));
 	m_corpse_graveyard_timer.SetTimer(RuleI(Zone, GraveyardTimeMS));
 	m_loot_cooldown_timer.SetTimer(10);
-	m_check_owner_online_timer.SetTimer(RuleI(Character, CorpseOwnerOnlineTime));
+	m_check_owner_online_timer.SetTimer(RuleI(Character, CorpseOwnerOnlineCheckTime) * 1000);
 	m_check_rezzable_timer.SetTimer(1000);
 	m_corpse_rezzable_timer.Disable();
 
@@ -671,6 +675,21 @@ bool Corpse::Save()
 	ce.drakkin_heritage = drakkin_heritage;
 	ce.drakkin_tattoo   = drakkin_tattoo;
 	ce.drakkin_details  = drakkin_details;
+
+	{
+		json j;
+		for (const auto& kv : m_EntityVariables) {
+			j[kv.first] = kv.second;
+		}
+
+		if (!j.empty()) {
+			ce.entity_variables = j.dump();
+		} else {
+			ce.entity_variables = "{}";
+		}
+
+		LogCorpses("Corpse entity_variables: %s", ce.entity_variables.c_str());
+	}
 
 	for (auto &item: m_item_list) {
 		CharacterCorpseItemEntry e;
@@ -845,7 +864,7 @@ LootItem *Corpse::GetItem(uint16 lootslot, LootItem **bag_item_data)
 
 		// convert above code to for loop
 		for (const auto &item: m_item_list) {
-			if (item->equip_slot >= bagstart && item->equip_slot < bagstart + 10) {
+			if (item->equip_slot >= bagstart && item->equip_slot < bagstart + EQ::invbag::SLOT_COUNT) {
 				bag_item_data[item->equip_slot - bagstart] = item;
 			}
 		}
@@ -1472,7 +1491,7 @@ void Corpse::LootCorpseItem(Client *c, const EQApplicationPacket *app)
 
 	const EQ::ItemData *item      = nullptr;
 	EQ::ItemInstance   *inst      = nullptr;
-	LootItem           *item_data = nullptr, *bag_item_data[10] = {};
+	LootItem           *item_data = nullptr, *bag_item_data[EQ::invbag::SLOT_COUNT] = {};
 
 	memset(bag_item_data, 0, sizeof(bag_item_data));
 	if (GetPlayerKillItem() > 1) {
@@ -1567,13 +1586,34 @@ void Corpse::LootCorpseItem(Client *c, const EQApplicationPacket *app)
 			}
 		}
 
-		if (player_event_logs.IsEventEnabled(PlayerEvent::LOOT_ITEM) && !IsPlayerCorpse()) {
+		if (parse->ZoneHasQuestSub(EVENT_LOOT_ZONE)) {
+			const auto &export_string = fmt::format(
+				"{} {} {} {}",
+				inst->GetItem()->ID,
+				inst->GetCharges(),
+				EntityList::RemoveNumbers(corpse_name),
+				GetID()
+			);
+
+			std::vector<std::any> args = {inst, this, c};
+			if (parse->EventZone(EVENT_LOOT_ZONE, zone, export_string, 0, &args) != 0) {
+				prevent_loot = true;
+			}
+		}
+
+		if (inst && PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::LOOT_ITEM) && !IsPlayerCorpse()) {
 			auto e = PlayerEvent::LootItemEvent{
-				.item_id = inst->GetItem()->ID,
-				.item_name = inst->GetItem()->Name,
-				.charges = inst->GetCharges(),
-				.npc_id = GetNPCTypeID(),
-				.corpse_name = EntityList::RemoveNumbers(corpse_name)
+				.item_id      = inst->GetItem()->ID,
+				.item_name    = inst->GetItem()->Name,
+				.charges      = inst->GetCharges(),
+				.augment_1_id = inst->GetAugmentItemID(0),
+				.augment_2_id = inst->GetAugmentItemID(1),
+				.augment_3_id = inst->GetAugmentItemID(2),
+				.augment_4_id = inst->GetAugmentItemID(3),
+				.augment_5_id = inst->GetAugmentItemID(4),
+				.augment_6_id = inst->GetAugmentItemID(5),
+				.npc_id       = GetNPCTypeID(),
+				.corpse_name  = EntityList::RemoveNumbers(corpse_name)
 			};
 
 			RecordPlayerEventLogWithClient(c, PlayerEvent::LOOT_ITEM, e);
@@ -1615,21 +1655,8 @@ void Corpse::LootCorpseItem(Client *c, const EQApplicationPacket *app)
 		// safe to ACK now
 		c->QueuePacket(app);
 
-		if (!IsPlayerCorpse()) {
-			if (RuleB(Character, EnableDiscoveredItems) && c && !c->IsDiscovered(inst->GetItem()->ID)) {
-				if (!c->GetGM()) {
-					c->DiscoverItem(inst->GetItem()->ID);
-				} else {
-					const std::string& item_link = database.CreateItemLink(inst->GetItem()->ID);
-					c->Message(
-						Chat::White,
-						fmt::format(
-							"Your GM flag prevents {} from being added to discovered items.",
-							item_link
-						).c_str()
-					);
-				}
-			}
+		if (!IsPlayerCorpse() && c) {
+			c->CheckItemDiscoverability(inst->GetID());
 		}
 
 		if (zone->adv_data) {
@@ -1871,9 +1898,10 @@ bool Corpse::HasItem(uint32 item_id)
 	return false;
 }
 
-uint16 Corpse::CountItem(uint32 item_id)
+uint32 Corpse::CountItem(uint32 item_id)
 {
-	uint16 item_count = 0;
+	uint32 item_count = 0;
+
 	if (!database.GetItem(item_id)) {
 		return item_count;
 	}
@@ -1893,6 +1921,7 @@ uint16 Corpse::CountItem(uint32 item_id)
 			item_count += i->charges > 0 ? i->charges : 1;
 		}
 	}
+
 	return item_count;
 }
 
@@ -2431,9 +2460,36 @@ Corpse *Corpse::LoadCharacterCorpse(
 	c->m_become_npc                = false;
 	c->m_consented_guild_id        = cc.guild_consent_id;
 
+	try {
+		if (Strings::IsValidJson(cc.entity_variables)) {
+			json j = json::parse(cc.entity_variables);
+			for (auto& el : j.items()) {
+				c->SetEntityVariable(el.key(), el.value().get<std::string>());
+			}
+		}
+	} catch (const std::exception& ex) {
+		LogError("Failed to parse entity_variables JSON for corpse ID %u: %s", cc.id, ex.what());
+	}
+
 	c->IsRezzed(cc.is_rezzed);
 
 	c->UpdateEquipmentLight();
 
 	return c;
+}
+
+void Corpse::SyncEntityVariablesToCorpseDB()
+{
+	if (!m_is_player_corpse || m_corpse_db_id == 0) {
+		return;
+	}
+
+	json j;
+	for (const auto& [key, value] : m_EntityVariables) {
+		j[key] = value;
+	}
+
+	std::string serialized = j.dump();
+
+	CharacterCorpsesRepository::UpdateEntityVariables(database, m_corpse_db_id, serialized);
 }

@@ -3,10 +3,17 @@
 
 
 #include <string>
+#include <vector>
 
 class PathManager {
 public:
-	void LoadPaths();
+	void Init();
+
+	static PathManager *Instance()
+	{
+		static PathManager instance;
+		return &instance;
+	}
 
 	[[nodiscard]] const std::string &GetLogPath() const;
 	[[nodiscard]] const std::string &GetLuaModsPath() const;
@@ -14,24 +21,27 @@ public:
 	[[nodiscard]] const std::string &GetMapsPath() const;
 	[[nodiscard]] const std::string &GetPatchPath() const;
 	[[nodiscard]] const std::string &GetOpcodePath() const;
-	[[nodiscard]] const std::string &GetPluginsPath() const;
-	[[nodiscard]] const std::string &GetQuestsPath() const;
 	[[nodiscard]] const std::string &GetServerPath() const;
 	[[nodiscard]] const std::string &GetSharedMemoryPath() const;
+	[[nodiscard]] std::vector<std::string> GetQuestPaths() const;
+	[[nodiscard]] std::vector<std::string> GetPluginPaths() const;
+	[[nodiscard]] std::vector<std::string> GetLuaModulePaths() const;
 
 private:
-	std::string m_log_path;
-	std::string m_lua_mods_path;
-	std::string m_lua_modules_path;
-	std::string m_maps_path;
-	std::string m_patch_path;
-	std::string m_opcode_path;
-	std::string m_plugins_path;
-	std::string m_quests_path;
-	std::string m_server_path;
-	std::string m_shared_memory_path;
-};
+	std::string              m_log_path;
+	std::string              m_lua_mods_path;
+	std::string              m_maps_path;
+	std::string              m_patch_path;
+	std::string              m_opcode_path;
+	std::string              m_quests_path;
+	std::vector<std::string> m_quests_paths;
+	std::vector<std::string> m_plugin_paths;
+	std::vector<std::string> m_lua_module_paths;
 
-extern PathManager path;
+
+private:
+	std::string              m_server_path;
+	std::string              m_shared_memory_path;
+};
 
 #endif //EQEMU_PATH_MANAGER_H

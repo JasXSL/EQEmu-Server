@@ -4,10 +4,19 @@
 #include <string>
 #include <cereal/cereal.hpp>
 #include "../types.h"
+#include "../rulesys.h"
 #include "../repositories/player_event_logs_repository.h"
 
-namespace PlayerEvent {
+#define CEREAL_NVP_IF_NONZERO(ar, name) \
+if ((name) != 0) ar(cereal::make_nvp(#name, name))
 
+#define CEREAL_NVP_IF_NOT_EMPTY(ar, name) \
+if (!(name).empty()) ar(cereal::make_nvp(#name, name))
+
+#define CEREAL_NVP_IF_TRUE(ar, name) \
+if ((name)) ar(cereal::make_nvp(#name, name))
+
+namespace PlayerEvent {
 	enum EventType {
 		GM_COMMAND = 1,
 		ZONING,
@@ -25,10 +34,10 @@ namespace PlayerEvent {
 		LOOT_ITEM,
 		MERCHANT_PURCHASE,
 		MERCHANT_SELL,
-		GROUP_JOIN, // unimplemented
+		GROUP_JOIN,  // unimplemented
 		GROUP_LEAVE, // unimplemented
-		RAID_JOIN, // unimplemented
-		RAID_LEAVE, // unimplemented
+		RAID_JOIN,   // unimplemented
+		RAID_LEAVE,  // unimplemented
 		GROUNDSPAWN_PICKUP,
 		NPC_HANDIN,
 		SKILL_UP,
@@ -44,12 +53,12 @@ namespace PlayerEvent {
 		COMBINE_SUCCESS,
 		DROPPED_ITEM,
 		SPLIT_MONEY,
-		DZ_JOIN, // unimplemented
+		DZ_JOIN,  // unimplemented
 		DZ_LEAVE, // unimplemented
 		TRADER_PURCHASE,
 		TRADER_SELL,
 		BANDOLIER_CREATE, // unimplemented
-		BANDOLIER_SWAP, // unimplemented
+		BANDOLIER_SWAP,   // unimplemented
 		DISCOVER_ITEM,
 		POSSIBLE_HACK,
 		KILLED_NPC,
@@ -62,6 +71,11 @@ namespace PlayerEvent {
 		PARCEL_RETRIEVE,
 		PARCEL_DELETE,
 		BARTER_TRANSACTION,
+		SPEECH,
+		EVOLVE_ITEM,
+		GUILD_BANK_DEPOSIT,
+		GUILD_BANK_WITHDRAWAL,
+		GUILD_BANK_MOVE_TO_BANK_AREA,
 		MAX // dont remove
 	};
 
@@ -70,7 +84,7 @@ namespace PlayerEvent {
 	// If event is unimplemented just tag (Unimplemented) in the name
 	// Events don't get saved to the database if unimplemented or deprecated
 	// Events tagged as deprecated will get automatically removed
-	static const char *EventName[EventType::MAX] = {
+	static const char* EventName[EventType::MAX] = {
 		"None",
 		"GM Command",
 		"Zoning",
@@ -124,7 +138,12 @@ namespace PlayerEvent {
 		"Parcel Item Sent",
 		"Parcel Item Retrieved",
 		"Parcel Prune Routine",
-		"Barter Transaction"
+		"Barter Transaction",
+		"Player Speech",
+		"Evolve Item Update",
+		"Guild Bank Item Deposit",
+		"Guild Bank Item Withdrawal",
+		"Guild Bank Move From Deposit Area to Bank Area"
 	};
 
 	// Generic struct used by all events
@@ -145,8 +164,8 @@ namespace PlayerEvent {
 		float       heading;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(account_id),
@@ -174,8 +193,8 @@ namespace PlayerEvent {
 		PlayerEventLogsRepository::PlayerEventLogs player_event_log;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(player_event),
@@ -189,8 +208,8 @@ namespace PlayerEvent {
 		std::string noop; // noop, gets discard upstream
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(noop)
@@ -204,86 +223,154 @@ namespace PlayerEvent {
 		std::string item_name;
 		uint16      to_slot;
 		int16       charges;
-		uint32      aug1;
-		uint32      aug2;
-		uint32      aug3;
-		uint32      aug4;
-		uint32      aug5;
-		uint32      aug6;
+		uint32      augment_1_id;
+		uint32      augment_2_id;
+		uint32      augment_3_id;
+		uint32      augment_4_id;
+		uint32      augment_5_id;
+		uint32      augment_6_id;
 		bool        attuned;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
+		{
+			if constexpr (Archive::is_saving::value) {
+				save(ar);
+			}
+			else {
+				load(ar);
+			}
+		}
+
+		template <class Archive>
+		void save(Archive& ar) const
+		{
+			ar(
+				CEREAL_NVP(item_id),
+				CEREAL_NVP(item_name),
+				CEREAL_NVP(to_slot),
+				CEREAL_NVP(charges)
+			);
+
+			CEREAL_NVP_IF_NONZERO(ar, augment_1_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_2_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_3_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_4_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_5_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_6_id);
+			CEREAL_NVP_IF_TRUE(ar, attuned);
+		}
+
+		template <class Archive>
+		void load(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(item_id),
 				CEREAL_NVP(item_name),
 				CEREAL_NVP(to_slot),
 				CEREAL_NVP(charges),
-				CEREAL_NVP(aug1),
-				CEREAL_NVP(aug2),
-				CEREAL_NVP(aug3),
-				CEREAL_NVP(aug4),
-				CEREAL_NVP(aug5),
-				CEREAL_NVP(aug6),
+				CEREAL_NVP(augment_1_id),
+				CEREAL_NVP(augment_2_id),
+				CEREAL_NVP(augment_3_id),
+				CEREAL_NVP(augment_4_id),
+				CEREAL_NVP(augment_5_id),
+				CEREAL_NVP(augment_6_id),
 				CEREAL_NVP(attuned)
 			);
 		}
 	};
 
 	// used in Trade event
-	struct TradeItem {
-		int64       item_id;
-		std::string item_name;
-		int32       slot;
-
-		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
-		{
-			ar(
-				CEREAL_NVP(item_id),
-				CEREAL_NVP(item_name),
-				CEREAL_NVP(slot)
-			);
-		}
-	};
+	// struct TradeItem {
+	// 	int64       item_id;
+	// 	std::string item_name;
+	// 	int32       slot;
+	//
+	// 	// cereal
+	// 	template<class Archive>
+	// 	void serialize(Archive &ar)
+	// 	{
+	// 		ar(
+	// 			CEREAL_NVP(item_id),
+	// 			CEREAL_NVP(item_name),
+	// 			CEREAL_NVP(slot)
+	// 		);
+	// 	}
+	// };
 
 	// used in Trade event
 	class TradeItemEntry {
 	public:
 		uint16      slot;
 		uint32      item_id;
+		uint32      augment_1_id;
+		std::string augment_1_name;
+		uint32      augment_2_id;
+		std::string augment_2_name;
+		uint32      augment_3_id;
+		std::string augment_3_name;
+		uint32      augment_4_id;
+		std::string augment_4_name;
+		uint32      augment_5_id;
+		std::string augment_5_name;
+		uint32      augment_6_id;
+		std::string augment_6_name;
 		std::string item_name;
 		uint16      charges;
-		uint32      aug_1_item_id;
-		std::string aug_1_item_name;
-		uint32      aug_2_item_id;
-		std::string aug_2_item_name;
-		uint32      aug_3_item_id;
-		std::string aug_3_item_name;
-		uint32      aug_4_item_id;
-		std::string aug_4_item_name;
-		uint32      aug_5_item_id;
-		std::string aug_5_item_name;
-		uint32      aug_6_item_id;
-		std::string aug_6_item_name;
 		bool        in_bag;
 
+
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void save(Archive& ar) const
+		{
+			ar(
+				CEREAL_NVP(slot),
+				CEREAL_NVP(item_id)
+			);
+
+			CEREAL_NVP_IF_NONZERO(ar, augment_1_id);
+			CEREAL_NVP_IF_NOT_EMPTY(ar, augment_1_name);
+			CEREAL_NVP_IF_NONZERO(ar, augment_2_id);
+			CEREAL_NVP_IF_NOT_EMPTY(ar, augment_2_name);
+			CEREAL_NVP_IF_NONZERO(ar, augment_3_id);
+			CEREAL_NVP_IF_NOT_EMPTY(ar, augment_3_name);
+			CEREAL_NVP_IF_NONZERO(ar, augment_4_id);
+			CEREAL_NVP_IF_NOT_EMPTY(ar, augment_4_name);
+			CEREAL_NVP_IF_NONZERO(ar, augment_5_id);
+			CEREAL_NVP_IF_NOT_EMPTY(ar, augment_5_name);
+			CEREAL_NVP_IF_NONZERO(ar, augment_6_id);
+			CEREAL_NVP_IF_NOT_EMPTY(ar, augment_6_name);
+
+			ar(
+				CEREAL_NVP(item_name),
+				CEREAL_NVP(charges)
+			);
+
+			CEREAL_NVP_IF_TRUE(ar, in_bag);
+		}
+
+		template <class Archive>
+		void load(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(slot),
 				CEREAL_NVP(item_id),
+				CEREAL_NVP(augment_1_id),
+				CEREAL_NVP(augment_1_name),
+				CEREAL_NVP(augment_2_id),
+				CEREAL_NVP(augment_2_name),
+				CEREAL_NVP(augment_3_id),
+				CEREAL_NVP(augment_3_name),
+				CEREAL_NVP(augment_4_id),
+				CEREAL_NVP(augment_4_name),
+				CEREAL_NVP(augment_5_id),
+				CEREAL_NVP(augment_5_name),
+				CEREAL_NVP(augment_6_id),
+				CEREAL_NVP(augment_6_name),
+				CEREAL_NVP(item_name),
 				CEREAL_NVP(charges),
-				CEREAL_NVP(aug_1_item_id),
-				CEREAL_NVP(aug_2_item_id),
-				CEREAL_NVP(aug_3_item_id),
-				CEREAL_NVP(aug_4_item_id),
-				CEREAL_NVP(aug_5_item_id),
 				CEREAL_NVP(in_bag)
 			);
 		}
@@ -299,8 +386,8 @@ namespace PlayerEvent {
 		int32 copper;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(platinum),
@@ -322,8 +409,8 @@ namespace PlayerEvent {
 		std::vector<TradeItemEntry> character_2_give_items;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(character_1_id),
@@ -343,8 +430,8 @@ namespace PlayerEvent {
 		std::string target;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(message),
@@ -366,8 +453,8 @@ namespace PlayerEvent {
 		int32       to_instance_version;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(from_zone_long_name),
@@ -388,8 +475,8 @@ namespace PlayerEvent {
 		uint32 aa_gained;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(CEREAL_NVP(aa_gained));
 		}
@@ -397,13 +484,13 @@ namespace PlayerEvent {
 
 	struct AAPurchasedEvent {
 		uint32 aa_id;
-		int32 aa_cost;
-		int32 aa_previous_id;
-		int32 aa_next_id;
+		int32  aa_cost;
+		int32  aa_previous_id;
+		int32  aa_next_id;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(aa_id),
@@ -416,14 +503,51 @@ namespace PlayerEvent {
 
 	struct ForageSuccessEvent {
 		uint32      item_id;
+		uint32      augment_1_id;
+		uint32      augment_2_id;
+		uint32      augment_3_id;
+		uint32      augment_4_id;
+		uint32      augment_5_id;
+		uint32      augment_6_id;
 		std::string item_name;
 
-		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
+		{
+			if constexpr (Archive::is_saving::value) {
+				save(ar);
+			}
+			else {
+				load(ar);
+			}
+		}
+
+		template <class Archive>
+		void save(Archive& ar) const
+		{
+			ar(CEREAL_NVP(item_id));
+
+			CEREAL_NVP_IF_NONZERO(ar, augment_1_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_2_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_3_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_4_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_5_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_6_id);
+
+			ar(CEREAL_NVP(item_name));
+		}
+
+		template <class Archive>
+		void load(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(item_id),
+				CEREAL_NVP(augment_1_id),
+				CEREAL_NVP(augment_2_id),
+				CEREAL_NVP(augment_3_id),
+				CEREAL_NVP(augment_4_id),
+				CEREAL_NVP(augment_5_id),
+				CEREAL_NVP(augment_6_id),
 				CEREAL_NVP(item_name)
 			);
 		}
@@ -431,14 +555,51 @@ namespace PlayerEvent {
 
 	struct FishSuccessEvent {
 		uint32      item_id;
+		uint32      augment_1_id;
+		uint32      augment_2_id;
+		uint32      augment_3_id;
+		uint32      augment_4_id;
+		uint32      augment_5_id;
+		uint32      augment_6_id;
 		std::string item_name;
 
-		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
+		{
+			if constexpr (Archive::is_saving::value) {
+				save(ar);
+			}
+			else {
+				load(ar);
+			}
+		}
+
+		template <class Archive>
+		void save(Archive& ar) const
+		{
+			ar(CEREAL_NVP(item_id));
+
+			CEREAL_NVP_IF_NONZERO(ar, augment_1_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_2_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_3_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_4_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_5_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_6_id);
+
+			ar(CEREAL_NVP(item_name));
+		}
+
+		template <class Archive>
+		void load(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(item_id),
+				CEREAL_NVP(augment_1_id),
+				CEREAL_NVP(augment_2_id),
+				CEREAL_NVP(augment_3_id),
+				CEREAL_NVP(augment_4_id),
+				CEREAL_NVP(augment_5_id),
+				CEREAL_NVP(augment_6_id),
 				CEREAL_NVP(item_name)
 			);
 		}
@@ -448,20 +609,67 @@ namespace PlayerEvent {
 		uint32      item_id;
 		std::string item_name;
 		int16       charges;
+		uint32      augment_1_id;
+		uint32      augment_2_id;
+		uint32      augment_3_id;
+		uint32      augment_4_id;
+		uint32      augment_5_id;
+		uint32      augment_6_id;
+		bool        attuned;
 		std::string reason;
 
-		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
+		{
+			if constexpr (Archive::is_saving::value) {
+				save(ar);
+			}
+			else {
+				load(ar);
+			}
+		}
+
+		template <class Archive>
+		void save(Archive& ar) const
 		{
 			ar(
 				CEREAL_NVP(item_id),
 				CEREAL_NVP(item_name),
-				CEREAL_NVP(reason),
 				CEREAL_NVP(charges)
+			);
+
+			CEREAL_NVP_IF_NONZERO(ar, augment_1_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_2_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_3_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_4_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_5_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_6_id);
+
+			ar(
+				CEREAL_NVP(attuned),
+				CEREAL_NVP(reason)
+			);
+		}
+
+		template <class Archive>
+		void load(Archive& ar)
+		{
+			ar(
+				CEREAL_NVP(item_id),
+				CEREAL_NVP(item_name),
+				CEREAL_NVP(charges),
+				CEREAL_NVP(augment_1_id),
+				CEREAL_NVP(augment_2_id),
+				CEREAL_NVP(augment_3_id),
+				CEREAL_NVP(augment_4_id),
+				CEREAL_NVP(augment_5_id),
+				CEREAL_NVP(augment_6_id),
+				CEREAL_NVP(attuned),
+				CEREAL_NVP(reason)
 			);
 		}
 	};
+
 
 	struct LevelGainedEvent {
 		uint32 from_level;
@@ -469,8 +677,8 @@ namespace PlayerEvent {
 		int    levels_gained;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(from_level),
@@ -486,8 +694,8 @@ namespace PlayerEvent {
 		int    levels_lost;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(from_level),
@@ -501,17 +709,62 @@ namespace PlayerEvent {
 		uint32      item_id;
 		std::string item_name;
 		int16       charges;
+		uint32      augment_1_id;
+		uint32      augment_2_id;
+		uint32      augment_3_id;
+		uint32      augment_4_id;
+		uint32      augment_5_id;
+		uint32      augment_6_id;
 		uint32      npc_id;
 		std::string corpse_name;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
+		{
+			if constexpr (Archive::is_saving::value) {
+				save(ar);
+			}
+			else {
+				load(ar);
+			}
+		}
+
+		template <class Archive>
+		void save(Archive& ar) const
+		{
+			ar(
+				CEREAL_NVP(item_id),
+				CEREAL_NVP(item_name),
+				CEREAL_NVP(charges)
+			);
+
+			CEREAL_NVP_IF_NONZERO(ar, augment_1_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_2_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_3_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_4_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_5_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_6_id);
+
+			ar(
+				CEREAL_NVP(npc_id),
+				CEREAL_NVP(corpse_name)
+			);
+		}
+
+		template <class Archive>
+		void load(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(item_id),
 				CEREAL_NVP(item_name),
 				CEREAL_NVP(charges),
+				CEREAL_NVP(augment_1_id),
+				CEREAL_NVP(augment_2_id),
+				CEREAL_NVP(augment_3_id),
+				CEREAL_NVP(augment_4_id),
+				CEREAL_NVP(augment_5_id),
+				CEREAL_NVP(augment_6_id),
 				CEREAL_NVP(npc_id),
 				CEREAL_NVP(corpse_name)
 			);
@@ -531,8 +784,8 @@ namespace PlayerEvent {
 		uint64      player_currency_balance;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(npc_id),
@@ -562,8 +815,8 @@ namespace PlayerEvent {
 		uint64      player_currency_balance;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(npc_id),
@@ -587,8 +840,8 @@ namespace PlayerEvent {
 		std::string against_who;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(skill_id),
@@ -606,8 +859,8 @@ namespace PlayerEvent {
 		std::string task_name;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(npc_id),
@@ -625,8 +878,8 @@ namespace PlayerEvent {
 		uint32      done_count;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(task_id),
@@ -644,8 +897,8 @@ namespace PlayerEvent {
 		uint32      done_count;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(task_id),
@@ -661,8 +914,8 @@ namespace PlayerEvent {
 		std::string item_name;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(item_id),
@@ -676,8 +929,8 @@ namespace PlayerEvent {
 		std::string target;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(message),
@@ -692,8 +945,8 @@ namespace PlayerEvent {
 		uint32      spell_id;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(resurrecter_name),
@@ -710,8 +963,8 @@ namespace PlayerEvent {
 		uint32      tradeskill_id;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(recipe_id),
@@ -724,16 +977,58 @@ namespace PlayerEvent {
 
 	struct DroppedItemEvent {
 		uint32      item_id;
+		uint32      augment_1_id;
+		uint32      augment_2_id;
+		uint32      augment_3_id;
+		uint32      augment_4_id;
+		uint32      augment_5_id;
+		uint32      augment_6_id;
 		std::string item_name;
 		int16       slot_id;
 		uint32      charges;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
+		{
+			if constexpr (Archive::is_saving::value) {
+				save(ar);
+			}
+			else {
+				load(ar);
+			}
+		}
+
+		template <class Archive>
+		void save(Archive& ar) const
+		{
+			ar(CEREAL_NVP(item_id));
+
+			CEREAL_NVP_IF_NONZERO(ar, augment_1_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_2_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_3_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_4_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_5_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_6_id);
+
+			ar(
+				CEREAL_NVP(item_name),
+				CEREAL_NVP(slot_id),
+				CEREAL_NVP(charges)
+			);
+		}
+
+		template <class Archive>
+		void load(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(item_id),
+				CEREAL_NVP(augment_1_id),
+				CEREAL_NVP(augment_2_id),
+				CEREAL_NVP(augment_3_id),
+				CEREAL_NVP(augment_4_id),
+				CEREAL_NVP(augment_5_id),
+				CEREAL_NVP(augment_6_id),
 				CEREAL_NVP(item_name),
 				CEREAL_NVP(slot_id),
 				CEREAL_NVP(charges)
@@ -751,8 +1046,8 @@ namespace PlayerEvent {
 		std::string skill_name;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(killer_id),
@@ -774,8 +1069,8 @@ namespace PlayerEvent {
 		uint64 player_money_balance;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(copper),
@@ -789,25 +1084,73 @@ namespace PlayerEvent {
 
 	struct TraderPurchaseEvent {
 		uint32      item_id;
+		uint32      augment_1_id;
+		uint32      augment_2_id;
+		uint32      augment_3_id;
+		uint32      augment_4_id;
+		uint32      augment_5_id;
+		uint32      augment_6_id;
 		std::string item_name;
 		uint32      trader_id;
 		std::string trader_name;
 		uint32      price;
-		uint32      charges;
-		uint32      total_cost;
+		uint32      quantity;
+		int32       charges;
+		uint64      total_cost;
 		uint64      player_money_balance;
 
-
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
+			if constexpr (Archive::is_saving::value) {
+				save(ar);
+			}
+			else {
+				load(ar);
+			}
+		}
+
+		template <class Archive>
+		void save(Archive& ar) const
+		{
+			ar(CEREAL_NVP(item_id));
+
+			CEREAL_NVP_IF_NONZERO(ar, augment_1_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_2_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_3_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_4_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_5_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_6_id);
+
 			ar(
-				CEREAL_NVP(item_id),
 				CEREAL_NVP(item_name),
 				CEREAL_NVP(trader_id),
 				CEREAL_NVP(trader_name),
 				CEREAL_NVP(price),
+				CEREAL_NVP(quantity),
+				CEREAL_NVP(charges),
+				CEREAL_NVP(total_cost),
+				CEREAL_NVP(player_money_balance)
+			);
+		}
+
+		template <class Archive>
+		void load(Archive& ar)
+		{
+			ar(
+				CEREAL_NVP(item_id),
+				CEREAL_NVP(augment_1_id),
+				CEREAL_NVP(augment_2_id),
+				CEREAL_NVP(augment_3_id),
+				CEREAL_NVP(augment_4_id),
+				CEREAL_NVP(augment_5_id),
+				CEREAL_NVP(augment_6_id),
+				CEREAL_NVP(item_name),
+				CEREAL_NVP(trader_id),
+				CEREAL_NVP(trader_name),
+				CEREAL_NVP(price),
+				CEREAL_NVP(quantity),
 				CEREAL_NVP(charges),
 				CEREAL_NVP(total_cost),
 				CEREAL_NVP(player_money_balance)
@@ -817,25 +1160,72 @@ namespace PlayerEvent {
 
 	struct TraderSellEvent {
 		uint32      item_id;
+		uint32      augment_1_id;
+		uint32      augment_2_id;
+		uint32      augment_3_id;
+		uint32      augment_4_id;
+		uint32      augment_5_id;
+		uint32      augment_6_id;
 		std::string item_name;
 		uint32      buyer_id;
 		std::string buyer_name;
 		uint32      price;
-		uint32      charges;
-		uint32      total_cost;
+		uint32      quantity;
+		int32       charges;
+		uint64      total_cost;
 		uint64      player_money_balance;
 
-
-		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
+			if constexpr (Archive::is_saving::value) {
+				save(ar);
+			}
+			else {
+				load(ar);
+			}
+		}
+
+		template <class Archive>
+		void save(Archive& ar) const
+		{
+			ar(CEREAL_NVP(item_id));
+
+			CEREAL_NVP_IF_NONZERO(ar, augment_1_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_2_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_3_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_4_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_5_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_6_id);
+
 			ar(
-				CEREAL_NVP(item_id),
 				CEREAL_NVP(item_name),
 				CEREAL_NVP(buyer_id),
 				CEREAL_NVP(buyer_name),
 				CEREAL_NVP(price),
+				CEREAL_NVP(quantity),
+				CEREAL_NVP(charges),
+				CEREAL_NVP(total_cost),
+				CEREAL_NVP(player_money_balance)
+			);
+		}
+
+		template <class Archive>
+		void load(Archive& ar)
+		{
+			ar(
+				CEREAL_NVP(item_id),
+				CEREAL_NVP(augment_1_id),
+				CEREAL_NVP(augment_2_id),
+				CEREAL_NVP(augment_3_id),
+				CEREAL_NVP(augment_4_id),
+				CEREAL_NVP(augment_5_id),
+				CEREAL_NVP(augment_6_id),
+				CEREAL_NVP(item_name),
+				CEREAL_NVP(buyer_id),
+				CEREAL_NVP(buyer_name),
+				CEREAL_NVP(price),
+				CEREAL_NVP(quantity),
 				CEREAL_NVP(charges),
 				CEREAL_NVP(total_cost),
 				CEREAL_NVP(player_money_balance)
@@ -848,8 +1238,8 @@ namespace PlayerEvent {
 		std::string item_name;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(item_id),
@@ -868,8 +1258,8 @@ namespace PlayerEvent {
 		bool                     attuned;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(item_id),
@@ -890,8 +1280,8 @@ namespace PlayerEvent {
 		uint32 platinum;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(copper),
@@ -912,8 +1302,8 @@ namespace PlayerEvent {
 		bool                     is_quest_handin;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(npc_id),
@@ -931,8 +1321,8 @@ namespace PlayerEvent {
 		std::string message;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(message)
@@ -948,8 +1338,8 @@ namespace PlayerEvent {
 		uint64      total_heal_per_second_taken;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(npc_id),
@@ -962,27 +1352,70 @@ namespace PlayerEvent {
 	};
 
 	struct GuildTributeDonateItem {
-		uint32      item_id;
-		uint32 		guild_favor;
+		uint32 item_id;
+		uint32 augment_1_id;
+		uint32 augment_2_id;
+		uint32 augment_3_id;
+		uint32 augment_4_id;
+		uint32 augment_5_id;
+		uint32 augment_6_id;
+		int16  charges;
+		bool   attuned;
+		uint32 guild_favor;
 
-		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
+		{
+			if constexpr (Archive::is_saving::value) {
+				save(ar);
+			}
+			else {
+				load(ar);
+			}
+		}
+
+		template <class Archive>
+		void save(Archive& ar) const
+		{
+			ar(CEREAL_NVP(item_id));
+
+			CEREAL_NVP_IF_NONZERO(ar, augment_1_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_2_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_3_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_4_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_5_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_6_id);
+			CEREAL_NVP_IF_NONZERO(ar, charges);
+			CEREAL_NVP_IF_TRUE(ar, attuned);
+
+			ar(CEREAL_NVP(guild_favor));
+		}
+
+		template <class Archive>
+		void load(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(item_id),
+				CEREAL_NVP(augment_1_id),
+				CEREAL_NVP(augment_2_id),
+				CEREAL_NVP(augment_3_id),
+				CEREAL_NVP(augment_4_id),
+				CEREAL_NVP(augment_5_id),
+				CEREAL_NVP(augment_6_id),
+				CEREAL_NVP(charges),
+				CEREAL_NVP(attuned),
 				CEREAL_NVP(guild_favor)
 			);
 		}
 	};
 
 	struct GuildTributeDonatePlat {
-		uint32      plat;
-		uint32 		guild_favor;
+		uint32 plat;
+		uint32 guild_favor;
 
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(plat),
@@ -993,100 +1426,193 @@ namespace PlayerEvent {
 
 	struct ParcelRetrieve {
 		uint32      item_id;
+		uint32      augment_1_id;
+		uint32      augment_2_id;
+		uint32      augment_3_id;
+		uint32      augment_4_id;
+		uint32      augment_5_id;
+		uint32      augment_6_id;
 		uint32      quantity;
 		std::string from_player_name;
 		uint32      sent_date;
-		uint32      aug_slot_1;
-		uint32      aug_slot_2;
-		uint32      aug_slot_3;
-		uint32      aug_slot_4;
-		uint32      aug_slot_5;
-		uint32      aug_slot_6;
 
-		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
+		{
+			if constexpr (Archive::is_saving::value) {
+				save(ar);
+			}
+			else {
+				load(ar);
+			}
+		}
+
+		template <class Archive>
+		void save(Archive& ar) const
+		{
+			ar(CEREAL_NVP(item_id));
+
+			CEREAL_NVP_IF_NONZERO(ar, augment_1_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_2_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_3_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_4_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_5_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_6_id);
+
+			ar(
+				CEREAL_NVP(quantity),
+				CEREAL_NVP(from_player_name),
+				CEREAL_NVP(sent_date)
+			);
+		}
+
+		template <class Archive>
+		void load(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(item_id),
+				CEREAL_NVP(augment_1_id),
+				CEREAL_NVP(augment_2_id),
+				CEREAL_NVP(augment_3_id),
+				CEREAL_NVP(augment_4_id),
+				CEREAL_NVP(augment_5_id),
+				CEREAL_NVP(augment_6_id),
 				CEREAL_NVP(quantity),
 				CEREAL_NVP(from_player_name),
-				CEREAL_NVP(sent_date),
-				CEREAL_NVP(aug_slot_1),
-				CEREAL_NVP(aug_slot_2),
-				CEREAL_NVP(aug_slot_3),
-				CEREAL_NVP(aug_slot_4),
-				CEREAL_NVP(aug_slot_5),
-				CEREAL_NVP(aug_slot_6)
+				CEREAL_NVP(sent_date)
 			);
 		}
 	};
 
 	struct ParcelSend {
 		uint32      item_id;
+		uint32      augment_1_id;
+		uint32      augment_2_id;
+		uint32      augment_3_id;
+		uint32      augment_4_id;
+		uint32      augment_5_id;
+		uint32      augment_6_id;
 		uint32      quantity;
+		int32       charges;
 		std::string from_player_name;
 		std::string to_player_name;
 		uint32      sent_date;
-		uint32      aug_slot_1;
-		uint32      aug_slot_2;
-		uint32      aug_slot_3;
-		uint32      aug_slot_4;
-		uint32      aug_slot_5;
-		uint32      aug_slot_6;
 
-		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
+			if constexpr (Archive::is_saving::value) {
+				save(ar);
+			}
+			else {
+				load(ar);
+			}
+		}
+
+		template <class Archive>
+		void save(Archive& ar) const
+		{
+			ar(CEREAL_NVP(item_id));
+
+			CEREAL_NVP_IF_NONZERO(ar, augment_1_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_2_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_3_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_4_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_5_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_6_id);
+			CEREAL_NVP_IF_NONZERO(ar, charges);
+
 			ar(
-				CEREAL_NVP(item_id),
 				CEREAL_NVP(quantity),
 				CEREAL_NVP(from_player_name),
 				CEREAL_NVP(to_player_name),
-				CEREAL_NVP(sent_date),
-				CEREAL_NVP(aug_slot_1),
-				CEREAL_NVP(aug_slot_2),
-				CEREAL_NVP(aug_slot_3),
-				CEREAL_NVP(aug_slot_4),
-				CEREAL_NVP(aug_slot_5),
-				CEREAL_NVP(aug_slot_6)
+				CEREAL_NVP(sent_date)
+			);
+		}
+
+		template <class Archive>
+		void load(Archive& ar)
+		{
+			ar(
+				CEREAL_NVP(item_id),
+				CEREAL_NVP(augment_1_id),
+				CEREAL_NVP(augment_2_id),
+				CEREAL_NVP(augment_3_id),
+				CEREAL_NVP(augment_4_id),
+				CEREAL_NVP(augment_5_id),
+				CEREAL_NVP(augment_6_id),
+				CEREAL_NVP(quantity),
+				CEREAL_NVP(charges),
+				CEREAL_NVP(from_player_name),
+				CEREAL_NVP(to_player_name),
+				CEREAL_NVP(sent_date)
 			);
 		}
 	};
 
 	struct ParcelDelete {
-		uint32      item_id;
-		uint32      quantity;
 		uint32      char_id;
+		uint32      item_id;
+		uint32      augment_1_id;
+		uint32      augment_2_id;
+		uint32      augment_3_id;
+		uint32      augment_4_id;
+		uint32      augment_5_id;
+		uint32      augment_6_id;
+		uint32      quantity;
+		uint32      sent_date;
 		std::string from_name;
 		std::string note;
-		uint32      sent_date;
-		uint32      aug_slot_1;
-		uint32      aug_slot_2;
-		uint32      aug_slot_3;
-		uint32      aug_slot_4;
-		uint32      aug_slot_5;
-		uint32      aug_slot_6;
 
-		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
+			if constexpr (Archive::is_saving::value) {
+				save(ar);
+			}
+			else {
+				load(ar);
+			}
+		}
+
+		template <class Archive>
+		void save(Archive& ar) const
+		{
+			ar(CEREAL_NVP(item_id));
+
+			CEREAL_NVP_IF_NONZERO(ar, augment_1_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_2_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_3_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_4_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_5_id);
+			CEREAL_NVP_IF_NONZERO(ar, augment_6_id);
+
 			ar(
-				CEREAL_NVP(item_id),
 				CEREAL_NVP(quantity),
 				CEREAL_NVP(char_id),
 				CEREAL_NVP(from_name),
 				CEREAL_NVP(note),
-				CEREAL_NVP(sent_date),
-				CEREAL_NVP(aug_slot_1),
-				CEREAL_NVP(aug_slot_2),
-				CEREAL_NVP(aug_slot_3),
-				CEREAL_NVP(aug_slot_4),
-				CEREAL_NVP(aug_slot_5),
-				CEREAL_NVP(aug_slot_6)
-				);
+				CEREAL_NVP(sent_date)
+			);
+		}
+
+		template <class Archive>
+		void load(Archive& ar)
+		{
+			ar(
+				CEREAL_NVP(item_id),
+				CEREAL_NVP(augment_1_id),
+				CEREAL_NVP(augment_2_id),
+				CEREAL_NVP(augment_3_id),
+				CEREAL_NVP(augment_4_id),
+				CEREAL_NVP(augment_5_id),
+				CEREAL_NVP(augment_6_id),
+				CEREAL_NVP(quantity),
+				CEREAL_NVP(char_id),
+				CEREAL_NVP(from_name),
+				CEREAL_NVP(note),
+				CEREAL_NVP(sent_date)
+			);
 		}
 	};
 
@@ -1100,8 +1626,8 @@ namespace PlayerEvent {
 		std::string                             seller_name;
 		uint64                                  total_cost;
 		// cereal
-		template<class Archive>
-		void serialize(Archive &ar)
+		template <class Archive>
+		void serialize(Archive& ar)
 		{
 			ar(
 				CEREAL_NVP(status),
@@ -1115,30 +1641,162 @@ namespace PlayerEvent {
 			);
 		}
 	};
+
+	struct EvolveItem {
+		std::string status;
+		uint32      item_id;
+		uint64      unique_id;
+		std::string item_name;
+		uint32      level;
+		double      progression;
+
+		// cereal
+		template <class Archive>
+		void serialize(Archive& ar)
+		{
+			ar(
+				CEREAL_NVP(status),
+				CEREAL_NVP(item_id),
+				CEREAL_NVP(unique_id),
+				CEREAL_NVP(item_name),
+				CEREAL_NVP(level),
+				CEREAL_NVP(progression)
+			);
+		}
+	};
+
+	struct PlayerSpeech {
+		std::string to;
+		std::string from;
+		uint32      guild_id;
+		int16       min_status;
+		uint32      type;
+		std::string message;
+
+		template <class Archive>
+		void serialize(Archive& ar)
+		{
+			ar(
+				CEREAL_NVP(to),
+				CEREAL_NVP(from),
+				CEREAL_NVP(guild_id),
+				CEREAL_NVP(min_status),
+				CEREAL_NVP(type),
+				CEREAL_NVP(message)
+			);
+		}
+	};
+
+	struct GuildBankTransaction {
+		uint32 char_id;
+		uint32 guild_id;
+		uint32 item_id;
+		uint32 aug_slot_one;
+		uint32 aug_slot_two;
+		uint32 aug_slot_three;
+		uint32 aug_slot_four;
+		uint32 aug_slot_five;
+		uint32 aug_slot_six;
+		uint32 quantity;
+		uint32 permission;
+
+		template <class Archive>
+		void serialize(Archive& ar)
+		{
+			if constexpr (Archive::is_saving::value) {
+				save(ar);
+			}
+			else {
+				load(ar);
+			}
+		}
+
+		template <class Archive>
+		void save(Archive& ar) const
+		{
+			ar(
+				CEREAL_NVP(char_id),
+				CEREAL_NVP(guild_id),
+				CEREAL_NVP(item_id)
+			);
+
+			CEREAL_NVP_IF_NONZERO(ar, aug_slot_one);
+			CEREAL_NVP_IF_NONZERO(ar, aug_slot_two);
+			CEREAL_NVP_IF_NONZERO(ar, aug_slot_three);
+			CEREAL_NVP_IF_NONZERO(ar, aug_slot_four);
+			CEREAL_NVP_IF_NONZERO(ar, aug_slot_five);
+			CEREAL_NVP_IF_NONZERO(ar, aug_slot_six);
+
+			ar(
+				CEREAL_NVP(quantity),
+				CEREAL_NVP(permission)
+			);
+		}
+
+		template <class Archive>
+		void load(Archive& ar)
+		{
+			ar(
+				CEREAL_NVP(char_id),
+				CEREAL_NVP(guild_id),
+				CEREAL_NVP(item_id),
+				CEREAL_NVP(aug_slot_one),
+				CEREAL_NVP(aug_slot_two),
+				CEREAL_NVP(aug_slot_three),
+				CEREAL_NVP(aug_slot_four),
+				CEREAL_NVP(aug_slot_five),
+				CEREAL_NVP(aug_slot_six),
+				CEREAL_NVP(quantity),
+				CEREAL_NVP(permission)
+			);
+		}
+	};
 }
 
 #endif //EQEMU_PLAYER_EVENTS_H
 
 #define RecordPlayerEventLog(event_type, event_data) do {\
-    if (player_event_logs.IsEventEnabled(event_type)) {\
-        worldserver.SendPacket(\
-            player_event_logs.RecordEvent(\
-                event_type,\
-                GetPlayerEvent(),\
-                event_data\
-            ).get()\
-        );\
+    if (PlayerEventLogs::Instance()->IsEventEnabled(event_type)) {\
+        if (RuleB(Logging, PlayerEventsQSProcess)) {\
+            QServ->SendPacket(\
+                PlayerEventLogs::Instance()->RecordEvent(\
+                    event_type,\
+                    GetPlayerEvent(),\
+                    event_data\
+                ).get()\
+            );\
+        }                                                                                                          \
+        else {                                                                                                     \
+            worldserver.SendPacket(\
+                PlayerEventLogs::Instance()->RecordEvent(\
+                    event_type,\
+                    GetPlayerEvent(),\
+                    event_data\
+                ).get()\
+            );\
+        }\
     }\
 } while (0)
 
 #define RecordPlayerEventLogWithClient(c, event_type, event_data) do {\
-    if (player_event_logs.IsEventEnabled(event_type)) {\
-        worldserver.SendPacket(\
-            player_event_logs.RecordEvent(\
-                event_type,\
-                (c)->GetPlayerEvent(),\
-                event_data\
-            ).get()\
-        );\
+    if (PlayerEventLogs::Instance()->IsEventEnabled(event_type)) {\
+        if (RuleB(Logging, PlayerEventsQSProcess)) {\
+            QServ->SendPacket(\
+                PlayerEventLogs::Instance()->RecordEvent(\
+                    event_type,\
+                    (c)->GetPlayerEvent(),\
+                    event_data\
+                ).get()\
+            );\
+        }\
+        else {\
+            worldserver.SendPacket(\
+                PlayerEventLogs::Instance()->RecordEvent(\
+                    event_type,\
+                    (c)->GetPlayerEvent(),\
+                    event_data\
+                ).get()\
+            );\
+        }\
     }\
 } while (0)

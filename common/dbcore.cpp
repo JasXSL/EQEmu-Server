@@ -160,7 +160,7 @@ MySQLRequestResult DBcore::QueryDatabase(const char *query, uint32 querylen, boo
 		(uint32) mysql_insert_id(mysql)
 	);
 
-	if (LogSys.log_settings[Logs::MySQLQuery].is_category_enabled == 1) {
+	if (EQEmuLogSys::Instance()->log_settings[Logs::MySQLQuery].is_category_enabled == 1) {
 		if ((strncasecmp(query, "select", 6) == 0)) {
 			LogMySQLQuery(
 				"{0} -- ({1} row{2} returned) ({3}s)",
@@ -189,9 +189,9 @@ void DBcore::TransactionBegin()
 	QueryDatabase("START TRANSACTION");
 }
 
-void DBcore::TransactionCommit()
+MySQLRequestResult DBcore::TransactionCommit()
 {
-	QueryDatabase("COMMIT");
+	return QueryDatabase("COMMIT");
 }
 
 void DBcore::TransactionRollback()
@@ -302,7 +302,9 @@ std::string DBcore::Escape(const std::string& s)
 
 void DBcore::SetMutex(Mutex *mutex)
 {
-	safe_delete(m_mutex);
+	if (m_mutex && m_mutex != mutex) {
+		safe_delete(m_mutex);
+	}
 
 	DBcore::m_mutex = mutex;
 }

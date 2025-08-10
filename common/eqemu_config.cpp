@@ -94,7 +94,7 @@ void EQEmuConfig::parse_config()
 		auto_database_updates = true;
 	}
 
-	WorldIP      = _root["server"]["world"]["tcp"].get("host", "127.0.0.1").asString();
+	WorldIP      = _root["server"]["world"]["tcp"].get("ip", "127.0.0.1").asString();
 	WorldTCPPort = Strings::ToUnsignedInt(_root["server"]["world"]["tcp"].get("port", "9000").asString());
 
 	TelnetIP      = _root["server"]["world"]["telnet"].get("ip", "127.0.0.1").asString();
@@ -147,6 +147,8 @@ void EQEmuConfig::parse_config()
 	QSDatabaseUsername = _root["server"]["qsdatabase"].get("username", "eq").asString();
 	QSDatabasePassword = _root["server"]["qsdatabase"].get("password", "eq").asString();
 	QSDatabaseDB       = _root["server"]["qsdatabase"].get("db", "eq").asString();
+	QSHost             = _root["server"]["queryserver"].get("host", "localhost").asString();
+	QSPort             = Strings::ToUnsignedInt(_root["server"]["queryserver"].get("port", "9500").asString());
 
 	/**
 	 * Zones
@@ -174,6 +176,21 @@ void EQEmuConfig::parse_config()
 	OpcodeDir    = _root["server"]["directories"].get("opcodes", "./").asString();
 	SharedMemDir = _root["server"]["directories"].get("shared_memory", "shared/").asString();
 	LogDir       = _root["server"]["directories"].get("logs", "logs/").asString();
+
+	auto load_paths = [&](const std::string& key, std::vector<std::string>& target) {
+		const auto& paths = _root["server"]["directories"][key];
+		if (paths.isArray()) {
+			for (const auto& dir : paths) {
+				if (dir.isString()) {
+					target.push_back(dir.asString());
+				}
+			}
+		}
+	};
+
+	load_paths("quest_paths", m_quest_directories);
+	load_paths("plugin_paths", m_plugin_directories);
+	load_paths("lua_module_paths", m_lua_module_directories);
 
 	/**
 	 * Logs
@@ -419,11 +436,11 @@ void EQEmuConfig::CheckUcsConfigConversion()
 		LogInfo("Migrating old [eqemu_config] UCS configuration to new configuration");
 
 		std::string config_file_path = std::filesystem::path{
-			path.GetServerPath() + "/eqemu_config.json"
+			PathManager::Instance()->GetServerPath() + "/eqemu_config.json"
 		}.string();
 
 		std::string config_file_bak_path = std::filesystem::path{
-			path.GetServerPath() + "/eqemu_config.ucs-migrate-json.bak"
+			PathManager::Instance()->GetServerPath() + "/eqemu_config.ucs-migrate-json.bak"
 		}.string();
 
 		// copy eqemu_config.json to eqemu_config.json.bak

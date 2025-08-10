@@ -3400,6 +3400,11 @@ bool Perl_Mob_IsPetOwnerNPC(Mob* self)
 	return self->IsPetOwnerNPC();
 }
 
+bool Perl_Mob_IsPetOwnerOfClientBot(Mob* self)
+{
+	return self->IsPetOwnerOfClientBot();
+}
+
 bool Perl_Mob_IsDestructibleObject(Mob* self)
 {
 	return self->IsDestructibleObject();
@@ -3566,6 +3571,30 @@ void Perl_Mob_BuffFadeNonPersistDeath(Mob* self)
 void Perl_Mob_BuffFadeSongs(Mob* self)
 {
 	self->BuffFadeSongs();
+}
+
+perl::array Perl_Mob_GetPausedTimers(Mob* self)
+{
+	perl::array a;
+
+	const auto& l = quest_manager.GetPausedTimers(self);
+	for (const auto& v : l) {
+		a.push_back(v);
+	}
+
+	return a;
+}
+
+perl::array Perl_Mob_GetTimers(Mob* self)
+{
+	perl::array a;
+
+	const auto& l = quest_manager.GetTimers(self);
+	for (const auto& v : l) {
+		a.push_back(v);
+	}
+
+	return a;
 }
 
 void perl_register_mob()
@@ -3892,6 +3921,7 @@ void perl_register_mob()
 	package.add("GetOwner", &Perl_Mob_GetOwner);
 	package.add("GetOwnerID", &Perl_Mob_GetOwnerID);
 	package.add("GetPR", &Perl_Mob_GetPR);
+	package.add("GetPausedTimers", &Perl_Mob_GetPausedTimers);
 	package.add("GetPet", &Perl_Mob_GetPet);
 	package.add("GetPetID", &Perl_Mob_GetPetID);
 	package.add("GetPetOrder", &Perl_Mob_GetPetOrder);
@@ -3922,6 +3952,7 @@ void perl_register_mob()
 	package.add("GetTarget", &Perl_Mob_GetTarget);
 	package.add("GetTexture", &Perl_Mob_GetTexture);
 	package.add("GetTimerDurationMS", &Perl_Mob_GetTimerDurationMS);
+	package.add("GetTimers", &Perl_Mob_GetTimers);
 	package.add("GetUltimateOwner", &Perl_Mob_GetUltimateOwner);
 	package.add("GetWIS", &Perl_Mob_GetWIS);
 	package.add("GetWalkspeed", &Perl_Mob_GetWalkspeed);
@@ -3999,6 +4030,7 @@ void perl_register_mob()
 	package.add("IsPetOwnerBot", &Perl_Mob_IsPetOwnerBot);
 	package.add("IsPetOwnerClient", &Perl_Mob_IsPetOwnerClient);
 	package.add("IsPetOwnerNPC", &Perl_Mob_IsPetOwnerNPC);
+	package.add("IsPetOwnerOfClientBot", &Perl_Mob_IsPetOwnerOfClientBot);
 	package.add("IsPlayerCorpse", &Perl_Mob_IsPlayerCorpse);
 	package.add("IsPureMeleeClass", &Perl_Mob_IsPureMeleeClass);
 	package.add("IsRoamer", &Perl_Mob_IsRoamer);

@@ -1180,7 +1180,7 @@ void Client::FinishAlternateAdvancementPurchase(AA::Rank *rank, bool ignore_cost
 		SendAlternateAdvancementStats();
 	}
 
-	if (player_event_logs.IsEventEnabled(PlayerEvent::AA_PURCHASE)) {
+	if (PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::AA_PURCHASE)) {
 		auto e = PlayerEvent::AAPurchasedEvent{
 			.aa_id = rank->id,
 			.aa_cost = cost,
@@ -1202,19 +1202,6 @@ void Client::FinishAlternateAdvancementPurchase(AA::Rank *rank, bool ignore_cost
 				cost == 1 ? std::to_string(AA_POINT).c_str() : std::to_string(AA_POINTS).c_str()
 			);
 		}
-
-		/* QS: Player_Log_AA_Purchases */
-		if (RuleB(QueryServ, PlayerLogAAPurchases)) {
-			const auto event_desc = fmt::format(
-				"Ranked AA Purchase :: aa_id:{} at cost:{} in zoneid:{} instid:{}",
-				rank->id,
-				cost,
-				GetZoneID(),
-				GetInstanceID()
-			);
-
-			QServ->PlayerLogEvent(Player_Log_AA_Purchases, CharacterID(), event_desc);
-		}
 	} else {
 		if (send_message_and_save) {
 			MessageString(
@@ -1224,19 +1211,6 @@ void Client::FinishAlternateAdvancementPurchase(AA::Rank *rank, bool ignore_cost
 				std::to_string(cost).c_str(),
 				cost == 1 ? std::to_string(AA_POINT).c_str() : std::to_string(AA_POINTS).c_str()
 			);
-		}
-
-		/* QS: Player_Log_AA_Purchases */
-		if (RuleB(QueryServ, PlayerLogAAPurchases)) {
-			const auto event_desc = fmt::format(
-				"Initial AA Purchase :: aa_id:{} at cost:{} in zoneid:{} instid:{}",
-				rank->id,
-				cost,
-				GetZoneID(),
-				GetInstanceID()
-			);
-
-			QServ->PlayerLogEvent(Player_Log_AA_Purchases, CharacterID(), event_desc);
 		}
 	}
 
