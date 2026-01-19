@@ -1,9 +1,9 @@
-#ifndef EQEMU_COMMAND_SUBSETTINGS_REPOSITORY_H
-#define EQEMU_COMMAND_SUBSETTINGS_REPOSITORY_H
+#pragma once
 
-#include "../database.h"
-#include "../strings.h"
-#include "base/base_command_subsettings_repository.h"
+#include "common/repositories/base/base_command_subsettings_repository.h"
+
+#include "common/database.h"
+#include "common/strings.h"
 
 class CommandSubsettingsRepository: public BaseCommandSubsettingsRepository {
 public:
@@ -49,6 +49,7 @@ public:
 		// these are the base definitions for command_subsettings and can be over-ridden by the database
 		std::vector<CommandSubsettingsRepository::CommandSubsettings> static_records = {
 			{.parent_command = "find", .sub_command = "aa", .access_level = AccountStatus::QuestTroupe, .top_level_aliases = "findaa"},
+			{.parent_command = "find", .sub_command = "account", .access_level = AccountStatus::QuestTroupe, .top_level_aliases = "findaccount"},
 			{.parent_command = "find", .sub_command = "body_type", .access_level = AccountStatus::QuestTroupe, .top_level_aliases = "findbodytype"},
 			{.parent_command = "find", .sub_command = "bug_category", .access_level = AccountStatus::QuestTroupe, .top_level_aliases = "findbugcategory"},
 			{.parent_command = "find", .sub_command = "character", .access_level = AccountStatus::QuestTroupe, .top_level_aliases = "findcharacter"},
@@ -227,5 +228,3 @@ public:
 		return db_sub_settings;
 	}
 };
-
-#endif //EQEMU_COMMAND_SUBSETTINGS_REPOSITORY_H

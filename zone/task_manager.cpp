@@ -1,19 +1,19 @@
-#include "../common/global_define.h"
-#include "../common/misc_functions.h"
-#include "../common/repositories/character_activities_repository.h"
-#include "../common/repositories/character_tasks_repository.h"
-#include "../common/repositories/completed_tasks_repository.h"
-#include "../common/repositories/task_activities_repository.h"
-#include "../common/repositories/tasks_repository.h"
-#include "../common/repositories/tasksets_repository.h"
-#include "client.h"
-#include "dynamic_zone.h"
-#include "string_ids.h"
 #include "task_manager.h"
-#include "../common/repositories/shared_task_activity_state_repository.h"
-#include "../common/repositories/shared_task_members_repository.h"
-#include "../common/shared_tasks.h"
-#include "worldserver.h"
+
+#include "common/misc_functions.h"
+#include "common/repositories/character_activities_repository.h"
+#include "common/repositories/character_tasks_repository.h"
+#include "common/repositories/completed_tasks_repository.h"
+#include "common/repositories/shared_task_activity_state_repository.h"
+#include "common/repositories/shared_task_members_repository.h"
+#include "common/repositories/task_activities_repository.h"
+#include "common/repositories/tasks_repository.h"
+#include "common/repositories/tasksets_repository.h"
+#include "common/shared_tasks.h"
+#include "zone/client.h"
+#include "zone/dynamic_zone.h"
+#include "zone/string_ids.h"
+#include "zone/worldserver.h"
 
 extern WorldServer worldserver;
 
@@ -43,6 +43,8 @@ bool TaskManager::LoadTaskSets()
 
 bool TaskManager::LoadTasks(int single_task)
 {
+	m_task_data.clear();
+
 	std::string task_query_filter = fmt::format("id = {}", single_task);
 	if (single_task == 0) {
 		if (!LoadTaskSets()) {

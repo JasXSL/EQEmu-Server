@@ -1,22 +1,23 @@
 #ifdef LUA_EQEMU
 
-#include "lua.hpp"
-#include <luabind/luabind.hpp>
-
-#include "client.h"
-#include "dynamic_zone.h"
-#include "expedition_request.h"
 #include "lua_client.h"
-#include "lua_expedition.h"
-#include "lua_npc.h"
-#include "lua_item.h"
-#include "lua_iteminst.h"
-#include "lua_inventory.h"
-#include "lua_group.h"
-#include "lua_raid.h"
-#include "lua_packet.h"
-#include "dialogue_window.h"
-#include "titles.h"
+
+#include "zone/client.h"
+#include "zone/dialogue_window.h"
+#include "zone/dynamic_zone.h"
+#include "zone/expedition_request.h"
+#include "zone/lua_expedition.h"
+#include "zone/lua_group.h"
+#include "zone/lua_inventory.h"
+#include "zone/lua_item.h"
+#include "zone/lua_iteminst.h"
+#include "zone/lua_npc.h"
+#include "zone/lua_packet.h"
+#include "zone/lua_raid.h"
+#include "zone/titles.h"
+
+#include "lua.hpp"
+#include "luabind/luabind.hpp"
 
 struct InventoryWhere { };
 
@@ -3608,6 +3609,22 @@ void Lua_Client::EnableTitleSet(uint32 title_set) {
 	self->EnableTitle(title_set);
 }
 
+luabind::object Lua_Client::GetKeyRing(lua_State* L)
+{
+	auto lua_table = luabind::newtable(L);
+
+	if (d_) {
+		auto self  = reinterpret_cast<NativeType *>(d_);
+		int  index = 1;
+		for (const uint32& item_id: self->GetKeyRing()) {
+			lua_table[index] = item_id;
+			index++;
+		}
+	}
+
+	return lua_table;
+}
+
 luabind::scope lua_register_client() {
 	return luabind::class_<Lua_Client, Lua_Mob>("Client")
 	.def(luabind::constructor<>())
@@ -3838,6 +3855,7 @@ luabind::scope lua_register_client() {
 	.def("GetInvulnerableEnvironmentDamage", (bool(Lua_Client::*)(void))&Lua_Client::GetInvulnerableEnvironmentDamage)
 	.def("GetItemIDAt", (int(Lua_Client::*)(int))&Lua_Client::GetItemIDAt)
 	.def("GetItemCooldown", (uint32(Lua_Client::*)(uint32))&Lua_Client::GetItemCooldown)
+	.def("GetKeyRing", (luabind::object(Lua_Client::*)(lua_State* L))&Lua_Client::GetKeyRing)
 	.def("GetLDoNLosses", (int(Lua_Client::*)(void))&Lua_Client::GetLDoNLosses)
 	.def("GetLDoNLossesTheme", (int(Lua_Client::*)(int))&Lua_Client::GetLDoNLossesTheme)
 	.def("GetLDoNPointsTheme", (int(Lua_Client::*)(int))&Lua_Client::GetLDoNPointsTheme)
@@ -4224,6 +4242,4 @@ luabind::scope lua_register_inventory_where() {
 		)];
 }
 
-
-
-#endif
+#endif // LUA_EQEMU

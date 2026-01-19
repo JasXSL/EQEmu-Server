@@ -16,38 +16,26 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-#if EQDEBUG >= 5
-//#define TUNE_DEBUG 20
-#endif
-
-#include "../common/global_define.h"
-#include "../common/eq_constants.h"
-#include "../common/eq_packet_structs.h"
-#include "../common/rulesys.h"
-#include "../common/spdat.h"
-#include "../common/strings.h"
-#include "../common/data_verification.h"
-#include "queryserv.h"
-#include "string_ids.h"
-#include "water_map.h"
-#include "worldserver.h"
-#include "zone.h"
-#include "lua_parser.h"
-#include "fastmath.h"
 #include "mob.h"
 
-#include "bot.h"
+#include "common/data_verification.h"
+#include "common/eq_constants.h"
+#include "common/eq_packet_structs.h"
+#include "common/rulesys.h"
+#include "common/spdat.h"
+#include "common/strings.h"
+#include "zone/bot.h"
+#include "zone/fastmath.h"
+#include "zone/lua_parser.h"
+#include "zone/queryserv.h"
+#include "zone/string_ids.h"
+#include "zone/water_map.h"
+#include "zone/worldserver.h"
+#include "zone/zone.h"
 
 extern QueryServ* QServ;
 extern WorldServer worldserver;
 extern FastMath g_Math;
-
-#ifdef _WINDOWS
-#define snprintf	_snprintf
-#define strncasecmp	_strnicmp
-#define strcasecmp	_stricmp
-#endif
-
 extern EntityList entity_list;
 extern Zone* zone;
 
@@ -466,12 +454,12 @@ void Mob::TuneGetAvoidanceByHitChance(Mob* defender, Mob *attacker, float hit_ch
 
 				if (loop_add_avoid >= 0) {
 					Message(0, "[#Tune] OPTION1: MODIFY Client Heroic AGI or Avoidance Mod2 stat by [+ %i ]", loop_add_avoid);
-					Message(0, "[#Tune] OPTION2: Give CLIENT an evasion bonus using SPA 172 Evasion SE_AvoidMeleeChance from (spells/items/aa) of [+ %i pct ]", evasion_bonus);
+					Message(0, "[#Tune] OPTION2: Give CLIENT an evasion bonus using SPA 172 Evasion SpellEffect::AvoidMeleeChance from (spells/items/aa) of [+ %i pct ]", evasion_bonus);
 
 				}
 				else {
 					Message(0, "[#Tune] OPTION1: MODIFY Client Heroic AGI or Avoidance Mod2 stat by [ %i ]", loop_add_avoid);
-					Message(0, "[#Tune] OPTION2: Give CLIENT an evasion bonus using SPA 172 Evasion SE_AvoidMeleeChance from (spells/items/aa) of [ %i pct ]", evasion_bonus);
+					Message(0, "[#Tune] OPTION2: Give CLIENT an evasion bonus using SPA 172 Evasion SpellEffect::AvoidMeleeChance from (spells/items/aa) of [ %i pct ]", evasion_bonus);
 				}
 
 				Message(0, "###################COMPLETE###################");
@@ -1283,7 +1271,7 @@ int64 Mob::Tunecompute_tohit(EQ::skills::SkillType skillinuse, int accuracy_over
 // return -1 in cases that always hit
 int64 Mob::TuneGetTotalToHit(EQ::skills::SkillType skill, int chance_mod, int accuracy_override, int add_accuracy)
 {
-	if (chance_mod >= 10000) // override for stuff like SE_SkillAttack
+	if (chance_mod >= 10000) // override for stuff like SpellEffect::SkillAttack
 		return -1;
 
 	// calculate attacker's accuracy
@@ -1313,7 +1301,7 @@ int64 Mob::TuneGetTotalToHit(EQ::skills::SkillType skill, int chance_mod, int ac
 	if (atkhit_bonus)
 		accuracy += round(static_cast<double>(accuracy) * static_cast<double>(atkhit_bonus) * 0.0001);
 
-	// 216 Melee Accuracy Amt aka SE_Accuracy -- flat bonus
+	// 216 Melee Accuracy Amt aka SpellEffect::Accuracy -- flat bonus
 	accuracy += itembonuses.Accuracy[EQ::skills::HIGHEST_SKILL + 1] +
 		aabonuses.Accuracy[EQ::skills::HIGHEST_SKILL + 1] +
 		spellbonuses.Accuracy[EQ::skills::HIGHEST_SKILL + 1] +
@@ -1335,7 +1323,7 @@ int64 Mob::TuneGetTotalToHit(EQ::skills::SkillType skill, int chance_mod, int ac
 	if (spellbonuses.HitChanceEffect[EQ::skills::HIGHEST_SKILL + 1] >= 10000)
 		return -1;
 
-	// 184 Accuracy % aka SE_HitChance -- percentage increase
+	// 184 Accuracy % aka SpellEffect::HitChance -- percentage increase
 	auto hit_bonus = itembonuses.HitChanceEffect[EQ::skills::HIGHEST_SKILL + 1] +
 		aabonuses.HitChanceEffect[EQ::skills::HIGHEST_SKILL + 1] +
 		spellbonuses.HitChanceEffect[EQ::skills::HIGHEST_SKILL + 1] +
@@ -1360,15 +1348,15 @@ int64 Mob::TuneGetTotalDefense(int avoidance_override, int add_avoidance)
 	if (evasion_bonus >= 10000)
 		return -1;
 
-	// 515 SE_AC_Avoidance_Max_Percent
+	// 515 SpellEffect::AC_Avoidance_Max_Percent
 	auto ac_aviodance_bonus = itembonuses.AC_Avoidance_Max_Percent + aabonuses.AC_Avoidance_Max_Percent + spellbonuses.AC_Avoidance_Max_Percent;
 	if (ac_aviodance_bonus)
 		avoidance += round(static_cast<double>(avoidance) * static_cast<double>(ac_aviodance_bonus) * 0.0001);
 
-	// 172 Evasion aka SE_AvoidMeleeChance
+	// 172 Evasion aka SpellEffect::AvoidMeleeChance
 	evasion_bonus += itembonuses.AvoidMeleeChanceEffect + aabonuses.AvoidMeleeChanceEffect; // item bonus here isn't mod2 avoidance
 
-	// 215 Pet Avoidance % aka SE_PetAvoidance
+	// 215 Pet Avoidance % aka SpellEffect::PetAvoidance
 	evasion_bonus += GetPetAvoidanceBonusFromOwner();
 
 	// Evasion is a percentage bonus according to AA descriptions
@@ -1410,7 +1398,7 @@ int64 Mob::Tunecompute_defense(int avoidance_override, int add_avoidance)
 	}
 
 
-	//516 SE_AC_Mitigation_Max_Percent
+	//516 SpellEffect::AC_Mitigation_Max_Percent
 	auto ac_bonus = itembonuses.AC_Mitigation_Max_Percent + aabonuses.AC_Mitigation_Max_Percent + spellbonuses.AC_Mitigation_Max_Percent;
 	if (ac_bonus) {
 		defense += round(static_cast<double>(defense) * static_cast<double>(ac_bonus) * 0.0001);

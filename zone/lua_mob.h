@@ -1,8 +1,9 @@
-#ifndef EQEMU_LUA_MOB_H
-#define EQEMU_LUA_MOB_H
+#pragma once
+
 #ifdef LUA_EQEMU
 
-#include "lua_entity.h"
+#include "common/types.h"
+#include "zone/lua_entity.h"
 
 class Mob;
 struct Lua_HateList;
@@ -280,8 +281,8 @@ public:
 	bool IsAIControlled();
 	float GetAggroRange();
 	float GetAssistRange();
-	void SetPetOrder(int order);
-	int GetPetOrder();
+	void SetPetOrder(uint8 pet_order);
+	uint8 GetPetOrder();
 	bool IsRoamer();
 	bool IsRooted();
 	bool IsEngaged();
@@ -614,7 +615,9 @@ public:
 	void BuffFadeSongs();
 	luabind::object GetPausedTimers(lua_State* L);
 	luabind::object GetTimers(lua_State* L);
+	uint8 GetPetType();
+	std::string GetPetTypeName();
+	void SetPetType(uint8 pet_type);
 };
 
-#endif
-#endif
+#endif // LUA_EQEMU

@@ -15,65 +15,51 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-#include "../common/global_define.h"
-#include "../common/eqemu_logsys.h"
-#include "../common/opcodemgr.h"
-#include "../common/raid.h"
+#include "client.h"
 
+#include "common/data_bucket.h"
+#include "common/data_verification.h"
+#include "common/eqemu_logsys.h"
+#include "common/events/player_event_logs.h"
+#include "common/opcodemgr.h"
+#include "common/raid.h"
+#include "common/rdtsc.h"
+#include "common/repositories/account_repository.h"
+#include "common/repositories/adventure_members_repository.h"
+#include "common/repositories/buyer_buy_lines_repository.h"
+#include "common/repositories/character_corpses_repository.h"
+#include "common/repositories/character_instance_safereturns_repository.h"
+#include "common/repositories/character_pet_name_repository.h"
+#include "common/repositories/character_stats_record_repository.h"
+#include "common/repositories/criteria/content_filter_criteria.h"
+#include "common/repositories/guild_tributes_repository.h"
+#include "common/repositories/tradeskill_recipe_entries_repository.h"
+#include "common/rulesys.h"
+#include "common/shared_tasks.h"
+#include "zone/bot.h"
+#include "zone/dialogue_window.h"
+#include "zone/dynamic_zone.h"
+#include "zone/event_codes.h"
+#include "zone/gm_commands/door_manipulation.h"
+#include "zone/gm_commands/object_manipulation.h"
+#include "zone/guild_mgr.h"
+#include "zone/merc.h"
+#include "zone/mob_movement_manager.h"
+#include "zone/petitions.h"
+#include "zone/queryserv.h"
+#include "zone/quest_parser_collection.h"
+#include "zone/string_ids.h"
+#include "zone/titles.h"
+#include "zone/water_map.h"
+#include "zone/worldserver.h"
+#include "zone/zone.h"
+
+#include "zlib.h"
+#include <cstdio>
 #include <iomanip>
 #include <iostream>
-#include <math.h>
+#include <numbers>
 #include <set>
-#include <stdio.h>
-#include <string.h>
-#include <zlib.h>
-#include "bot.h"
-
-#ifdef _WINDOWS
-#define snprintf	_snprintf
-#define strncasecmp	_strnicmp
-#define strcasecmp	_stricmp
-#else
-#include <pthread.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <unistd.h>
-#endif
-
-#include "../common/data_verification.h"
-#include "../common/rdtsc.h"
-#include "../common/data_bucket.h"
-#include "dynamic_zone.h"
-#include "event_codes.h"
-#include "guild_mgr.h"
-#include "merc.h"
-#include "petitions.h"
-#include "queryserv.h"
-#include "quest_parser_collection.h"
-#include "string_ids.h"
-#include "titles.h"
-#include "water_map.h"
-#include "worldserver.h"
-#include "zone.h"
-#include "mob_movement_manager.h"
-#include "../common/repositories/character_instance_safereturns_repository.h"
-#include "../common/repositories/criteria/content_filter_criteria.h"
-#include "../common/shared_tasks.h"
-#include "gm_commands/door_manipulation.h"
-#include "gm_commands/object_manipulation.h"
-#include "client.h"
-#include "../common/repositories/account_repository.h"
-#include "../common/repositories/character_corpses_repository.h"
-#include "../common/repositories/guild_tributes_repository.h"
-#include "../common/repositories/buyer_buy_lines_repository.h"
-#include "../common/repositories/character_pet_name_repository.h"
-#include "../common/repositories/tradeskill_recipe_entries_repository.h"
-
-#include "../common/events/player_event_logs.h"
-#include "../common/repositories/character_stats_record_repository.h"
-#include "dialogue_window.h"
-#include "../common/rulesys.h"
-#include "../common/repositories/adventure_members_repository.h"
 
 extern QueryServ* QServ;
 extern Zone* zone;
@@ -671,7 +657,7 @@ void Client::CompleteConnect()
 
 		for (int x1 = 0; x1 < EFFECT_COUNT; x1++) {
 			switch (spell.effect_id[x1]) {
-			case SE_Illusion: {
+			case SpellEffect::Illusion: {
 				if (GetIllusionBlock()) {
 					break;
 				}
@@ -682,41 +668,41 @@ void Client::CompleteConnect()
 				}
 				break;
 			}
-			case SE_SummonHorse: {
+			case SpellEffect::SummonHorse: {
 				if (RuleB(Character, PreventMountsFromZoning) || !zone->CanCastOutdoor()) {
-					BuffFadeByEffect(SE_SummonHorse);
+					BuffFadeByEffect(SpellEffect::SummonHorse);
 				} else {
 					SummonHorse(buffs[j1].spellid);
 				}
 				break;
 			}
-			case SE_Silence:
+			case SpellEffect::Silence:
 			{
 				Silence(true);
 				break;
 			}
-			case SE_Amnesia:
+			case SpellEffect::Amnesia:
 			{
 				Amnesia(true);
 				break;
 			}
-			case SE_DivineAura:
+			case SpellEffect::DivineAura:
 			{
 				invulnerable = true;
 				break;
 			}
-			case SE_Invisibility2:
-			case SE_Invisibility:
+			case SpellEffect::Invisibility2:
+			case SpellEffect::Invisibility:
 			{
 				SendAppearancePacket(AppearanceType::Invisibility, Invisibility::Invisible);
 				break;
 			}
-			case SE_Levitate:
+			case SpellEffect::Levitate:
 			{
 				if (!zone->CanLevitate()) {
 					if (!GetGM()) {
 						SendAppearancePacket(AppearanceType::FlyMode, 0);
-						BuffFadeByEffect(SE_Levitate);
+						BuffFadeByEffect(SpellEffect::Levitate);
 						Message(Chat::Red, "You can't levitate in this zone.");
 						break;
 					}
@@ -737,18 +723,18 @@ void Client::CompleteConnect()
 
 				break;
 			}
-			case SE_AddMeleeProc:
-			case SE_WeaponProc:
+			case SpellEffect::AddMeleeProc:
+			case SpellEffect::WeaponProc:
 			{
 				AddProcToWeapon(GetProcID(buffs[j1].spellid, x1), false, 100 + spells[buffs[j1].spellid].limit_value[x1], buffs[j1].spellid, buffs[j1].casterlevel, GetSpellProcLimitTimer(buffs[j1].spellid, ProcType::MELEE_PROC));
 				break;
 			}
-			case SE_DefensiveProc:
+			case SpellEffect::DefensiveProc:
 			{
 				AddDefensiveProc(GetProcID(buffs[j1].spellid, x1), 100 + spells[buffs[j1].spellid].limit_value[x1], buffs[j1].spellid, GetSpellProcLimitTimer(buffs[j1].spellid, ProcType::DEFENSIVE_PROC));
 				break;
 			}
-			case SE_RangedProc:
+			case SpellEffect::RangedProc:
 			{
 				AddRangedProc(GetProcID(buffs[j1].spellid, x1), 100 + spells[buffs[j1].spellid].limit_value[x1], buffs[j1].spellid, GetSpellProcLimitTimer(buffs[j1].spellid, ProcType::RANGED_PROC));
 				break;
@@ -955,17 +941,17 @@ void Client::CompleteConnect()
 	// TODO: load these states
 	// We at least will set them to the correct state for now
 	if (m_ClientVersionBit & EQ::versions::maskUFAndLater && GetPet()) {
-		SetPetCommandState(PET_BUTTON_SIT, 0);
-		SetPetCommandState(PET_BUTTON_STOP, 0);
-		SetPetCommandState(PET_BUTTON_REGROUP, 0);
-		SetPetCommandState(PET_BUTTON_FOLLOW, 1);
-		SetPetCommandState(PET_BUTTON_GUARD, 0);
+		SetPetCommandState(PetButton::Sit, PetButtonState::Off);
+		SetPetCommandState(PetButton::Stop, PetButtonState::Off);
+		SetPetCommandState(PetButton::Regroup, PetButtonState::Off);
+		SetPetCommandState(PetButton::Follow, PetButtonState::On);
+		SetPetCommandState(PetButton::Guard, PetButtonState::Off);
 		// Taunt saved on client side for logging on with pet
 		// In our db for when we zone.
-		SetPetCommandState(PET_BUTTON_HOLD, 0);
-		SetPetCommandState(PET_BUTTON_GHOLD, 0);
-		SetPetCommandState(PET_BUTTON_FOCUS, 0);
-		SetPetCommandState(PET_BUTTON_SPELLHOLD, 0);
+		SetPetCommandState(PetButton::Hold, PetButtonState::Off);
+		SetPetCommandState(PetButton::GreaterHold, PetButtonState::Off);
+		SetPetCommandState(PetButton::Focus, PetButtonState::Off);
+		SetPetCommandState(PetButton::SpellHold, PetButtonState::Off);
 	}
 
 	database.LoadAuras(this); // this ends up spawning them so probably safer to load this later (here)
@@ -1515,23 +1501,23 @@ void Client::Handle_Connect_OP_ZoneEntry(const EQApplicationPacket *app)
 
 	switch (race)
 	{
-	case OGRE:
+	case Race::Ogre:
 		size = 9; break;
-	case TROLL:
+	case Race::Troll:
 		size = 8; break;
-	case VAHSHIR: case BARBARIAN:
+	case Race::VahShir: case Race::Barbarian:
 		size = 7; break;
-	case HUMAN: case HIGH_ELF: case ERUDITE: case IKSAR: case DRAKKIN:
+	case Race::Human: case Race::HighElf: case Race::Erudite: case Race::Iksar: case Race::Drakkin:
 		size = 6; break;
-	case HALF_ELF:
+	case Race::HalfElf:
 		size = 5.5; break;
-	case WOOD_ELF: case DARK_ELF: case FROGLOK:
+	case Race::WoodElf: case Race::DarkElf: case Race::Froglok2:
 		size = 5; break;
-	case DWARF:
+	case Race::Dwarf:
 		size = 4; break;
-	case HALFLING:
+	case Race::Halfling:
 		size = 3.5; break;
-	case GNOME:
+	case Race::Gnome:
 		size = 3; break;
 	default:
 		size = 0;
@@ -1713,7 +1699,7 @@ void Client::Handle_Connect_OP_ZoneEntry(const EQApplicationPacket *app)
 	if (zone->IsPVPZone())
 		m_pp.pvp = 1;
 	/* Time entitled on Account: Move to account */
-	m_pp.timeentitledonaccount = database.GetTotalTimeEntitledOnAccount(AccountID()) / 1440;
+	m_pp.timeentitledonaccount = CharacterDataRepository::GetTotalTimePlayed(database, AccountID()) / 1440;
 	/* Reset rest timer if the durations have been lowered in the database */
 	if ((m_pp.RestTimer > RuleI(Character, RestRegenTimeToActivate)) && (m_pp.RestTimer > RuleI(Character, RestRegenRaidTimeToActivate)))
 		m_pp.RestTimer = 0;
@@ -1853,7 +1839,7 @@ void Client::Handle_Connect_OP_ZoneEntry(const EQApplicationPacket *app)
 	 */
 	if (Admin() >= EQ::DevTools::GM_ACCOUNT_STATUS_LEVEL) {
 		const auto dev_tools_key = fmt::format("{}-dev-tools-disabled", AccountID());
-		if (DataBucket::GetData(dev_tools_key) == "true") {
+		if (DataBucket::GetData(&database, dev_tools_key) == "true") {
 			dev_tools_enabled = false;
 		}
 	}
@@ -4259,7 +4245,7 @@ void Client::Handle_OP_BuffRemoveRequest(const EQApplicationPacket *app)
 
 	uint16 SpellID = m->GetSpellIDFromSlot(brrs->SlotID);
 
-	if (SpellID && (GetGM() || ((IsBeneficialSpell(SpellID) || IsEffectInSpell(SpellID, SE_BindSight)) && !spells[SpellID].no_remove))) {
+	if (SpellID && (GetGM() || ((IsBeneficialSpell(SpellID) || IsEffectInSpell(SpellID, SpellEffect::BindSight)) && !spells[SpellID].no_remove))) {
 		m->BuffFadeBySlot(brrs->SlotID, true);
 	}
 }
@@ -4925,7 +4911,7 @@ void Client::Handle_OP_ClientUpdate(const EQApplicationPacket *app) {
 
 			// Calculate angle from boat heading to EQ heading
 			double theta = std::fmod(((boat->GetHeading() * 360.0) / 512.0),360.0);
-			double thetar = (theta * M_PI) / 180.0;
+			double thetar = (theta * std::numbers::pi) / 180.0;
 
 			// Boat cx is inverted (positive to left)
 			// Boat cy is normal (positive toward heading)
@@ -5078,7 +5064,7 @@ void Client::Handle_OP_ClientUpdate(const EQApplicationPacket *app) {
 			// Dismount horses when entering water
 			if (GetHorseId() && RuleB(Character, DismountWater)) {
 				SetHorseId(0);
-				BuffFadeByEffect(SE_SummonHorse);
+				BuffFadeByEffect(SpellEffect::SummonHorse);
 			}
 		}
 		CheckRegionTypeChanges();
@@ -7988,7 +7974,7 @@ void Client::Handle_OP_GuildCreate(const EQApplicationPacket *app)
 
 	if ((Admin() < RuleI(Guild, PlayerCreationRequiredStatus)) ||
 		(GetLevel() < RuleI(Guild, PlayerCreationRequiredLevel)) ||
-		(database.GetTotalTimeEntitledOnAccount(AccountID()) < (unsigned int)RuleI(Guild, PlayerCreationRequiredTime)))
+		(CharacterDataRepository::GetTotalTimePlayed(database, AccountID()) < (unsigned int)RuleI(Guild, PlayerCreationRequiredTime)))
 	{
 		Message(Chat::Red, "Your status, level or time playing on this account are insufficient to use this feature.");
 		return;
@@ -11073,6 +11059,7 @@ void Client::Handle_OP_PDeletePetition(const EQApplicationPacket *app)
 	return;
 }
 
+
 void Client::Handle_OP_PetCommands(const EQApplicationPacket *app)
 {
 	if (app->size != sizeof(PetCommand_Struct)) {
@@ -11263,7 +11250,7 @@ void Client::Handle_OP_PetCommands(const EQApplicationPacket *app)
 			// eqlive ignores this command
 			// we could just remove the charm
 			// and continue
-			mypet->BuffFadeByEffect(SE_Charm);
+			mypet->BuffFadeByEffect(SpellEffect::Charm);
 			break;
 		}
 		else {
@@ -11730,7 +11717,6 @@ void Client::Handle_OP_PetCommands(const EQApplicationPacket *app)
 		break;
 	}
 }
-
 void Client::Handle_OP_Petition(const EQApplicationPacket *app)
 {
 	if (app->size <= 1)
@@ -13987,7 +13973,7 @@ void Client::Handle_OP_Shielding(const EQApplicationPacket *app)
 		Recast is 3 minutes.
 
 		For custom use cases, Mob::ShieldAbility can be used in quests with all parameters being altered. This functional
-		is also used for SPA 201 SE_PetShield, which functions in a simalar manner with pet shielding owner.
+		is also used for SPA 201 SpellEffect::PetShield, which functions in a simalar manner with pet shielding owner.
 
 		Note: If either the shielder or the shield target die all variables are reset on both.
 
@@ -15749,7 +15735,7 @@ void Client::Handle_OP_TradeSkillRecipeInspect(const EQApplicationPacket* app)
 	const auto& v = TradeskillRecipeEntriesRepository::GetWhere(
 		content_db,
 		fmt::format(
-			"`recipe_id` = {} AND `componentcount` = 0 AND `successcount` > 0 LIMIT 1",
+			"`recipe_id` = {} AND `componentcount` = 0 AND `successcount` > 0 ORDER BY `id` ASC LIMIT 1",
 			s->recipe_id
 		)
 	);
@@ -16818,6 +16804,7 @@ void Client::RecordStats()
 	r.endurance_regen          = GetEnduranceRegen() - GetSpellBonuses().EnduranceRegen;
 	r.shielding                = GetShielding() - GetSpellBonuses().MeleeMitigation;
 	r.spell_damage             = GetSpellDmg() - GetSpellBonuses().SpellDmg;
+	r.heal_amount              = GetHealAmt() - GetSpellBonuses().HealAmt;
 	r.spell_shielding          = GetSpellShield() - GetSpellBonuses().SpellShield;
 	r.strikethrough            = GetStrikeThrough() - GetSpellBonuses().StrikeThrough;
 	r.stun_resist              = GetStunResist() - GetSpellBonuses().StunResist;

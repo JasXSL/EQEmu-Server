@@ -18,18 +18,19 @@
  *
  */
 
-#include <memory>
-#include "../common/net/websocket_server.h"
-#include "../common/eqemu_logsys.h"
-#include "zonedb.h"
-#include "client.h"
-#include "entity.h"
-#include "corpse.h"
 #include "api_service.h"
-#include "object.h"
-#include "zone.h"
-#include "doors.h"
-#include <iostream>
+
+#include "common/eqemu_logsys.h"
+#include "common/net/websocket_server.h"
+#include "zone/client.h"
+#include "zone/corpse.h"
+#include "zone/doors.h"
+#include "zone/entity.h"
+#include "zone/object.h"
+#include "zone/zone.h"
+#include "zone/zonedb.h"
+
+#include <memory>
 
 extern Zone *zone;
 
@@ -82,7 +83,7 @@ Json::Value ApiGetPacketStatistics(EQ::Net::WebsocketServerConnection *connectio
 		auto connection            = client->Connection();
 		auto opts                  = connection->GetManager()->GetOptions();
 		auto eqs_stats             = connection->GetStats();
-		auto &stats                = eqs_stats.DaybreakStats;
+		auto &stats                = eqs_stats.ReliableStreamStats;
 		auto now                   = EQ::Net::Clock::now();
 		auto sec_since_stats_reset = std::chrono::duration_cast<std::chrono::duration<double>>(
 			now - stats.created

@@ -1,6 +1,27 @@
-#ifndef _EQE_LUA_PARSER_EVENTS_H
-#define _EQE_LUA_PARSER_EVENTS_H
+#pragma once
+
 #ifdef LUA_EQEMU
+
+#include "common/types.h"
+
+#include <any>
+#include <string>
+#include <vector>
+
+class Bot;
+class Client;
+class Encounter;
+class Merc;
+class Mob;
+class NPC;
+class QuestInterface;
+class Zone;
+struct lua_State;
+
+namespace EQ
+{
+	class ItemInstance;
+}
 
 typedef void(*NPCArgumentHandler)(QuestInterface*, lua_State*, NPC*, Mob*, std::string, uint32, std::vector<std::any>*);
 typedef void(*PlayerArgumentHandler)(QuestInterface*, lua_State*, Client*, std::string, uint32, std::vector<std::any>*);
@@ -253,6 +274,16 @@ void handle_npc_entity_variable(
 );
 
 void handle_npc_spell_blocked(
+	QuestInterface *parse,
+	lua_State* L,
+	NPC* npc,
+	Mob *init,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
+void handle_npc_pet_command(
 	QuestInterface *parse,
 	lua_State* L,
 	NPC* npc,
@@ -875,6 +906,15 @@ void handle_player_connect(
 	std::vector<std::any> *extra_pointers
 );
 
+void handle_player_pet_command(
+	QuestInterface *parse,
+	lua_State* L,
+	Client* client,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
 // Item
 void handle_item_click(
 	QuestInterface *parse,
@@ -1415,5 +1455,4 @@ void handle_zone_timer_stop(
 	std::vector<std::any> *extra_pointers
 );
 
-#endif
-#endif
+#endif // LUA_EQEMU

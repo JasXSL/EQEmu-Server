@@ -16,18 +16,18 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 	*/
 
-#include "../common/rulesys.h"
-#include "../common/strings.h"
-
-#include "client.h"
-#include "entity.h"
 #include "mob.h"
-#include "string_ids.h"
-#include "lua_parser.h"
-#include "npc.h"
-#include "bot.h"
 
-#include <string.h>
+#include "common/rulesys.h"
+#include "common/strings.h"
+#include "zone/bot.h"
+#include "zone/client.h"
+#include "zone/entity.h"
+#include "zone/lua_parser.h"
+#include "zone/npc.h"
+#include "zone/string_ids.h"
+
+#include <cstring>
 
 extern double frame_time;
 
@@ -352,9 +352,9 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 
 	if (ca_atk->m_skill == EQ::skills::SkillBash) { // SLAM - Bash without a shield equipped
 		switch (GetRace()) {
-			case OGRE:
-			case TROLL:
-			case BARBARIAN:
+			case Race::Ogre:
+			case Race::Troll:
+			case Race::Barbarian:
 				bypass_skill_check = true;
 			default:
 				break;
@@ -1907,7 +1907,7 @@ void NPC::DoClassAttacks(Mob *target) {
 		target->GetBodyType() != BodyType::Undead &&
 		taunt_time &&
 		type_of_pet &&
-		type_of_pet != petTargetLock &&
+		type_of_pet != PetType::TargetLock &&
 		DistanceSquared(GetPosition(), target->GetPosition()) <= (RuleI(Pets, PetTauntRange) * RuleI(Pets, PetTauntRange))
 	) {
 		GetOwner()->MessageString(Chat::PetResponse, PET_TAUNTING);

@@ -1,9 +1,9 @@
-#ifndef EQEMU_CHARACTER_DATA_REPOSITORY_H
-#define EQEMU_CHARACTER_DATA_REPOSITORY_H
+#pragma once
 
-#include "../database.h"
-#include "../strings.h"
-#include "base/base_character_data_repository.h"
+#include "common/repositories/base/base_character_data_repository.h"
+
+#include "common/database.h"
+#include "common/strings.h"
 
 
 
@@ -191,6 +191,20 @@ public:
 
 		return character_ids;
 	}
-};
 
-#endif //EQEMU_CHARACTER_DATA_REPOSITORY_H
+	static uint32_t GetTotalTimePlayed(Database& db, uint32_t account_id)
+	{
+		auto query = fmt::format(
+			"SELECT SUM(time_played) FROM `character_data` WHERE `account_id` = {}",
+			account_id
+		);
+
+		auto results = db.QueryDatabase(query);
+		if (!results.Success()) {
+			return 0;
+		}
+
+		auto row = results.begin();
+		return Strings::ToUnsignedInt(row[0]);
+	}
+};

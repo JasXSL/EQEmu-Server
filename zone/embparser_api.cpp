@@ -16,26 +16,23 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-#include "../common/features.h"
-#include "../common/content/world_content_service.h"
-#include "../common/zone_store.h"
-
 #ifdef EMBPERL
 #ifdef EMBPERL_XS
 
-#include "../common/global_define.h"
-#include "../common/misc_functions.h"
-
-#include "dialogue_window.h"
-#include "dynamic_zone.h"
-#include "embperl.h"
-#include "entity.h"
-#include "queryserv.h"
-#include "questmgr.h"
-#include "zone.h"
-#include "../common/data_bucket.h"
-#include "../common/events/player_event_logs.h"
-#include "worldserver.h"
+#include "common/content/world_content_service.h"
+#include "common/data_bucket.h"
+#include "common/events/player_event_logs.h"
+#include "common/features.h"
+#include "common/misc_functions.h"
+#include "common/zone_store.h"
+#include "zone/dialogue_window.h"
+#include "zone/dynamic_zone.h"
+#include "zone/embperl.h"
+#include "zone/entity.h"
+#include "zone/queryserv.h"
+#include "zone/questmgr.h"
+#include "zone/worldserver.h"
+#include "zone/zone.h"
 
 #include <cctype>
 
@@ -2485,27 +2482,27 @@ std::string Perl__get_rule(const char* rule_name)
 
 std::string Perl__get_data(std::string bucket_key)
 {
-	return DataBucket::GetData(bucket_key);
+	return DataBucket::GetData(&database, bucket_key);
 }
 
 std::string Perl__get_data_expires(std::string bucket_key)
 {
-	return DataBucket::GetDataExpires(bucket_key);
+	return DataBucket::GetDataExpires(&database, bucket_key);
 }
 
 void Perl__set_data(std::string key, std::string value)
 {
-	DataBucket::SetData(key, value);
+	DataBucket::SetData(&database, key, value);
 }
 
 void Perl__set_data(std::string key, std::string value, std::string expires_at)
 {
-	DataBucket::SetData(key, value, expires_at);
+	DataBucket::SetData(&database, key, value, expires_at);
 }
 
 bool Perl__delete_data(std::string bucket_key)
 {
-	return DataBucket::DeleteData(bucket_key);
+	return DataBucket::DeleteData(&database, bucket_key);
 }
 
 bool Perl__IsClassicEnabled()
@@ -3045,7 +3042,7 @@ void Perl__rename(std::string name)
 
 std::string Perl__get_data_remaining(std::string bucket_name)
 {
-	return DataBucket::GetDataRemaining(bucket_name);
+	return DataBucket::GetDataRemaining(&database, bucket_name);
 }
 
 const int Perl__getitemstat(uint32 item_id, std::string identifier)
@@ -6039,6 +6036,16 @@ perl::array Perl__get_timers(Mob* m)
 	return a;
 }
 
+std::string Perl__get_pet_command_name(uint8 pet_command)
+{
+	return PetCommand::GetName(pet_command);
+}
+
+std::string Perl__get_pet_type_name(uint8 pet_type)
+{
+	return PetType::GetName(pet_type);
+}
+
 void perl_register_quest()
 {
 	perl::interpreter perl(PERL_GET_THX);
@@ -6729,6 +6736,8 @@ void perl_register_quest()
 	package.add("getgroupidbycharid", &Perl__getgroupidbycharid);
 	package.add("getinventoryslotname", &Perl__getinventoryslotname);
 	package.add("get_paused_timers", &Perl__get_paused_timers);
+	package.add("get_pet_command_name", &Perl__get_pet_command_name);
+	package.add("get_pet_type_name", &Perl__get_pet_type_name);
 	package.add("getraididbycharid", &Perl__getraididbycharid);
 	package.add("get_race_bitmask", &Perl__get_race_bitmask);
 	package.add("get_recipe_component_item_ids", &Perl__GetRecipeComponentItemIDs);
@@ -7047,5 +7056,5 @@ void perl_register_quest()
 
 }
 
-#endif
-#endif
+#endif // EMBPERL_XS
+#endif // EMBPERL

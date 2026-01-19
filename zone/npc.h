@@ -15,29 +15,23 @@
 	along with this program; if not, write to the Free Software
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
-#ifndef NPC_H
-#define NPC_H
 
-#include "../common/rulesys.h"
+#pragma once
 
-#include "mob.h"
-#include "qglobals.h"
-#include "zonedb.h"
-#include "../common/zone_store.h"
-#include "zonedump.h"
-#include "../common/repositories/npc_faction_entries_repository.h"
-#include "../common/repositories/loottable_repository.h"
-#include "../common/repositories/loottable_entries_repository.h"
-#include "../common/repositories/lootdrop_repository.h"
-#include "../common/repositories/lootdrop_entries_repository.h"
+#include "common/repositories/lootdrop_entries_repository.h"
+#include "common/repositories/lootdrop_repository.h"
+#include "common/repositories/loottable_entries_repository.h"
+#include "common/repositories/loottable_repository.h"
+#include "common/repositories/npc_faction_entries_repository.h"
+#include "common/rulesys.h"
+#include "common/zone_store.h"
+#include "zone/mob.h"
+#include "zone/qglobals.h"
+#include "zone/zonedb.h"
+#include "zone/zonedump.h"
 
 #include <deque>
 #include <list>
-
-
-#ifdef _WINDOWS
-	#define M_PI	3.141592
-#endif
 
 typedef struct {
 	float	min_x;
@@ -346,7 +340,7 @@ public:
 	int64 GetNPCHPRegen() const { return hp_regen + itembonuses.HPRegen + spellbonuses.HPRegen; }
 	inline const char* GetAmmoIDfile() const { return ammo_idfile; }
 
-	void ModifyStatsOnCharm(bool is_charm_removed);
+	void ModifyStatsOnCharm(bool remove_charm, Mob* charmer);
 
 	//waypoint crap
 	int					GetMaxWp() const { return max_wp; }
@@ -551,6 +545,9 @@ public:
 	inline bool IsSkipAutoScale() const { return m_skip_auto_scale; }
 
 	void ScaleNPC(uint8 npc_level, bool always_scale = false, bool override_special_abilities = false);
+
+	uint32 GetNPCTintIndex() { return m_npc_tint_id; }
+	void SetNPCTintIndex(uint32 index);
 
 	void RecalculateSkills();
 	void ReloadSpells();
@@ -805,6 +802,3 @@ private:
 	bool                m_record_loot_stats;
 	std::vector<uint32> m_rolled_items = {};
 };
-
-#endif
-

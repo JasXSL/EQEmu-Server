@@ -16,59 +16,54 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-#include "../common/global_define.h"
-#include "../common/eq_packet.h"
-#include "../common/eq_stream_intf.h"
-#include "../common/misc.h"
-#include "../common/rulesys.h"
-#include "../common/emu_opcodes.h"
-#include "../common/eq_packet_structs.h"
-#include "../common/packet_dump.h"
-#include "../common/eq_stream_intf.h"
-#include "../common/inventory_profile.h"
-#include "../common/races.h"
-#include "../common/classes.h"
-#include "../common/skills.h"
-#include "../common/extprofile.h"
-#include "../common/strings.h"
-#include "../common/emu_versions.h"
-#include "../common/random.h"
-#include "../common/shareddb.h"
-#include "../common/opcodemgr.h"
-#include "../common/data_verification.h"
-#include "../common/data_bucket.h"
-
 #include "client.h"
-#include "worlddb.h"
-#include "world_config.h"
-#include "login_server.h"
-#include "login_server_list.h"
-#include "zoneserver.h"
-#include "zonelist.h"
-#include "clientlist.h"
-#include "wguild_mgr.h"
-#include "sof_char_create_data.h"
-#include "../common/zone_store.h"
-#include "../common/repositories/account_repository.h"
-#include "../common/repositories/player_event_logs_repository.h"
-#include "../common/repositories/inventory_repository.h"
-#include "../common/events/player_event_logs.h"
-#include "../common/content/world_content_service.h"
-#include "../common/repositories/group_id_repository.h"
-#include "../common/repositories/character_data_repository.h"
-#include "../common/skill_caps.h"
 
-#include <iostream>
+#include "common/classes.h"
+#include "common/content/world_content_service.h"
+#include "common/data_bucket.h"
+#include "common/data_verification.h"
+#include "common/emu_opcodes.h"
+#include "common/emu_versions.h"
+#include "common/eq_packet_structs.h"
+#include "common/eq_packet.h"
+#include "common/eq_stream_intf.h"
+#include "common/eq_stream_intf.h"
+#include "common/events/player_event_logs.h"
+#include "common/extprofile.h"
+#include "common/inventory_profile.h"
+#include "common/misc.h"
+#include "common/opcodemgr.h"
+#include "common/packet_dump.h"
+#include "common/races.h"
+#include "common/random.h"
+#include "common/repositories/account_repository.h"
+#include "common/repositories/character_data_repository.h"
+#include "common/repositories/group_id_repository.h"
+#include "common/repositories/inventory_repository.h"
+#include "common/repositories/player_event_logs_repository.h"
+#include "common/rulesys.h"
+#include "common/shareddb.h"
+#include "common/skill_caps.h"
+#include "common/skills.h"
+#include "common/strings.h"
+#include "common/zone_store.h"
+#include "world/clientlist.h"
+#include "world/login_server_list.h"
+#include "world/login_server.h"
+#include "world/sof_char_create_data.h"
+#include "world/wguild_mgr.h"
+#include "world/world_config.h"
+#include "world/worlddb.h"
+#include "world/zonelist.h"
+#include "world/zoneserver.h"
+
+#include "zlib.h"
+#include <climits>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <iomanip>
-
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <zlib.h>
-#include <limits.h>
-
-//FatherNitwit: uncomment to enable my IP based authentication hack
-//#define IPBASED_AUTH_HACK
+#include <iostream>
 
 // Disgrace: for windows compile
 #ifdef _WINDOWS
@@ -985,7 +980,7 @@ bool Client::HandleEnterWorldPacket(const EQApplicationPacket *app) {
 	safe_delete(outapp);
 
 	// set mailkey - used for duration of character session
-	int mail_key = EQ::Random::Instance()->Int(1, INT_MAX);
+	uint32 mail_key = EQ::Random::Instance()->Int(1, INT_MAX);
 
 	database.SetMailKey(charid, GetIP(), mail_key);
 	if (UCSServerAvailable_) {
@@ -1019,8 +1014,16 @@ bool Client::HandleEnterWorldPacket(const EQApplicationPacket *app) {
 				break;
 		}
 
+		std::string ucs_addr = config->GetUCSHost();
+		if (cle && cle->IsLocalClient()) {
+			const char* local_addr = config->LocalAddress.c_str();
+			if (local_addr[0]) {
+				ucs_addr = local_addr;
+			}
+		}
+
 		buffer = fmt::format("{},{},{}.{},{}{:08X}",
-			config->GetUCSHost(),
+			ucs_addr,
 			config->GetUCSPort(),
 			config->ShortName,
 			GetCharName(),
@@ -1046,7 +1049,7 @@ bool Client::HandleEnterWorldPacket(const EQApplicationPacket *app) {
 		}
 
 		buffer = fmt::format("{},{},{}.{},{}{:08X}",
-			config->GetUCSHost(),
+			ucs_addr,
 			config->GetUCSPort(),
 			config->ShortName,
 			GetCharName(),
@@ -2076,10 +2079,10 @@ bool CheckCharCreateInfoTitanium(CharCreate_Struct *cc)
 	classtemp = cc->class_ - 1;
 	racetemp = cc->race - 1;
 	// these have non sequential race numbers so they need to be mapped
-	if (cc->race == FROGLOK) racetemp = 14;
-	if (cc->race == VAHSHIR) racetemp = 13;
-	if (cc->race == IKSAR) racetemp = 12;
-	if (cc->race == DRAKKIN) racetemp = 15;
+	if (cc->race == Race::Froglok2) racetemp = 14;
+	if (cc->race == Race::VahShir) racetemp = 13;
+	if (cc->race == Race::Iksar) racetemp = 12;
+	if (cc->race == Race::Drakkin) racetemp = 15;
 
 	// if out of range looking it up in the table would crash stuff
 	// so we return from these
@@ -2186,43 +2189,43 @@ void Client::SetRaceStartingSkills( PlayerProfile_Struct *pp )
 {
 	switch( pp->race )
 	{
-	case BARBARIAN:
-	case DWARF:
-	case ERUDITE:
-	case HALF_ELF:
-	case HIGH_ELF:
-	case HUMAN:
-	case OGRE:
-	case TROLL:
-	case DRAKKIN:	//Drakkin are supposed to get a starting AA Skill
+	case Race::Barbarian:
+	case Race::Dwarf:
+	case Race::Erudite:
+	case Race::HalfElf:
+	case Race::HighElf:
+	case Race::Human:
+	case Race::Ogre:
+	case Race::Troll:
+	case Race::Drakkin:	//Drakkin are supposed to get a starting AA Skill
 		{
 			// No Race Specific Skills
 			break;
 		}
-	case DARK_ELF:
+	case Race::DarkElf:
 		{
 			pp->skills[EQ::skills::SkillHide] = 50;
 			break;
 		}
-	case FROGLOK:
+	case Race::Froglok2:
 		{
 			if (RuleI(Skills, SwimmingStartValue) < 125) {
 				pp->skills[EQ::skills::SkillSwimming] = 125;
 			}
 			break;
 		}
-	case GNOME:
+	case Race::Gnome:
 		{
 			pp->skills[EQ::skills::SkillTinkering] = 50;
 			break;
 		}
-	case HALFLING:
+	case Race::Halfling:
 		{
 			pp->skills[EQ::skills::SkillHide] = 50;
 			pp->skills[EQ::skills::SkillSneak] = 50;
 			break;
 		}
-	case IKSAR:
+	case Race::Iksar:
 		{
 			pp->skills[EQ::skills::SkillForage] = 50;
 			if (RuleI(Skills, SwimmingStartValue) < 100) {
@@ -2230,13 +2233,13 @@ void Client::SetRaceStartingSkills( PlayerProfile_Struct *pp )
 			}
 			break;
 		}
-	case WOOD_ELF:
+	case Race::WoodElf:
 		{
 			pp->skills[EQ::skills::SkillForage] = 50;
 			pp->skills[EQ::skills::SkillHide] = 50;
 			break;
 		}
-	case VAHSHIR:
+	case Race::VahShir:
 		{
 			pp->skills[EQ::skills::SkillSafeFall] = 50;
 			pp->skills[EQ::skills::SkillSneak] = 50;
@@ -2522,9 +2525,9 @@ void Client::SendUnsupportedClientPacket(const std::string& message)
 
 void Client::LoadDataBucketsCache()
 {
-	DataBucket::BulkLoadEntitiesToCache(DataBucketLoadType::Account, {GetAccountID()});
+	DataBucket::BulkLoadEntitiesToCache(&database, DataBucketLoadType::Account, {GetAccountID()});
 	const auto ids = CharacterDataRepository::GetCharacterIDsByAccountID(database, GetAccountID());
-	DataBucket::BulkLoadEntitiesToCache(DataBucketLoadType::Client, ids);
+	DataBucket::BulkLoadEntitiesToCache(&database, DataBucketLoadType::Client, ids);
 }
 
 void Client::ClearDataBucketsCache()

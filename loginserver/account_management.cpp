@@ -1,7 +1,11 @@
 #include "account_management.h"
-#include "login_server.h"
-#include "../common/event/task_scheduler.h"
-#include "../common/repositories/login_accounts_repository.h"
+
+#include "common/event/event_loop.h"
+#include "common/event/task_scheduler.h"
+#include "common/net/dns.h"
+#include "common/repositories/login_accounts_repository.h"
+#include "common/types.h"
+#include "loginserver/login_server.h"
 
 EQ::Event::TaskScheduler task_runner;
 
@@ -124,18 +128,18 @@ uint64 AccountManagement::CheckExternalLoginserverUserCredentials(LoginAccountCo
 			bool   running = true;
 			uint32 ret     = 0;
 
-			EQ::Net::DaybreakConnectionManager           mgr;
-			std::shared_ptr<EQ::Net::DaybreakConnection> conn;
+			EQ::Net::ReliableStreamConnectionManager           mgr;
+			std::shared_ptr<EQ::Net::ReliableStreamConnection> conn;
 
 			mgr.OnNewConnection(
-				[&](std::shared_ptr<EQ::Net::DaybreakConnection> connection) {
+				[&](std::shared_ptr<EQ::Net::ReliableStreamConnection> connection) {
 					conn = connection;
 				}
 			);
 
 			mgr.OnConnectionStateChange(
 				[&](
-					std::shared_ptr<EQ::Net::DaybreakConnection> conn,
+					std::shared_ptr<EQ::Net::ReliableStreamConnection> conn,
 					EQ::Net::DbProtocolStatus from,
 					EQ::Net::DbProtocolStatus to
 				) {
@@ -152,7 +156,7 @@ uint64 AccountManagement::CheckExternalLoginserverUserCredentials(LoginAccountCo
 			);
 
 			mgr.OnPacketRecv(
-				[&](std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet &p) {
+				[&](std::shared_ptr<EQ::Net::ReliableStreamConnection> conn, const EQ::Net::Packet &p) {
 					auto opcode = p.GetUInt16(0);
 					switch (opcode) {
 						case 0x0017: //OP_ChatMessage
@@ -250,18 +254,18 @@ uint64 AccountManagement::HealthCheckUserLogin()
 			bool   running = true;
 			uint64 ret     = 0;
 
-			EQ::Net::DaybreakConnectionManager           mgr;
-			std::shared_ptr<EQ::Net::DaybreakConnection> c;
+			EQ::Net::ReliableStreamConnectionManager           mgr;
+			std::shared_ptr<EQ::Net::ReliableStreamConnection> c;
 
 			mgr.OnNewConnection(
-				[&](std::shared_ptr<EQ::Net::DaybreakConnection> connection) {
+				[&](std::shared_ptr<EQ::Net::ReliableStreamConnection> connection) {
 					c = connection;
 				}
 			);
 
 			mgr.OnConnectionStateChange(
 				[&](
-					std::shared_ptr<EQ::Net::DaybreakConnection> conn,
+					std::shared_ptr<EQ::Net::ReliableStreamConnection> conn,
 					EQ::Net::DbProtocolStatus from,
 					EQ::Net::DbProtocolStatus to
 				) {
@@ -278,7 +282,7 @@ uint64 AccountManagement::HealthCheckUserLogin()
 			);
 
 			mgr.OnPacketRecv(
-				[&](std::shared_ptr<EQ::Net::DaybreakConnection> conn, const EQ::Net::Packet &p) {
+				[&](std::shared_ptr<EQ::Net::ReliableStreamConnection> conn, const EQ::Net::Packet &p) {
 					auto opcode = p.GetUInt16(0);
 					switch (opcode) {
 						case 0x0017: //OP_ChatMessage

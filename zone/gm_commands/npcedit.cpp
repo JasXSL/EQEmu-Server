@@ -1,7 +1,7 @@
-#include "../client.h"
-#include "../groups.h"
-#include "../raids.h"
-#include "../../common/repositories/npc_types_repository.h"
+#include "common/repositories/npc_types_repository.h"
+#include "zone/client.h"
+#include "zone/groups.h"
+#include "zone/raids.h"
 
 void SendNPCEditSubCommands(Client *c)
 {
@@ -110,6 +110,7 @@ void SendNPCEditSubCommands(Client *c)
 	c->Message(Chat::White, "Usage: #npcedit setanimation [Animation ID] - Sets an NPC's Animation on Spawn (Stored in spawn2 table)");
 	c->Message(Chat::White, "Usage: #npcedit respawntime [Respawn Time] - Sets an NPC's Respawn Timer in Seconds (Stored in spawn2 table)");
 	c->Message(Chat::White, "Usage: #npcedit set_grid [Grid ID] - Sets an NPC's Grid ID");
+	c->Message(Chat::White, "Usage: #npcedit npc_tint_id [NPC Tint ID] - Sets an NPC's Tint ID (0 to 78 for RoF2)");
 }
 
 void command_npcedit(Client *c, const Seperator *sep)

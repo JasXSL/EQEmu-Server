@@ -17,17 +17,18 @@
 */
 
 #include "bot.h"
-#include "object.h"
-#include "raids.h"
-#include "doors.h"
-#include "quest_parser_collection.h"
-#include "lua_parser.h"
-#include "../common/repositories/bot_inventories_repository.h"
-#include "../common/repositories/bot_spell_settings_repository.h"
-#include "../common/repositories/bot_starting_items_repository.h"
-#include "../common/data_verification.h"
-#include "../common/repositories/criteria/content_filter_criteria.h"
-#include "../common/skill_caps.h"
+
+#include "common/data_verification.h"
+#include "common/repositories/bot_inventories_repository.h"
+#include "common/repositories/bot_spell_settings_repository.h"
+#include "common/repositories/bot_starting_items_repository.h"
+#include "common/repositories/criteria/content_filter_criteria.h"
+#include "common/skill_caps.h"
+#include "zone/doors.h"
+#include "zone/lua_parser.h"
+#include "zone/object.h"
+#include "zone/quest_parser_collection.h"
+#include "zone/raids.h"
 
 /*
 TODO bot rewrite:
@@ -99,7 +100,7 @@ Bot::Bot(NPCType *npcTypeData, Client* botOwner) : NPC(npcTypeData, nullptr, glm
 	SetPullingFlag(false);
 	SetReturningFlag(false);
 	SetIsUsingItemClick(false);
-	m_previous_pet_order = SPO_Guard;
+	m_previous_pet_order = PetOrder::Guard;
 
 	rest_timer.Disable();
 	m_ping_timer.Disable();
@@ -232,7 +233,7 @@ Bot::Bot(
 	SetPullingFlag(false);
 	SetReturningFlag(false);
 	SetIsUsingItemClick(false);
-	m_previous_pet_order = SPO_Guard;
+	m_previous_pet_order = PetOrder::Guard;
 
 	rest_timer.Disable();
 	m_ping_timer.Disable();
@@ -296,8 +297,8 @@ Bot::Bot(
 
 			for (int x1 = 0; x1 < EFFECT_COUNT; x1++) {
 				switch (spell.effect_id[x1]) {
-					case SE_IllusionCopy:
-					case SE_Illusion: {
+					case SpellEffect::IllusionCopy:
+					case SpellEffect::Illusion: {
 						if (GetIllusionBlock()) {
 							break;
 						}
@@ -317,7 +318,7 @@ Bot::Bot(
 							);
 						} else if (spell.base_value[x1] == -2) // WTF IS THIS
 						{
-							if (GetRace() == IKSAR || GetRace() == VAHSHIR || GetRace() <= GNOME) {
+							if (GetRace() == Race::Iksar || GetRace() == Race::VahShir || GetRace() <= Race::Gnome) {
 								SendIllusionPacket(
 									AppearanceStruct{
 										.gender_id = GetGender(),
@@ -346,27 +347,27 @@ Bot::Bot(
 						}
 
 						switch (spell.base_value[x1]) {
-							case OGRE:
+							case Race::Ogre:
 								SendAppearancePacket(AppearanceType::Size, 9);
 								break;
-							case TROLL:
+							case Race::Troll:
 								SendAppearancePacket(AppearanceType::Size, 8);
 								break;
-							case VAHSHIR:
-							case BARBARIAN:
+							case Race::VahShir:
+							case Race::Barbarian:
 								SendAppearancePacket(AppearanceType::Size, 7);
 								break;
-							case HALF_ELF:
-							case WOOD_ELF:
-							case DARK_ELF:
-							case FROGLOK:
+							case Race::HalfElf:
+							case Race::WoodElf:
+							case Race::DarkElf:
+							case Race::Froglok2:
 								SendAppearancePacket(AppearanceType::Size, 5);
 								break;
-							case DWARF:
+							case Race::Dwarf:
 								SendAppearancePacket(AppearanceType::Size, 4);
 								break;
-							case HALFLING:
-							case GNOME:
+							case Race::Halfling:
+							case Race::Gnome:
 								SendAppearancePacket(AppearanceType::Size, 3);
 								break;
 							default:
@@ -375,63 +376,63 @@ Bot::Bot(
 						}
 						break;
 					}
-					case SE_Silence:
+					case SpellEffect::Silence:
 					{
 						Silence(true);
 						break;
 					}
-					case SE_Amnesia:
+					case SpellEffect::Amnesia:
 					{
 						Amnesia(true);
 						break;
 					}
-					case SE_DivineAura:
+					case SpellEffect::DivineAura:
 					{
 						invulnerable = true;
 						break;
 					}
-					case SE_Invisibility2:
-					case SE_Invisibility:
+					case SpellEffect::Invisibility2:
+					case SpellEffect::Invisibility:
 					{
 						invisible = true;
 						SendAppearancePacket(AppearanceType::Invisibility, 1);
 						break;
 					}
-					case SE_Levitate:
+					case SpellEffect::Levitate:
 					{
 						if (!zone->CanLevitate())
 						{
 								SendAppearancePacket(AppearanceType::FlyMode, 0);
-								BuffFadeByEffect(SE_Levitate);
+								BuffFadeByEffect(SpellEffect::Levitate);
 						}
 						else {
 							SendAppearancePacket(AppearanceType::FlyMode, 2);
 						}
 						break;
 					}
-					case SE_InvisVsUndead2:
-					case SE_InvisVsUndead:
+					case SpellEffect::InvisVsUndead2:
+					case SpellEffect::InvisVsUndead:
 					{
 						invisible_undead = true;
 						break;
 					}
-					case SE_InvisVsAnimals:
+					case SpellEffect::InvisVsAnimals:
 					{
 						invisible_animals = true;
 						break;
 					}
-					case SE_AddMeleeProc:
-					case SE_WeaponProc:
+					case SpellEffect::AddMeleeProc:
+					case SpellEffect::WeaponProc:
 					{
 						AddProcToWeapon(GetProcID(buffs[j1].spellid, x1), false, 100 + spells[buffs[j1].spellid].limit_value[x1], buffs[j1].spellid, buffs[j1].casterlevel);
 						break;
 					}
-					case SE_DefensiveProc:
+					case SpellEffect::DefensiveProc:
 					{
 						AddDefensiveProc(GetProcID(buffs[j1].spellid, x1), 100 + spells[buffs[j1].spellid].limit_value[x1], buffs[j1].spellid);
 						break;
 					}
-					case SE_RangedProc:
+					case SpellEffect::RangedProc:
 					{
 						AddRangedProc(GetProcID(buffs[j1].spellid, x1), 100 + spells[buffs[j1].spellid].limit_value[x1], buffs[j1].spellid);
 						break;
@@ -457,10 +458,10 @@ Bot::Bot(
 			int resurrection_sickness_spell_id = (
 				RuleB(Bots, OldRaceRezEffects) &&
 				(
-					GetRace() == BARBARIAN ||
-					GetRace() == DWARF ||
-					GetRace() == TROLL ||
-					GetRace() == OGRE
+					GetRace() == Race::Barbarian ||
+					GetRace() == Race::Dwarf ||
+					GetRace() == Race::Troll ||
+					GetRace() == Race::Ogre
 				) ?
 				RuleI(Bots, OldResurrectionSicknessSpell) :
 				RuleI(Bots, ResurrectionSicknessSpell)
@@ -955,9 +956,9 @@ void Bot::GenerateBaseStats()
 	float BotSize = GetSize();
 
 	switch(GetRace()) {
-		case HUMAN: // Humans have no race bonus
+		case Race::Human: // Humans have no race bonus
 			break;
-		case BARBARIAN:
+		case Race::Barbarian:
 			Strength += 28;
 			Stamina += 20;
 			Agility += 7;
@@ -968,7 +969,7 @@ void Bot::GenerateBaseStats()
 			BotSize = 7.0;
 			ColdResist += 10;
 			break;
-		case ERUDITE:
+		case Race::Erudite:
 			Strength -= 15;
 			Stamina -= 5;
 			Agility -= 5;
@@ -979,7 +980,7 @@ void Bot::GenerateBaseStats()
 			MagicResist += 5;
 			DiseaseResist -= 5;
 			break;
-		case WOOD_ELF:
+		case Race::WoodElf:
 			Strength -= 10;
 			Stamina -= 10;
 			Agility += 20;
@@ -987,7 +988,7 @@ void Bot::GenerateBaseStats()
 			Wisdom += 5;
 			BotSize = 5.0;
 			break;
-		case HIGH_ELF:
+		case Race::HighElf:
 			Strength -= 20;
 			Stamina -= 10;
 			Agility += 10;
@@ -996,7 +997,7 @@ void Bot::GenerateBaseStats()
 			Intelligence += 12;
 			Charisma += 5;
 			break;
-		case DARK_ELF:
+		case Race::DarkElf:
 			Strength -= 15;
 			Stamina -= 10;
 			Agility += 15;
@@ -1005,7 +1006,7 @@ void Bot::GenerateBaseStats()
 			Charisma -= 15;
 			BotSize = 5.0;
 			break;
-		case HALF_ELF:
+		case Race::HalfElf:
 			Strength -= 5;
 			Stamina -= 5;
 			Agility += 15;
@@ -1013,7 +1014,7 @@ void Bot::GenerateBaseStats()
 			Wisdom -= 15;
 			BotSize = 5.5;
 			break;
-		case DWARF:
+		case Race::Dwarf:
 			Strength += 15;
 			Stamina += 15;
 			Agility -= 5;
@@ -1025,7 +1026,7 @@ void Bot::GenerateBaseStats()
 			MagicResist -= 5;
 			PoisonResist += 5;
 			break;
-		case TROLL:
+		case Race::Troll:
 			Strength += 33;
 			Stamina += 34;
 			Agility += 8;
@@ -1035,7 +1036,7 @@ void Bot::GenerateBaseStats()
 			BotSize = 8.0;
 			FireResist -= 20;
 			break;
-		case OGRE:
+		case Race::Ogre:
 			Strength += 55;
 			Stamina += 77;
 			Agility -= 5;
@@ -1045,7 +1046,7 @@ void Bot::GenerateBaseStats()
 			Charisma -= 38;
 			BotSize = 9.0;
 			break;
-		case HALFLING:
+		case Race::Halfling:
 			Strength -= 5;
 			Agility += 20;
 			Dexterity += 15;
@@ -1056,7 +1057,7 @@ void Bot::GenerateBaseStats()
 			PoisonResist += 5;
 			DiseaseResist += 5;
 			break;
-		case GNOME:
+		case Race::Gnome:
 			Strength -= 15;
 			Stamina -= 5;
 			Agility += 10;
@@ -1066,7 +1067,7 @@ void Bot::GenerateBaseStats()
 			Charisma -= 15;
 			BotSize = 3.0;
 			break;
-		case IKSAR:
+		case Race::Iksar:
 			Strength -= 5;
 			Stamina -= 5;
 			Agility += 15;
@@ -1076,7 +1077,7 @@ void Bot::GenerateBaseStats()
 			MagicResist -= 5;
 			FireResist -= 5;
 			break;
-		case VAHSHIR:
+		case Race::VahShir:
 			Strength += 15;
 			Agility += 15;
 			Dexterity -= 5;
@@ -1087,7 +1088,7 @@ void Bot::GenerateBaseStats()
 			MagicResist -= 5;
 			FireResist -= 5;
 			break;
-		case FROGLOK:
+		case Race::Froglok2:
 			Strength -= 5;
 			Stamina += 5;
 			Agility += 25;
@@ -1097,7 +1098,7 @@ void Bot::GenerateBaseStats()
 			MagicResist -= 5;
 			FireResist -= 5;
 			break;
-		case DRAKKIN:
+		case Race::Drakkin:
 			Strength -= 5;
 			Stamina += 5;
 			Agility += 10;
@@ -1140,7 +1141,7 @@ void Bot::GenerateBaseStats()
 void Bot::GenerateAppearance() {
 	// Randomize facial appearance
 	int iFace = 0;
-	if (GetRace() == BARBARIAN) // Barbarian w/Tatoo
+	if (GetRace() == Race::Barbarian) // Barbarian w/Tatoo
 	{
 		iFace = zone->random.Int(0, 79);
 	}
@@ -1152,13 +1153,13 @@ void Bot::GenerateAppearance() {
 	int iHair = 0;
 	int iBeard = 0;
 	int iBeardColor = 1;
-	if (GetRace() == DRAKKIN) {
+	if (GetRace() == Race::Drakkin) {
 		iHair = zone->random.Int(0, 8);
 		iBeard = zone->random.Int(0, 11);
 		iBeardColor = zone->random.Int(0, 3);
 	} else if (GetGender()) {
 		iHair = zone->random.Int(0, 2);
-		if (GetRace() == DWARF && zone->random.Int(1, 100) < 50) {
+		if (GetRace() == Race::Dwarf && zone->random.Int(1, 100) < 50) {
 			iFace += 10;
 		}
 	} else {
@@ -1168,7 +1169,7 @@ void Bot::GenerateAppearance() {
 	}
 
 	int iHairColor = 0;
-	if (GetRace() == DRAKKIN) {
+	if (GetRace() == Race::Drakkin) {
 		iHairColor = zone->random.Int(0, 3);
 	} else {
 		iHairColor = zone->random.Int(0, 19);
@@ -1176,7 +1177,7 @@ void Bot::GenerateAppearance() {
 
 	auto iEyeColor1 = (uint8)zone->random.Int(0, 9);
 	uint8 iEyeColor2 = 0;
-	if (GetRace() == DRAKKIN) {
+	if (GetRace() == Race::Drakkin) {
 		iEyeColor1 = iEyeColor2 = (uint8)zone->random.Int(0, 11);
 	} else if (zone->random.Int(1, 100) > 96) {
 		iEyeColor2 = zone->random.Int(0, 9);
@@ -1187,7 +1188,7 @@ void Bot::GenerateAppearance() {
 	int iHeritage = 0;
 	int iTattoo = 0;
 	int iDetails = 0;
-	if (GetRace() == DRAKKIN) {
+	if (GetRace() == Race::Drakkin) {
 		iHeritage = zone->random.Int(0, 6);
 		iTattoo = zone->random.Int(0, 7);
 		iDetails = zone->random.Int(0, 7);
@@ -1527,7 +1528,7 @@ bool Bot::LoadPet()
 		auto my_buffs = GetBuffs();
 		if (buffs_max && my_buffs) {
 			for (int index = 0; index < buffs_max; ++index) {
-				if (IsEffectInSpell(my_buffs[index].spellid, SE_Familiar)) {
+				if (IsEffectInSpell(my_buffs[index].spellid, SpellEffect::Familiar)) {
 					MakePet(my_buffs[index].spellid, spells[my_buffs[index].spellid].teleport_zone);
 					return true;
 				}
@@ -2313,7 +2314,7 @@ void Bot::AI_Process()
 				bot_owner->SetBotPulling(false);
 
 				if (GetPet()) {
-					GetPet()->SetPetOrder(SPO_Follow);
+					GetPet()->SetPetOrder(PetOrder::Follow);
 					GetPet()->CastToNPC()->SaveGuardSpot(true);
 				}
 
@@ -2569,7 +2570,7 @@ void Bot::DoOutOfCombatChecks(Client* bot_owner, Mob* follow_mob, float leash_di
 		bot_owner->SetBotPulling(false);
 
 		if (GetPet()) {
-			GetPet()->SetPetOrder(SPO_Follow);
+			GetPet()->SetPetOrder(PetOrder::Follow);
 			GetPet()->CastToNPC()->SaveGuardSpot(true);
 		}
 	}
@@ -2601,6 +2602,8 @@ void Bot::DoOutOfCombatChecks(Client* bot_owner, Mob* follow_mob, float leash_di
 	if (GetClass() == Class::Bard && AI_HasSpells() && TryBardMovementCasts()) {
 		return;
 	}
+
+	TryMeditate();
 }
 
 // This is as close as I could get without modifying the aggro mechanics and making it an expensive process...
@@ -3198,7 +3201,7 @@ bool Bot::IsValidTarget(
 			bot_owner->SetBotPulling(false);
 
 			if (GetPet()) {
-				GetPet()->SetPetOrder(SPO_Follow);
+				GetPet()->SetPetOrder(PetOrder::Follow);
 				GetPet()->CastToNPC()->SaveGuardSpot(true);
 			}
 		}
@@ -3233,7 +3236,7 @@ Mob* Bot::GetBotTarget(Client* bot_owner)
 			bot_owner->SetBotPulling(false);
 
 			if (GetPet()) {
-				GetPet()->SetPetOrder(SPO_Follow);
+				GetPet()->SetPetOrder(PetOrder::Follow);
 				GetPet()->CastToNPC()->SaveGuardSpot(true);
 			}
 		}
@@ -3269,7 +3272,7 @@ bool Bot::ReturningFlagChecks(Client* bot_owner, Mob* leash_owner, float fm_dist
 		bot_owner->SetBotPulling(false);
 
 		if (GetPet()) {
-			GetPet()->SetPetOrder(SPO_Follow);
+			GetPet()->SetPetOrder(PetOrder::Follow);
 			GetPet()->CastToNPC()->SaveGuardSpot(true);
 
 			if (HasControllablePet(BotAnimEmpathy::BackOff)) {
@@ -3313,7 +3316,7 @@ bool Bot::PullingFlagChecks(Client* bot_owner) {
 		bot_owner->SetBotPulling(false);
 
 		if (GetPet()) {
-			GetPet()->SetPetOrder(SPO_Follow);
+			GetPet()->SetPetOrder(PetOrder::Follow);
 			GetPet()->CastToNPC()->SaveGuardSpot(true);
 		}
 
@@ -3494,7 +3497,7 @@ Client* Bot::SetLeashOwner(Client* bot_owner, Group* bot_group, Raid* raid, uint
 
 void Bot::SetOwnerTarget(Client* bot_owner) {
 	if (GetPet() && (PULLING_BOT || RETURNING_BOT)) {
-		GetPet()->SetPetOrder(SPO_Follow);
+		GetPet()->SetPetOrder(PetOrder::Follow);
 	}
 
 	SetAttackFlag(false);
@@ -3533,7 +3536,7 @@ void Bot::BotPullerProcess(Client* bot_owner, Raid* raid) {
 	bot_owner->SetBotPulling(false);
 
 	if (GetPet()) {
-		GetPet()->SetPetOrder(SPO_Follow);
+		GetPet()->SetPetOrder(PetOrder::Follow);
 		GetPet()->CastToNPC()->SaveGuardSpot(true);
 	}
 
@@ -3562,7 +3565,7 @@ void Bot::BotPullerProcess(Client* bot_owner, Raid* raid) {
 				if (HasControllablePet(BotAnimEmpathy::Guard)) {
 					m_previous_pet_order = GetPet()->GetPetOrder();
 					GetPet()->CastToNPC()->SaveGuardSpot(GetPosition());
-					GetPet()->SetPetOrder(SPO_Guard);
+					GetPet()->SetPetOrder(PetOrder::Guard);
 				}
 			}
 		}
@@ -3578,7 +3581,7 @@ void Bot::Depop() {
 
 	if (bot_pet) {
 		if (bot_pet->Charmed()) {
-			bot_pet->BuffFadeByEffect(SE_Charm);
+			bot_pet->BuffFadeByEffect(SpellEffect::Charm);
 		}
 		else {
 			bot_pet->Depop();
@@ -5404,9 +5407,9 @@ void Bot::DoClassAttacks(Mob *target, bool IsRiposte) {
 		case Class::Paladin:
 			{
 				bool is_large_race = (
-					GetBaseRace() == OGRE ||
-					GetBaseRace() == TROLL ||
-					GetBaseRace() == BARBARIAN
+					GetBaseRace() == Race::Ogre ||
+					GetBaseRace() == Race::Troll ||
+					GetBaseRace() == Race::Barbarian
 					);
 				bool has_bash_skill = GetSkill(EQ::skills::SkillBash) > 0;
 				bool has_shield_in_secondary =
@@ -5974,7 +5977,7 @@ bool Bot::SpellOnTarget(
 
 		if (spelltar->IsPet()) {
 			for (int i = 0; i < EFFECT_COUNT; ++i) {
-				if (spells[spell_id].effect_id[i] == SE_Illusion) {
+				if (spells[spell_id].effect_id[i] == SpellEffect::Illusion) {
 					return false;
 				}
 			}
@@ -6214,7 +6217,7 @@ bool Bot::DoFinishedSpellSingleTarget(uint16 spell_id, Mob* spellTarget, EQ::spe
 
 		if (!noGroupSpell) {
 			for (Mob* m : GetBuffTargets(spellTarget)) {
-				if (IsEffectInSpell(thespell, SE_AbsorbMagicAtt) || IsEffectInSpell(thespell, SE_Rune)) {
+				if (IsEffectInSpell(thespell, SpellEffect::AbsorbMagicAtt) || IsEffectInSpell(thespell, SpellEffect::Rune)) {
 					for (int i = 0; i < m->GetMaxTotalSlots(); i++) {
 						uint32 buff_count = m->GetMaxTotalSlots();
 
@@ -7831,7 +7834,7 @@ bool Bot::GetNeedsCured(Mob *tar) {
 	bool need_cured = false;
 
 	if (tar) {
-		if (tar->FindType(SE_PoisonCounter) || tar->FindType(SE_DiseaseCounter) || tar->FindType(SE_CurseCounter) || tar->FindType(SE_CorruptionCounter)) {
+		if (tar->FindType(SpellEffect::PoisonCounter) || tar->FindType(SpellEffect::DiseaseCounter) || tar->FindType(SpellEffect::CurseCounter) || tar->FindType(SpellEffect::CorruptionCounter)) {
 			uint32 buff_count = tar->GetMaxTotalSlots();
 
 			for (unsigned int j = 0; j < buff_count; j++) {
@@ -8224,13 +8227,13 @@ bool Bot::CheckDataBucket(std::string bucket_name, const std::string& bucket_val
 		DataBucketKey k = GetScopedBucketKeys();
 		k.key = bucket_name;
 
-		auto b = DataBucket::GetData(k);
+		auto b = DataBucket::GetData(&database, k);
 		if (b.value.empty() && GetBotOwner()) {
 			// fetch from owner
 			k = GetBotOwner()->GetScopedBucketKeys();
 			k.key = bucket_name;
 
-			b = DataBucket::GetData(k);
+			b = DataBucket::GetData(&database, k);
 			if (b.value.empty()) {
 				return false;
 			}
@@ -8616,7 +8619,7 @@ void Bot::Escape()
 }
 
 void Bot::Fling(float value, float target_x, float target_y, float target_z, bool ignore_los, bool clip_through_walls, bool calculate_speed) {
-	BuffFadeByEffect(SE_Levitate);
+	BuffFadeByEffect(SpellEffect::Levitate);
 	if (CheckLosFN(target_x, target_y, target_z, 6.0f) || ignore_los) {
 		auto p = new EQApplicationPacket(OP_Fling, sizeof(fling_struct));
 		auto* f = (fling_struct*) p->pBuffer;
@@ -9553,9 +9556,9 @@ bool Bot::CastChecks(uint16 spell_id, Mob* tar, uint16 spell_type, bool precheck
 
 		if (spells[spell_id].target_type == ST_Self && tar != this) {
 			if (
-				!IsEffectInSpell(spell_id, SE_SummonCorpse) ||
+				!IsEffectInSpell(spell_id, SpellEffect::SummonCorpse) ||
 				(
-					IsEffectInSpell(spell_id, SE_SummonCorpse) &&
+					IsEffectInSpell(spell_id, SpellEffect::SummonCorpse) &&
 					!RuleB(Bots, AllowCommandedSummonCorpse)
 				)
 			) {
@@ -9667,7 +9670,7 @@ bool Bot::CastChecks(uint16 spell_id, Mob* tar, uint16 spell_type, bool precheck
 
 	if (
 		!zone->CanLevitate() &&
-		IsEffectInSpell(spell_id, SE_Levitate)
+		IsEffectInSpell(spell_id, SpellEffect::Levitate)
 	) {
 		LogBotSpellChecksDetail("{} says, 'Cancelling cast of {} due to !CanLevitate.'", GetCleanName(), GetSpellName(spell_id));
 		return false;
@@ -9907,8 +9910,8 @@ bool Bot::CanCastSpellType(uint16 spell_type, uint16 spell_id, Mob* tar) {
 					spell_type != BotSpellTypes::Succor
 				) &&
 				(
-					IsEffectInSpell(spell_id, SE_Teleport) ||
-					IsEffectInSpell(spell_id, SE_Succor)
+					IsEffectInSpell(spell_id, SpellEffect::Teleport) ||
+					IsEffectInSpell(spell_id, SpellEffect::Succor)
 				)
 			) {
 				LogBotSpellChecksDetail("{} says, 'Cancelling cast of {} on {} due to Teleport.'", GetCleanName(), GetSpellName(spell_id), tar->GetCleanName());
@@ -9918,7 +9921,7 @@ bool Bot::CanCastSpellType(uint16 spell_type, uint16 spell_id, Mob* tar) {
 			if (
 				tar->IsPet() &&
 				!RuleB(Bots, CanCastIllusionsOnPets) &&
-				IsEffectInSpell(spell_id, SE_Illusion)
+				IsEffectInSpell(spell_id, SpellEffect::Illusion)
 			) {
 				LogBotSpellChecksDetail("{} says, 'Cancelling cast of {} on {} due to PetSE_Illusion.'", GetCleanName(), GetSpellName(spell_id), tar->GetCleanName());
 				return false;
@@ -9962,13 +9965,13 @@ bool Bot::CanCastSpellType(uint16 spell_type, uint16 spell_id, Mob* tar) {
 							tar->IsBot() &&
 							(tar->GetLevel() >= tar->CastToBot()->GetStopMeleeLevel()) &&
 							(
-								IsEffectInSpell(spell_id, SE_AttackSpeed) ||
-								IsEffectInSpell(spell_id, SE_ReverseDS)
+								IsEffectInSpell(spell_id, SpellEffect::AttackSpeed) ||
+								IsEffectInSpell(spell_id, SpellEffect::ReverseDS)
 							) ||
 							(
 								SpellEffectsCount(spell_id) == 1 &&
 								(
-									IsEffectInSpell(spell_id, SE_ATK) || IsEffectInSpell(spell_id, SE_STR)
+									IsEffectInSpell(spell_id, SpellEffect::ATK) || IsEffectInSpell(spell_id, SpellEffect::STR)
 								)
 							)
 						) {
@@ -9978,11 +9981,11 @@ bool Bot::CanCastSpellType(uint16 spell_type, uint16 spell_id, Mob* tar) {
 						break;
 					case Archetype::Melee:
 						if (
-							IsEffectInSpell(spell_id, SE_IncreaseSpellHaste) ||
-							IsEffectInSpell(spell_id, SE_ManaPool) ||
-							IsEffectInSpell(spell_id, SE_CastingLevel) ||
-							IsEffectInSpell(spell_id, SE_ManaRegen_v2) ||
-							IsEffectInSpell(spell_id, SE_CurrentMana)
+							IsEffectInSpell(spell_id, SpellEffect::IncreaseSpellHaste) ||
+							IsEffectInSpell(spell_id, SpellEffect::ManaPool) ||
+							IsEffectInSpell(spell_id, SpellEffect::CastingLevel) ||
+							IsEffectInSpell(spell_id, SpellEffect::ManaRegen_v2) ||
+							IsEffectInSpell(spell_id, SpellEffect::CurrentMana)
 						) {
 							LogBotSpellChecksDetail("{} says, 'Cancelling cast of {} on {} due to Archetype::Melee.'", GetCleanName(), GetSpellName(spell_id), tar->GetCleanName());
 							return false;
@@ -9997,8 +10000,8 @@ bool Bot::CanCastSpellType(uint16 spell_type, uint16 spell_id, Mob* tar) {
 			// Differences for each type
 			if (spell_type != BotSpellTypes::InCombatBuff) {
 				if (
-					IsEffectInSpell(spell_id, SE_AbsorbMagicAtt) ||
-					IsEffectInSpell(spell_id, SE_Rune)
+					IsEffectInSpell(spell_id, SpellEffect::AbsorbMagicAtt) ||
+					IsEffectInSpell(spell_id, SpellEffect::Rune)
 				) {
 					for (int i = 0; i < tar->GetMaxTotalSlots(); i++) {
 						uint32 buff_count = tar->GetMaxTotalSlots();
@@ -10026,14 +10029,14 @@ bool Bot::CanCastSpellType(uint16 spell_type, uint16 spell_id, Mob* tar) {
 							tar->IsBot() &&
 							(tar->GetLevel() >= tar->CastToBot()->GetStopMeleeLevel()) &&
 							(
-								IsEffectInSpell(spell_id, SE_AttackSpeed) ||
-								IsEffectInSpell(spell_id, SE_ReverseDS)
+								IsEffectInSpell(spell_id, SpellEffect::AttackSpeed) ||
+								IsEffectInSpell(spell_id, SpellEffect::ReverseDS)
 							) ||
 							(
 								SpellEffectsCount(spell_id) == 1 &&
 								(
-									IsEffectInSpell(spell_id, SE_ATK) ||
-									IsEffectInSpell(spell_id, SE_STR)
+									IsEffectInSpell(spell_id, SpellEffect::ATK) ||
+									IsEffectInSpell(spell_id, SpellEffect::STR)
 								)
 							)
 						) {
@@ -10043,11 +10046,11 @@ bool Bot::CanCastSpellType(uint16 spell_type, uint16 spell_id, Mob* tar) {
 						break;
 					case Archetype::Melee:
 						if (
-							IsEffectInSpell(spell_id, SE_IncreaseSpellHaste) ||
-							IsEffectInSpell(spell_id, SE_ManaPool) ||
-							IsEffectInSpell(spell_id, SE_CastingLevel) ||
-							IsEffectInSpell(spell_id, SE_ManaRegen_v2) ||
-							IsEffectInSpell(spell_id, SE_CurrentMana)
+							IsEffectInSpell(spell_id, SpellEffect::IncreaseSpellHaste) ||
+							IsEffectInSpell(spell_id, SpellEffect::ManaPool) ||
+							IsEffectInSpell(spell_id, SpellEffect::CastingLevel) ||
+							IsEffectInSpell(spell_id, SpellEffect::ManaRegen_v2) ||
+							IsEffectInSpell(spell_id, SpellEffect::CurrentMana)
 						) {
 							LogBotSpellChecksDetail("{} says, 'Cancelling cast of {} on {} due to Archetype::Melee.'", GetCleanName(), GetSpellName(spell_id), tar->GetCleanName());
 							return false;
@@ -10329,7 +10332,7 @@ bool Bot::IsValidMezTarget(Mob* owner, Mob* npc, uint16 spell_id) {
 	auto npc_buffs = npc->GetBuffs();
 
 	for (int i = 0; i < buff_count; i++) {
-		if (IsDetrimentalSpell(npc_buffs[i].spellid) && IsEffectInSpell(npc_buffs[i].spellid, SE_CurrentHP)) {
+		if (IsDetrimentalSpell(npc_buffs[i].spellid) && IsEffectInSpell(npc_buffs[i].spellid, SpellEffect::CurrentHP)) {
 			return false;
 		}
 	}
@@ -11684,7 +11687,7 @@ bool Bot::IsValidSpellTypeBySpellID(uint16 spell_type, uint16 spell_id) {
 			return false;
 		case BotSpellTypes::Root:
 		case BotSpellTypes::AERoot:
-			if (IsDetrimentalSpell(spell_id) && IsEffectInSpell(spell_id, SE_Root)) {
+			if (IsDetrimentalSpell(spell_id) && IsEffectInSpell(spell_id, SpellEffect::Root)) {
 				return true;
 			}
 
@@ -11718,7 +11721,7 @@ bool Bot::IsValidSpellTypeBySpellID(uint16 spell_type, uint16 spell_id) {
 
 			return false;
 		case BotSpellTypes::Pet:
-			if (IsSummonPetSpell(spell_id) || IsEffectInSpell(spell_id, SE_TemporaryPets)) {
+			if (IsSummonPetSpell(spell_id) || IsEffectInSpell(spell_id, SpellEffect::TemporaryPets)) {
 				return true;
 			}
 
@@ -11732,7 +11735,7 @@ bool Bot::IsValidSpellTypeBySpellID(uint16 spell_type, uint16 spell_id) {
 			return false;
 		case BotSpellTypes::Snare:
 		case BotSpellTypes::AESnare:
-			if (IsDetrimentalSpell(spell_id) && IsEffectInSpell(spell_id, SE_MovementSpeed)) {
+			if (IsDetrimentalSpell(spell_id) && IsEffectInSpell(spell_id, SpellEffect::MovementSpeed)) {
 				return true;
 			}
 
@@ -11806,7 +11809,7 @@ bool Bot::IsValidSpellTypeBySpellID(uint16 spell_type, uint16 spell_id) {
 
 			return false;
 		case BotSpellTypes::Resurrect:
-			if (IsEffectInSpell(spell_id, SE_Revive)) {
+			if (IsEffectInSpell(spell_id, SpellEffect::Revive)) {
 				return true;
 			}
 
@@ -11911,14 +11914,14 @@ bool Bot::IsValidSpellTypeBySpellID(uint16 spell_type, uint16 spell_id) {
 			return false;
 		case BotSpellTypes::ResistBuffs:
 		case BotSpellTypes::PetResistBuffs:
-			if (IsResistanceBuffSpell(spell_id) && !IsEffectInSpell(spell_id, SE_DamageShield)) {
+			if (IsResistanceBuffSpell(spell_id) && !IsEffectInSpell(spell_id, SpellEffect::DamageShield)) {
 				return true;
 			}
 
 			return false;
 		case BotSpellTypes::DamageShields:
 		case BotSpellTypes::PetDamageShields:
-			if (IsBeneficialSpell(spell_id) && IsEffectInSpell(spell_id, SE_DamageShield)) {
+			if (IsBeneficialSpell(spell_id) && IsEffectInSpell(spell_id, SpellEffect::DamageShield)) {
 				return true;
 			}
 
@@ -11926,7 +11929,7 @@ bool Bot::IsValidSpellTypeBySpellID(uint16 spell_type, uint16 spell_id) {
 		case BotSpellTypes::Teleport:
 			if (
 				IsBeneficialSpell(spell_id) &&
-				(IsEffectInSpell(spell_id, SE_Teleport) || IsEffectInSpell(spell_id, SE_Translocate))
+				(IsEffectInSpell(spell_id, SpellEffect::Teleport) || IsEffectInSpell(spell_id, SpellEffect::Translocate))
 			) {
 				return true;
 			}
@@ -11942,40 +11945,40 @@ bool Bot::IsValidSpellTypeBySpellID(uint16 spell_type, uint16 spell_id) {
 		case BotSpellTypes::Succor:
 			if (
 				IsBeneficialSpell(spell_id) &&
-				IsEffectInSpell(spell_id, SE_Succor)
+				IsEffectInSpell(spell_id, SpellEffect::Succor)
 			) {
 				return true;
 			}
 
 			return false;
 		case BotSpellTypes::BindAffinity:
-			if (IsEffectInSpell(spell_id, SE_BindAffinity)) {
+			if (IsEffectInSpell(spell_id, SpellEffect::BindAffinity)) {
 				return true;
 			}
 
 			return false;
 		case BotSpellTypes::Identify:
-			if (IsEffectInSpell(spell_id, SE_Identify)) {
+			if (IsEffectInSpell(spell_id, SpellEffect::Identify)) {
 				return true;
 			}
 
 			return false;
 		case BotSpellTypes::Levitate:
-			if (IsBeneficialSpell(spell_id) && IsEffectInSpell(spell_id, SE_Levitate)) {
+			if (IsBeneficialSpell(spell_id) && IsEffectInSpell(spell_id, SpellEffect::Levitate)) {
 				return true;
 			}
 
 			return false;
 		case BotSpellTypes::Rune:
 			if (IsBeneficialSpell(spell_id) &&
-				(IsEffectInSpell(spell_id, SE_AbsorbMagicAtt) || IsEffectInSpell(spell_id, SE_Rune))
+				(IsEffectInSpell(spell_id, SpellEffect::AbsorbMagicAtt) || IsEffectInSpell(spell_id, SpellEffect::Rune))
 			) {
 				return true;
 			}
 
 			return false;
 		case BotSpellTypes::WaterBreathing:
-			if (IsBeneficialSpell(spell_id) && IsEffectInSpell(spell_id, SE_WaterBreathing)) {
+			if (IsBeneficialSpell(spell_id) && IsEffectInSpell(spell_id, SpellEffect::WaterBreathing)) {
 				return true;
 			}
 
@@ -11983,7 +11986,7 @@ bool Bot::IsValidSpellTypeBySpellID(uint16 spell_type, uint16 spell_id) {
 		case BotSpellTypes::Size:
 			if (
 				IsBeneficialSpell(spell_id) &&
-				(IsEffectInSpell(spell_id, SE_ModelSize) || IsEffectInSpell(spell_id, SE_ChangeHeight))
+				(IsEffectInSpell(spell_id, SpellEffect::ModelSize) || IsEffectInSpell(spell_id, SpellEffect::ChangeHeight))
 			) {
 				return true;
 			}
@@ -11991,14 +11994,14 @@ bool Bot::IsValidSpellTypeBySpellID(uint16 spell_type, uint16 spell_id) {
 			return false;
 		case BotSpellTypes::Invisibility:
 			if (IsBeneficialSpell(spell_id) &&
-				(IsEffectInSpell(spell_id, SE_SeeInvis) ||IsInvisibleSpell(spell_id))
+				(IsEffectInSpell(spell_id, SpellEffect::SeeInvis) ||IsInvisibleSpell(spell_id))
 			) {
 				return true;
 			}
 
 			return false;
 		case BotSpellTypes::MovementSpeed:
-			if (IsBeneficialSpell(spell_id) && IsEffectInSpell(spell_id, SE_MovementSpeed)) {
+			if (IsBeneficialSpell(spell_id) && IsEffectInSpell(spell_id, SpellEffect::MovementSpeed)) {
 				return true;
 			}
 
@@ -12007,10 +12010,10 @@ bool Bot::IsValidSpellTypeBySpellID(uint16 spell_type, uint16 spell_id) {
 			if (
 				IsBeneficialSpell(spell_id) &&
 					(
-						IsEffectInSpell(spell_id, SE_GateToHomeCity) ||
+						IsEffectInSpell(spell_id, SpellEffect::GateToHomeCity) ||
 							(
 								teleport_zone.compare("") &&
-								(IsEffectInSpell(spell_id, SE_Teleport) || IsEffectInSpell(spell_id, SE_Translocate))
+								(IsEffectInSpell(spell_id, SpellEffect::Teleport) || IsEffectInSpell(spell_id, SpellEffect::Translocate))
 							)
 					)
 			) {
@@ -12019,7 +12022,7 @@ bool Bot::IsValidSpellTypeBySpellID(uint16 spell_type, uint16 spell_id) {
 
 			return false;
 		case BotSpellTypes::SummonCorpse:
-			if (IsEffectInSpell(spell_id, SE_SummonCorpse)) {
+			if (IsEffectInSpell(spell_id, SpellEffect::SummonCorpse)) {
 				return true;
 			}
 
@@ -12510,15 +12513,15 @@ bool Bot::IsValidSpellTypeSubType(uint16 spell_type, uint16 sub_type, uint16 spe
 
 			break;
 		case CommandedSubTypes::SeeInvis:
-			if (IsEffectInSpell(spell_id, SE_SeeInvis)) {
+			if (IsEffectInSpell(spell_id, SpellEffect::SeeInvis)) {
 				return true;
 			}
 
 			break;
 		case CommandedSubTypes::Invis:
 			if (
-				IsEffectInSpell(spell_id, SE_Invisibility) ||
-				IsEffectInSpell(spell_id, SE_Invisibility2)
+				IsEffectInSpell(spell_id, SpellEffect::Invisibility) ||
+				IsEffectInSpell(spell_id, SpellEffect::Invisibility2)
 			) {
 				return true;
 			}
@@ -12526,8 +12529,8 @@ bool Bot::IsValidSpellTypeSubType(uint16 spell_type, uint16 sub_type, uint16 spe
 			break;
 		case CommandedSubTypes::InvisUndead:
 			if (
-				IsEffectInSpell(spell_id, SE_InvisVsUndead) ||
-				IsEffectInSpell(spell_id, SE_InvisVsUndead2)
+				IsEffectInSpell(spell_id, SpellEffect::InvisVsUndead) ||
+				IsEffectInSpell(spell_id, SpellEffect::InvisVsUndead2)
 			) {
 				return true;
 			}
@@ -12535,8 +12538,8 @@ bool Bot::IsValidSpellTypeSubType(uint16 spell_type, uint16 sub_type, uint16 spe
 			break;
 		case CommandedSubTypes::InvisAnimals:
 			if (
-				IsEffectInSpell(spell_id, SE_InvisVsAnimals) ||
-				IsEffectInSpell(spell_id, SE_ImprovedInvisAnimals)
+				IsEffectInSpell(spell_id, SpellEffect::InvisVsAnimals) ||
+				IsEffectInSpell(spell_id, SpellEffect::ImprovedInvisAnimals)
 			) {
 				return true;
 			}
@@ -12545,13 +12548,13 @@ bool Bot::IsValidSpellTypeSubType(uint16 spell_type, uint16 sub_type, uint16 spe
 		case CommandedSubTypes::Shrink:
 			if (
 				(
-					IsEffectInSpell(spell_id, SE_ModelSize) &&
-					CalcSpellEffectValue(spell_id, GetSpellEffectIndex(spell_id, SE_ModelSize), GetLevel()) < 100
+					IsEffectInSpell(spell_id, SpellEffect::ModelSize) &&
+					CalcSpellEffectValue(spell_id, GetSpellEffectIndex(spell_id, SpellEffect::ModelSize), GetLevel()) < 100
 				)
 				||
 				(
-					IsEffectInSpell(spell_id, SE_ChangeHeight) &&
-					CalcSpellEffectValue(spell_id, GetSpellEffectIndex(spell_id, SE_ChangeHeight), GetLevel()) < 100
+					IsEffectInSpell(spell_id, SpellEffect::ChangeHeight) &&
+					CalcSpellEffectValue(spell_id, GetSpellEffectIndex(spell_id, SpellEffect::ChangeHeight), GetLevel()) < 100
 				)
 			) {
 				return true;
@@ -12561,13 +12564,13 @@ bool Bot::IsValidSpellTypeSubType(uint16 spell_type, uint16 sub_type, uint16 spe
 		case CommandedSubTypes::Grow:
 			if (
 				(
-					IsEffectInSpell(spell_id, SE_ModelSize) &&
-					CalcSpellEffectValue(spell_id, GetSpellEffectIndex(spell_id, SE_ModelSize), GetLevel()) > 100
+					IsEffectInSpell(spell_id, SpellEffect::ModelSize) &&
+					CalcSpellEffectValue(spell_id, GetSpellEffectIndex(spell_id, SpellEffect::ModelSize), GetLevel()) > 100
 				)
 				||
 				(
-					IsEffectInSpell(spell_id, SE_ChangeHeight) &&
-					CalcSpellEffectValue(spell_id, GetSpellEffectIndex(spell_id, SE_ChangeHeight), GetLevel()) > 100
+					IsEffectInSpell(spell_id, SpellEffect::ChangeHeight) &&
+					CalcSpellEffectValue(spell_id, GetSpellEffectIndex(spell_id, SpellEffect::ChangeHeight), GetLevel()) > 100
 				)
 			) {
 				return true;
@@ -12577,7 +12580,7 @@ bool Bot::IsValidSpellTypeSubType(uint16 spell_type, uint16 sub_type, uint16 spe
 		case CommandedSubTypes::Selo:
 			if (
 				IsBeneficialSpell(spell_id) &&
-				IsEffectInSpell(spell_id, SE_MovementSpeed) &&
+				IsEffectInSpell(spell_id, SpellEffect::MovementSpeed) &&
 				IsBardSong(spell_id)
 			) {
 				return true;
@@ -13347,7 +13350,7 @@ bool Bot::IsImmuneToBotSpell(uint16 spell_id, Mob* caster) {
 
 	if (!GetSpecialAbility(SpecialAbility::MesmerizeImmunity) && IsMesmerizeSpell(spell_id)) {
 		// check max level for spell
-		effect_index = GetSpellEffectIndex(spell_id, SE_Mez);
+		effect_index = GetSpellEffectIndex(spell_id, SpellEffect::Mez);
 		assert(effect_index >= 0);
 		// NPCs get to ignore the max level
 		if (
@@ -13359,13 +13362,13 @@ bool Bot::IsImmuneToBotSpell(uint16 spell_id, Mob* caster) {
 	}
 
 	// slow and haste spells
-	if (GetSpecialAbility(SpecialAbility::SlowImmunity) && IsEffectInSpell(spell_id, SE_AttackSpeed)) {
+	if (GetSpecialAbility(SpecialAbility::SlowImmunity) && IsEffectInSpell(spell_id, SpellEffect::AttackSpeed)) {
 		return true;
 	}
 
 	// client vs client fear
-	if (!GetSpecialAbility(SpecialAbility::FearImmunity) && IsEffectInSpell(spell_id, SE_Fear)) {
-		effect_index = GetSpellEffectIndex(spell_id, SE_Fear);
+	if (!GetSpecialAbility(SpecialAbility::FearImmunity) && IsEffectInSpell(spell_id, SpellEffect::Fear)) {
+		effect_index = GetSpellEffectIndex(spell_id, SpellEffect::Fear);
 
 		if (IsClient() && caster->IsClient() && (caster->CastToClient()->GetGM() == false)) {
 			LogSpells("Clients cannot fear eachother!");
@@ -13389,7 +13392,7 @@ bool Bot::IsImmuneToBotSpell(uint16 spell_id, Mob* caster) {
 		//let npcs cast whatever charm on anyone
 		if (!caster->IsNPC()) {
 			// check level limit of charm spell
-			effect_index = GetSpellEffectIndex(spell_id, SE_Charm);
+			effect_index = GetSpellEffectIndex(spell_id, SpellEffect::Charm);
 			assert(effect_index >= 0);
 			if (GetLevel() > spells[spell_id].max_value[effect_index] && spells[spell_id].max_value[effect_index] != 0) {
 				return true;
@@ -13400,8 +13403,8 @@ bool Bot::IsImmuneToBotSpell(uint16 spell_id, Mob* caster) {
 	if (
 		GetSpecialAbility(SpecialAbility::SnareImmunity) &&
 		(
-			IsEffectInSpell(spell_id, SE_Root) ||
-			IsEffectInSpell(spell_id, SE_MovementSpeed)
+			IsEffectInSpell(spell_id, SpellEffect::Root) ||
+			IsEffectInSpell(spell_id, SpellEffect::MovementSpeed)
 		)
 	) {
 		return true;
@@ -13456,6 +13459,6 @@ bool Bot::HasControllablePet(uint8 ranks_required) {
 	}
 
 	return GetClass() != Class::Enchanter ||
-		GetPet()->GetPetType() != petAnimation ||
+		GetPet()->GetPetType() != PetType::Animation ||
 		GetAA(aaAnimationEmpathy) >= ranks_required;
 }

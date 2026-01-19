@@ -17,12 +17,12 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-#include "emu_constants.h"
-#include "bodytypes.h"
-#include "data_verification.h"
-#include "eqemu_logsys.h"
-#include "eqemu_logsys_log_aliases.h"
-#include "rulesys.h"
+#include "common/bodytypes.h"
+#include "common/data_verification.h"
+#include "common/emu_constants.h"
+#include "common/eqemu_logsys_log_aliases.h"
+#include "common/eqemu_logsys.h"
+#include "common/rulesys.h"
 
 int16 EQ::invtype::GetInvTypeSize(int16 inv_type) {
 	static const int16 local_array[] = {
@@ -450,4 +450,24 @@ std::string LDoNTheme::GetName(uint32 theme_id)
 bool LDoNTheme::IsValid(uint32 theme_id)
 {
 	return ldon_theme_names.find(theme_id) != ldon_theme_names.end();
+}
+
+std::string PetCommand::GetName(uint8 pet_command)
+{
+	return IsValid(pet_command) ? pet_commands[pet_command] : "UNKNOWN PET COMMAND";
+}
+
+bool PetCommand::IsValid(uint8 pet_command)
+{
+	return pet_commands.find(pet_command) != pet_commands.end();
+}
+
+std::string PetType::GetName(uint8 pet_type)
+{
+	return IsValid(pet_type) ? pet_types[pet_type] : "UNKNOWN PET TYPE";
+}
+
+bool PetType::IsValid(uint8 pet_type)
+{
+	return pet_types.find(pet_type) != pet_types.end();
 }

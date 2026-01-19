@@ -18,16 +18,16 @@
 
 #ifdef EMBPERL
 
-#include "../common/global_define.h"
-#include "../common/seperator.h"
-#include "../common/misc_functions.h"
-#include "../common/strings.h"
-#include "../common/features.h"
-#include "masterentity.h"
-#include "embparser.h"
-#include "questmgr.h"
-#include "qglobals.h"
-#include "zone.h"
+#include "common/features.h"
+#include "common/misc_functions.h"
+#include "common/seperator.h"
+#include "common/strings.h"
+#include "zone/embparser.h"
+#include "zone/masterentity.h"
+#include "zone/qglobals.h"
+#include "zone/questmgr.h"
+#include "zone/zone.h"
+
 #include <algorithm>
 #include <sstream>
 
@@ -207,6 +207,9 @@ const char* QuestEventSubroutines[_LargestEventID] = {
 	"EVENT_AA_LOSS",
 	"EVENT_SPELL_BLOCKED",
 	"EVENT_READ_ITEM",
+	"EVENT_PET_COMMAND",
+	"EVENT_CHARM_START",
+	"EVENT_CHARM_END",
 
 	// Add new events before these or Lua crashes
 	"EVENT_SPELL_EFFECT_BOT",
@@ -2532,6 +2535,12 @@ void PerlembParser::ExportEventVariables(
 			break;
 		}
 
+		case EVENT_PET_COMMAND: {
+			ExportVar(package_name.c_str(), "pet_command", extra_data);
+			ExportVar(package_name.c_str(), "pet_command_name", data);
+			break;
+		}
+
 		default: {
 			break;
 		}
@@ -2902,4 +2911,4 @@ int PerlembParser::EventGlobalZone(
 	);
 }
 
-#endif
+#endif // EMBPERL

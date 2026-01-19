@@ -1,8 +1,8 @@
-#ifndef EQEMU_LUA_NPC_H
-#define EQEMU_LUA_NPC_H
+#pragma once
+
 #ifdef LUA_EQEMU
 
-#include "lua_mob.h"
+#include "zone/lua_mob.h"
 
 class NPC;
 class Lua_Mob;
@@ -200,8 +200,8 @@ public:
 	Lua_Spawn GetSpawn(lua_State* L);
 	bool IsResumedFromZoneSuspend();
 	void SetNPCTintIndex(uint32 id);
+	uint32 GetNPCTintIndex();
 
 };
 
-#endif
-#endif
+#endif // LUA_EQEMU

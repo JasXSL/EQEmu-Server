@@ -1,15 +1,16 @@
 #ifdef LUA_EQEMU
 
-#include "lua.hpp"
-#include <luabind/luabind.hpp>
-#include <luabind/iterator_policy.hpp>
-
-#include "npc.h"
 #include "lua_npc.h"
-#include "lua_client.h"
-#include "lua_item.h"
-#include "lua_iteminst.h"
-#include "lua_spawn.h"
+
+#include "zone/lua_client.h"
+#include "zone/lua_item.h"
+#include "zone/lua_iteminst.h"
+#include "zone/lua_spawn.h"
+#include "zone/npc.h"
+
+#include "lua.hpp"
+#include "luabind/iterator_policy.hpp"
+#include "luabind/luabind.hpp"
 
 struct Lua_NPC_Loot_List {
 	std::vector<uint32> entries;
@@ -945,10 +946,16 @@ bool Lua_NPC::IsResumedFromZoneSuspend()
 	return self->IsResumedFromZoneSuspend();
 }
 
-void Lua_NPC::SetNPCTintIndex(uint32 id)
+void Lua_NPC::SetNPCTintIndex(uint32 index)
 {
 	Lua_Safe_Call_Void();
-	self->SendAppearancePacket(AppearanceType::NPCTintIndex, id);
+	self->SetNPCTintIndex(index);
+}
+
+uint32 Lua_NPC::GetNPCTintIndex()
+{
+	Lua_Safe_Call_Int();
+	return self->GetNPCTintIndex();
 }
 
 luabind::scope lua_register_npc() {
@@ -1018,6 +1025,7 @@ luabind::scope lua_register_npc() {
 	.def("GetNPCSpellsEffectsID", (uint32(Lua_NPC::*)(void))&Lua_NPC::GetNPCSpellsEffectsID)
 	.def("GetNPCSpellsID", (uint32(Lua_NPC::*)(void))&Lua_NPC::GetNPCSpellsID)
 	.def("GetNPCStat", (float(Lua_NPC::*)(std::string))&Lua_NPC::GetNPCStat)
+	.def("GetNPCTintIndex", (uint32(Lua_NPC::*)(void))&Lua_NPC::GetNPCTintIndex)
 	.def("GetPetSpellID", (int(Lua_NPC::*)(void))&Lua_NPC::GetPetSpellID)
 	.def("GetPlatinum", (uint32(Lua_NPC::*)(void))&Lua_NPC::GetPlatinum)
 	.def("GetPrimSkill", (int(Lua_NPC::*)(void))&Lua_NPC::GetPrimSkill)
@@ -1124,4 +1132,4 @@ luabind::scope lua_register_npc_loot_list() {
 	.def_readwrite("entries", &Lua_NPC_Loot_List::entries, luabind::return_stl_iterator);
 }
 
-#endif
+#endif // LUA_EQEMU
