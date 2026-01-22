@@ -1,8 +1,8 @@
-#ifndef EQEMU_LUA_CLIENT_H
-#define EQEMU_LUA_CLIENT_H
+#pragma once
+
 #ifdef LUA_EQEMU
 
-#include "lua_mob.h"
+#include "zone/lua_mob.h"
 
 class Client;
 class Lua_Expedition;
@@ -297,6 +297,7 @@ public:
 	int GetClientVersion();
 	uint32 GetClientVersionBit();
 	void SetTitleSuffix(const char *text);
+	void EnableTitleSet(uint32 title_set);
 	void SetAAPoints(int points);
 	int GetAAPoints();
 	int GetSpentAA();
@@ -313,8 +314,6 @@ public:
 	void SetStartZone(int zone_id, float x, float y);
 	void SetStartZone(int zone_id, float x, float y, float z);
 	void SetStartZone(int zone_id, float x, float y, float z, float heading);
-	void KeyRingAdd(uint32 item);
-	bool KeyRingCheck(uint32 item);
 	void AddPVPPoints(uint32 points);
 	void AddCrystals(uint32 radiant_count, uint32 ebon_count);
 	void SetEbonCrystals(uint32 value);
@@ -441,14 +440,14 @@ public:
 	void Popup(const char* title, const char* text, uint32 popup_id, uint32 negative_id, uint32 button_type, uint32 duration);
 	void Popup(const char* title, const char* text, uint32 popup_id, uint32 negative_id, uint32 button_type, uint32 duration, const char* button_name_one, const char* button_name_two);
 	void Popup(const char* title, const char* text, uint32 popup_id, uint32 negative_id, uint32 button_type, uint32 duration, const char* button_name_one, const char* button_name_two, uint32 sound_controls);
-	int CountItem(uint32 item_id);
+	uint32 CountItem(uint32 item_id);
 	void RemoveItem(uint32 item_id);
 	void RemoveItem(uint32 item_id, uint32 quantity);
 	void SetGMStatus(int new_status);
 	int16 GetGMStatus();
 	void AddItem(luabind::object item_table);
-	int CountAugmentEquippedByID(uint32 item_id);
-	int CountItemEquippedByID(uint32 item_id);
+	uint32 CountAugmentEquippedByID(uint32 item_id);
+	uint32 CountItemEquippedByID(uint32 item_id);
 	bool HasAugmentEquippedByID(uint32 item_id);
 	bool HasItemEquippedByID(uint32 item_id);
 	int GetHealAmount();
@@ -511,6 +510,32 @@ public:
 	void AreaTaunt();
 	void AreaTaunt(float range);
 	void AreaTaunt(float range, int bonus_hate);
+	luabind::object GetInventorySlots(lua_State* L);
+	void SetAAEXPPercentage(uint8 percentage);
+	std::string GetBandolierName(uint8 bandolier_slot);
+	uint32 GetBandolierItemIcon(uint8 bandolier_slot, uint8 slot_id);
+	uint32 GetBandolierItemID(uint8 bandolier_slot, uint8 slot_id);
+	std::string GetBandolierItemName(uint8 bandolier_slot, uint8 slot_id);
+	uint32 GetPotionBeltItemIcon(uint8 slot_id);
+	uint32 GetPotionBeltItemID(uint8 slot_id);
+	std::string GetPotionBeltItemName(uint8 slot_id);
+	bool KeyRingAdd(uint32 item_id);
+	bool KeyRingCheck(uint32 item_id);
+	bool KeyRingClear();
+	void KeyRingList();
+	void KeyRingList(Lua_Client c);
+	bool KeyRingRemove(uint32 item_id);
+	bool CompleteTask(int task_id);
+	bool UncompleteTask(int task_id);
+	luabind::object GetKeyRing(lua_State* L);
+
+	// account data buckets
+	void SetAccountBucket(std::string bucket_name, std::string bucket_value);
+	void SetAccountBucket(std::string bucket_name, std::string bucket_value, std::string expiration = "");
+	void DeleteAccountBucket(std::string bucket_name);
+	std::string GetAccountBucket(std::string bucket_name);
+	std::string GetAccountBucketExpires(std::string bucket_name);
+	std::string GetAccountBucketRemaining(std::string bucket_name);
 
 	void ApplySpell(int spell_id);
 	void ApplySpell(int spell_id, int duration);
@@ -588,6 +613,12 @@ public:
 	void DialogueWindow(std::string markdown);
 
 	bool ReloadDataBuckets();
+	void ShowZoneShardMenu();
+	void GrantPetNameChange();
+
+	void GrantNameChange();
+	bool IsNameChangeAllowed();
+	bool ClearNameChange();
 
 	Lua_Expedition  CreateExpedition(luabind::object expedition_info);
 	Lua_Expedition  CreateExpedition(std::string zone_name, uint32 version, uint32 duration, std::string expedition_name, uint32 min_players, uint32 max_players);
@@ -620,5 +651,4 @@ public:
 	void            Fling(float value, float target_x, float target_y, float target_z, bool ignore_los, bool clip_through_walls);
 };
 
-#endif
-#endif
+#endif // LUA_EQEMU

@@ -16,38 +16,28 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-#include <stdio.h>
+#include "shared_memory/items.h"
+#include "shared_memory/spells.h"
+#include "common/content/world_content_service.h"
+#include "common/crash.h"
+#include "common/eqemu_config.h"
+#include "common/eqemu_exception.h"
+#include "common/eqemu_logsys.h"
+#include "common/events/player_event_logs.h"
+#include "common/evolving_items.h"
+#include "common/path_manager.h"
+#include "common/platform.h"
+#include "common/rulesys.h"
+#include "common/shareddb.h"
+#include "common/strings.h"
+#include "common/zone_store.h"
 
-#include "../common/eqemu_logsys.h"
-#include "../common/global_define.h"
-#include "../common/shareddb.h"
-#include "../common/eqemu_config.h"
-#include "../common/platform.h"
-#include "../common/crash.h"
-#include "../common/rulesys.h"
-#include "../common/eqemu_exception.h"
-#include "../common/strings.h"
-#include "items.h"
-#include "spells.h"
-#include "../common/content/world_content_service.h"
-#include "../common/zone_store.h"
-#include "../common/path_manager.h"
-#include "../common/events/player_event_logs.h"
-
-EQEmuLogSys         LogSys;
-WorldContentService content_service;
-ZoneStore           zone_store;
-PathManager         path;
-PlayerEventLogs     player_event_logs;
-
+#include <cstdio>
 #ifdef _WINDOWS
 #include <direct.h>
 #else
-
 #include <unistd.h>
-
 #endif
-
 #include <sys/stat.h>
 
 inline bool MakeDirectory(const std::string &directory_name)
@@ -79,10 +69,10 @@ inline bool MakeDirectory(const std::string &directory_name)
 int main(int argc, char **argv)
 {
 	RegisterExecutablePlatform(ExePlatformSharedMemory);
-	LogSys.LoadLogSettingsDefaults();
+	EQEmuLogSys::Instance()->LoadLogSettingsDefaults();
 	set_exception_handler();
 
-	path.LoadPaths();
+	PathManager::Instance()->Init();
 
 	LogInfo("Shared Memory Loader Program");
 	if (!EQEmuConfig::LoadConfig()) {
@@ -124,8 +114,8 @@ int main(int argc, char **argv)
 		content_db.SetMySQL(database);
 	}
 
-	LogSys.SetDatabase(&database)
-		->SetLogPath(path.GetLogPath())
+	EQEmuLogSys::Instance()->SetDatabase(&database)
+		->SetLogPath(PathManager::Instance()->GetLogPath())
 		->LoadLogDatabaseSettings()
 		->StartFileLogs();
 
@@ -167,16 +157,16 @@ int main(int argc, char **argv)
 	}
 
 
-	content_service.SetCurrentExpansion(RuleI(Expansion, CurrentExpansion));
-	content_service.SetDatabase(&database)
+	WorldContentService::Instance()->SetCurrentExpansion(RuleI(Expansion, CurrentExpansion));
+	WorldContentService::Instance()->SetDatabase(&database)
 		->SetContentDatabase(&content_db)
 		->SetExpansionContext()
 		->ReloadContentFlags();
 
 	LogInfo(
 		"Current expansion is [{}] ({})",
-		content_service.GetCurrentExpansion(),
-		content_service.GetCurrentExpansionName()
+		WorldContentService::Instance()->GetCurrentExpansion(),
+		WorldContentService::Instance()->GetCurrentExpansionName()
 	);
 
 	std::string hotfix_name = "";
@@ -242,6 +232,6 @@ int main(int argc, char **argv)
 		}
 	}
 
-	LogSys.CloseFileLogs();
+	EQEmuLogSys::Instance()->CloseFileLogs();
 	return 0;
 }

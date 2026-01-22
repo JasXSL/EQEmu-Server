@@ -1,14 +1,15 @@
 #ifdef LUA_EQEMU
 
-#include "lua.hpp"
-#include <luabind/luabind.hpp>
-
-#include "bot.h"
 #include "lua_bot.h"
-#include "lua_iteminst.h"
-#include "lua_mob.h"
-#include "lua_group.h"
-#include "lua_item.h"
+
+#include "zone/bot.h"
+#include "zone/lua_iteminst.h"
+#include "zone/lua_mob.h"
+#include "zone/lua_group.h"
+#include "zone/lua_item.h"
+
+#include "lua.hpp"
+#include "luabind/luabind.hpp"
 
 void Lua_Bot::AddBotItem(uint16 slot_id, uint32 item_id) {
 	Lua_Safe_Call_Void();
@@ -127,19 +128,14 @@ void Lua_Bot::SetExpansionBitmask(int expansion_bitmask) {
 	self->SetExpansionBitmask(expansion_bitmask);
 }
 
-void Lua_Bot::SetExpansionBitmask(int expansion_bitmask, bool save) {
-	Lua_Safe_Call_Void();
-	self->SetExpansionBitmask(expansion_bitmask, save);
-}
-
 bool Lua_Bot::ReloadBotDataBuckets() {
 	Lua_Safe_Call_Bool();
-	return DataBucket::GetDataBuckets(self);
+	return self->LoadDataBucketsCache();;
 }
 
 bool Lua_Bot::ReloadBotOwnerDataBuckets() {
 	Lua_Safe_Call_Bool();
-	return self->HasOwner() && DataBucket::GetDataBuckets(self->GetBotOwner());
+	return self->HasOwner() && self->LoadDataBucketsCache();
 }
 
 bool Lua_Bot::ReloadBotSpells() {
@@ -296,7 +292,7 @@ void Lua_Bot::SetSpellDurationRaid(int spell_id, int duration, int level, bool a
 	self->SetSpellDuration(spell_id, duration, level, ApplySpellType::Raid, allow_pets, is_raid_group_only);
 }
 
-int Lua_Bot::CountAugmentEquippedByID(uint32 item_id) {
+uint32 Lua_Bot::CountAugmentEquippedByID(uint32 item_id) {
 	Lua_Safe_Call_Int();
 	return self->GetInv().CountAugmentEquippedByID(item_id);
 }
@@ -306,7 +302,7 @@ bool Lua_Bot::HasAugmentEquippedByID(uint32 item_id) {
 	return self->GetInv().HasAugmentEquippedByID(item_id);
 }
 
-int Lua_Bot::CountItemEquippedByID(uint32 item_id) {
+uint32 Lua_Bot::CountItemEquippedByID(uint32 item_id) {
 	Lua_Safe_Call_Int();
 	return self->GetInv().CountItemEquippedByID(item_id);
 }
@@ -686,6 +682,11 @@ void Lua_Bot::DeleteBot() {
 	self->DeleteBot();
 }
 
+void Lua_Bot::RaidGroupSay(const char* message) {
+	Lua_Safe_Call_Void();
+	self->RaidGroupSay(message);
+}
+
 luabind::scope lua_register_bot() {
 	return luabind::class_<Lua_Bot, Lua_Mob>("Bot")
 	.def(luabind::constructor<>())
@@ -715,6 +716,7 @@ luabind::scope lua_register_bot() {
 	.def("ApplySpellRaid", (void(Lua_Bot::*)(int,int,int,bool))&Lua_Bot::ApplySpellRaid)
 	.def("ApplySpellRaid", (void(Lua_Bot::*)(int,int,int,bool,bool))&Lua_Bot::ApplySpellRaid)
 	.def("ApplySpellRaid", (void(Lua_Bot::*)(int,int,int,bool,bool))&Lua_Bot::ApplySpellRaid)
+	.def("RaidGroupSay", (void(Lua_Bot::*)(const char*))&Lua_Bot::RaidGroupSay)
 	.def("Camp", (void(Lua_Bot::*)(void))&Lua_Bot::Camp)
 	.def("Camp", (void(Lua_Bot::*)(bool))&Lua_Bot::Camp)
 	.def("ClearDisciplineReuseTimer", (void(Lua_Bot::*)())&Lua_Bot::ClearDisciplineReuseTimer)
@@ -723,8 +725,9 @@ luabind::scope lua_register_bot() {
 	.def("ClearItemReuseTimer", (void(Lua_Bot::*)(uint32))&Lua_Bot::ClearItemReuseTimer)
 	.def("ClearSpellRecastTimer", (void(Lua_Bot::*)())&Lua_Bot::ClearSpellRecastTimer)
 	.def("ClearSpellRecastTimer", (void(Lua_Bot::*)(uint16))&Lua_Bot::ClearSpellRecastTimer)
+	.def("CountAugmentEquippedByID", (uint32(Lua_Bot::*)(uint32))&Lua_Bot::CountAugmentEquippedByID)
 	.def("CountBotItem", (uint32(Lua_Bot::*)(uint32))&Lua_Bot::CountBotItem)
-	.def("CountItemEquippedByID", (int(Lua_Bot::*)(uint32))&Lua_Bot::CountItemEquippedByID)
+	.def("CountItemEquippedByID", (uint32(Lua_Bot::*)(uint32))&Lua_Bot::CountItemEquippedByID)
 	.def("DeleteBot", (void(Lua_Bot::*)(void))&Lua_Bot::DeleteBot)
 	.def("DeleteBucket", (void(Lua_Bot::*)(std::string))&Lua_Bot::DeleteBucket)
 	.def("Escape", (void(Lua_Bot::*)(void))&Lua_Bot::Escape)
@@ -788,7 +791,6 @@ luabind::scope lua_register_bot() {
 	.def("SetBucket", (void(Lua_Bot::*)(std::string,std::string))&Lua_Bot::SetBucket)
 	.def("SetBucket", (void(Lua_Bot::*)(std::string,std::string,std::string))&Lua_Bot::SetBucket)
 	.def("SetExpansionBitmask", (void(Lua_Bot::*)(int))&Lua_Bot::SetExpansionBitmask)
-	.def("SetExpansionBitmask", (void(Lua_Bot::*)(int,bool))&Lua_Bot::SetExpansionBitmask)
 	.def("SetDisciplineReuseTimer", (void(Lua_Bot::*)(uint16))&Lua_Bot::SetDisciplineReuseTimer)
 	.def("SetDisciplineReuseTimer", (void(Lua_Bot::*)(uint16, uint32))&Lua_Bot::SetDisciplineReuseTimer)
 	.def("SetItemReuseTimer", (void(Lua_Bot::*)(uint32))&Lua_Bot::SetItemReuseTimer)
@@ -815,4 +817,4 @@ luabind::scope lua_register_bot() {
 	.def("Stand", (void(Lua_Bot::*)(void))&Lua_Bot::Stand);
 }
 
-#endif
+#endif // LUA_EQEMU

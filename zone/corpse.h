@@ -1,10 +1,10 @@
-#ifndef CORPSE_H
-#define CORPSE_H
 
-#include "mob.h"
-#include "client.h"
-#include "../common/loot.h"
-#include "../common/repositories/character_corpses_repository.h"
+#pragma once
+
+#include "common/loot.h"
+#include "common/repositories/character_corpses_repository.h"
+#include "zone/client.h"
+#include "zone/mob.h"
 
 class EQApplicationPacket;
 class Group;
@@ -196,10 +196,11 @@ public:
 	/* Corpse: Loot */
 	void QueryLoot(Client *to);
 	bool HasItem(uint32 item_id);
-	uint16 CountItem(uint32 item_id);
+	uint32 CountItem(uint32 item_id);
 	uint32 GetItemIDBySlot(uint16 loot_slot);
 	uint16 GetFirstLootSlotByItemID(uint32 item_id);
 	std::vector<int> GetLootList();
+	inline const LootItems &GetLootItems() { return m_item_list; }
 	void LootCorpseItem(Client *c, const EQApplicationPacket *app);
 	void EndLoot(Client *c, const EQApplicationPacket *app);
 	void MakeLootRequestPackets(Client *c, const EQApplicationPacket *app);
@@ -243,6 +244,8 @@ public:
 		const glm::vec4 &position
 	);
 
+	void SyncEntityVariablesToCorpseDB();
+
 protected:
 	void MoveItemToCorpse(Client *client, EQ::ItemInstance *inst, int16 equipSlot, std::list<uint32> &removedList);
 
@@ -285,5 +288,3 @@ private:
 	LootRequestType          m_loot_request_type;
 	uint32                   m_account_id;
 };
-
-#endif

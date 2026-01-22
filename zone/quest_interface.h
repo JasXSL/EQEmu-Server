@@ -16,11 +16,11 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-#ifndef _EQE_QUESTINTERFACE_H
-#define _EQE_QUESTINTERFACE_H
+#pragma once
 
-#include "../common/types.h"
-#include "event_codes.h"
+#include "common/types.h"
+#include "zone/event_codes.h"
+
 #include <any>
 
 class Client;
@@ -163,6 +163,28 @@ public:
 		return 0;
 	}
 
+	virtual int EventZone(
+		QuestEventID event_id,
+		Zone* zone,
+		std::string data,
+		uint32 extra_data,
+		std::vector<std::any>* extra_pointers
+	)
+	{
+		return 0;
+	}
+
+	virtual int EventGlobalZone(
+		QuestEventID event_id,
+		Zone* zone,
+		std::string data,
+		uint32 extra_data,
+		std::vector<std::any>* extra_pointers
+	)
+	{
+		return 0;
+	}
+
 	virtual bool HasQuestSub(uint32 npc_id, QuestEventID event_id)
 	{
 		return false;
@@ -223,6 +245,16 @@ public:
 		return false;
 	}
 
+	virtual bool ZoneHasQuestSub(QuestEventID event_id)
+	{
+		return false;
+	}
+
+	virtual bool GlobalZoneHasQuestSub(QuestEventID event_id)
+	{
+		return false;
+	}
+
 	virtual void LoadNPCScript(std::string filename, int npc_id) { }
 	virtual void LoadGlobalNPCScript(std::string filename) { }
 	virtual void LoadPlayerScript(std::string filename) { }
@@ -234,6 +266,8 @@ public:
 	virtual void LoadGlobalBotScript(std::string filename) { }
 	virtual void LoadMercScript(std::string filename) { }
 	virtual void LoadGlobalMercScript(std::string filename) { }
+	virtual void LoadZoneScript(std::string filename) { }
+	virtual void LoadGlobalZoneScript(std::string filename) { }
 
 	virtual int DispatchEventNPC(
 		QuestEventID event_id,
@@ -308,6 +342,17 @@ public:
 		return 0;
 	}
 
+	virtual int DispatchEventZone(
+		QuestEventID event_id,
+		Zone* zone,
+		std::string data,
+		uint32 extra_data,
+		std::vector<std::any>* extra_pointers
+	)
+	{
+		return 0;
+	}
+
 	virtual void AddVar(std::string name, std::string val) { }
 	virtual std::string GetVar(std::string name)
 	{
@@ -338,6 +383,3 @@ public:
 protected:
 	std::list<std::string> errors_;
 };
-
-#endif
-

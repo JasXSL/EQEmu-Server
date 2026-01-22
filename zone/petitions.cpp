@@ -15,30 +15,17 @@ Copyright (C) 2001-2002 EQEMu Development Team (http://eqemu.org)
 	along with this program; if not, write to the Free Software
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
-#include "../common/global_define.h"
-#include "../common/eqemu_logsys.h"
-#include <string.h>
-#ifdef _WINDOWS
-#else
-#include <pthread.h>
-#endif
 
-#ifdef _WINDOWS
-	#define snprintf	_snprintf
-	#define strncasecmp	_strnicmp
-	#define strcasecmp	_stricmp
-#endif
-
-
-#include "../common/eq_packet_structs.h"
-#include "../common/servertalk.h"
-#include "../common/strings.h"
-
-#include "entity.h"
 #include "petitions.h"
-#include "worldserver.h"
 
-PetitionList petition_list;
+#include "common/eq_packet_structs.h"
+#include "common/eqemu_logsys.h"
+#include "common/servertalk.h"
+#include "common/strings.h"
+#include "zone/entity.h"
+#include "zone/worldserver.h"
+
+#include <cstring>
 
 extern WorldServer worldserver;
 
@@ -288,7 +275,7 @@ void ZoneDatabase::RefreshPetitionsFromDB()
             newpet->SetCheckedOut(true);
         else
             newpet->SetCheckedOut(false);
-        petition_list.AddPetition(newpet);
+        PetitionList::Instance()->AddPetition(newpet);
     }
 
 }

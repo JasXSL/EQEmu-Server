@@ -18,9 +18,10 @@
  *
  */
 
-#include "client.h"
 #include "mob.h"
-#include "npc_scale_manager.h"
+
+#include "zone/client.h"
+#include "zone/npc_scale_manager.h"
 
 inline std::string GetMobAttributeByString(Mob *mob, const std::string &attribute)
 {
@@ -626,6 +627,9 @@ inline void NPCCommandsMenu(Client* client, NPC* npc)
 
 	if (npc->GetLoottableID() > 0) {
 		menu_commands += "[" + Saylink::Silent("#npcloot show", "Loot") + "] ";
+		if (npc) {
+			menu_commands += fmt::format(" Item(s) ({}) ", npc->GetLootItems().size());
+		}
 	}
 
 	if (npc->IsProximitySet()) {

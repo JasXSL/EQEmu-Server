@@ -17,40 +17,33 @@
 
 */
 
-#include "../common/eqemu_logsys.h"
-#include "../common/global_define.h"
-#include "clientlist.h"
-#include "../common/opcodemgr.h"
-#include "../common/rulesys.h"
-#include "../common/servertalk.h"
-#include "../common/platform.h"
-#include "../common/crash.h"
-#include "../common/event/event_loop.h"
-#include "database.h"
-#include "ucsconfig.h"
-#include "chatchannel.h"
-#include "worldserver.h"
-#include <list>
-#include <signal.h>
-#include <csignal>
-#include <thread>
+#include "common/crash.h"
+#include "common/discord/discord_manager.h"
+#include "common/eqemu_logsys.h"
+#include "common/event/event_loop.h"
+#include "common/events/player_event_logs.h"
+#include "common/net/servertalk_client_connection.h"
+#include "common/net/tcp_server.h"
+#include "common/opcodemgr.h"
+#include "common/path_manager.h"
+#include "common/platform.h"
+#include "common/rulesys.h"
+#include "common/servertalk.h"
+#include "common/zone_store.h"
+#include "ucs/chatchannel.h"
+#include "ucs/clientlist.h"
+#include "ucs/database.h"
+#include "ucs/ucsconfig.h"
+#include "ucs/worldserver.h"
 
-#include "../common/net/tcp_server.h"
-#include "../common/net/servertalk_client_connection.h"
-#include "../common/discord/discord_manager.h"
-#include "../common/path_manager.h"
-#include "../common/zone_store.h"
-#include "../common/events/player_event_logs.h"
+#include <csignal>
+#include <list>
+#include <thread>
 
 ChatChannelList *ChannelList;
 Clientlist *g_Clientlist;
-EQEmuLogSys LogSys;
 UCSDatabase database;
 WorldServer *worldserver = nullptr;
-DiscordManager discord_manager;
-PathManager path;
-ZoneStore zone_store;
-PlayerEventLogs player_event_logs;
 
 const ucsconfig *Config;
 
@@ -75,7 +68,7 @@ void Shutdown() {
 	LogInfo("Shutting down...");
 	ChannelList->RemoveAllChannels();
 	g_Clientlist->CloseAllConnections();
-	LogSys.CloseFileLogs();
+	EQEmuLogSys::Instance()->CloseFileLogs();
 }
 
 int caught_loop = 0;
@@ -90,24 +83,24 @@ void CatchSignal(int sig_num) {
 		LogInfo("In a signal handler loop and process is incapable of exiting properly, forcefully cleaning up");
 		ChannelList->RemoveAllChannels();
 		g_Clientlist->CloseAllConnections();
-		LogSys.CloseFileLogs();
+		EQEmuLogSys::Instance()->CloseFileLogs();
 		std::exit(0);
 	}
 }
 
 void PlayerEventQueueListener() {
 	while (caught_loop == 0) {
-		discord_manager.ProcessMessageQueue();
+		DiscordManager::Instance()->ProcessMessageQueue();
 		Sleep(100);
 	}
 }
 
 int main() {
 	RegisterExecutablePlatform(ExePlatformUCS);
-	LogSys.LoadLogSettingsDefaults();
+	EQEmuLogSys::Instance()->LoadLogSettingsDefaults();
 	set_exception_handler();
 
-	path.LoadPaths();
+	PathManager::Instance()->Init();
 
 	// Check every minute for unused channels we can delete
 	//
@@ -139,12 +132,13 @@ int main() {
 		return 1;
 	}
 
-	LogSys.SetDatabase(&database)
-		->SetLogPath(path.GetLogPath())
+	EQEmuLogSys::Instance()
+		->SetDatabase(&database)
+		->SetLogPath(PathManager::Instance()->GetLogPath())
 		->LoadLogDatabaseSettings()
 		->StartFileLogs();
 
-	player_event_logs.SetDatabase(&database)->Init();
+	PlayerEventLogs::Instance()->SetDatabase(&database)->Init();
 
 	char tmp[64];
 

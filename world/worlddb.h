@@ -15,11 +15,13 @@
 	along with this program; if not, write to the Free Software
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
-#ifndef WORLDDB_H_
-#define WORLDDB_H_
 
-#include "../common/shareddb.h"
-#include "../common/eq_packet.h"
+#pragma once
+
+#include "common/eq_packet.h"
+#include "common/repositories/character_data_repository.h"
+#include "common/repositories/inventory_repository.h"
+#include "common/shareddb.h"
 
 struct PlayerProfile_Struct;
 struct CharCreate_Struct;
@@ -43,10 +45,12 @@ private:
 	void SetTitaniumDefaultStartZone(PlayerProfile_Struct* in_pp, CharCreate_Struct* in_cc);
 	void SetSoFDefaultStartZone(PlayerProfile_Struct* in_pp, CharCreate_Struct* in_cc);
 
-	bool GetCharSelInventory(uint32 account_id, char* name, EQ::InventoryProfile* inv);
+	bool GetCharSelInventory(
+		const std::vector<InventoryRepository::Inventory> &inventories,
+		const CharacterDataRepository::CharacterData &character,
+		EQ::InventoryProfile *inv
+	);
 };
 
 extern WorldDatabase database;
 extern WorldDatabase content_db;
-
-#endif /*WORLDDB_H_*/

@@ -1,25 +1,25 @@
-#include "../common/global_define.h"
-#include "../common/data_verification.h"
-
-#include "../common/loot.h"
-#include "client.h"
-#include "entity.h"
-#include "mob.h"
 #include "npc.h"
-#include "zonedb.h"
-#include "global_loot_manager.h"
-#include "../common/repositories/criteria/content_filter_criteria.h"
-#include "../common/repositories/global_loot_repository.h"
-#include "quest_parser_collection.h"
 
-#ifdef _WINDOWS
-#define snprintf	_snprintf
-#endif
+#include "common/data_verification.h"
+#include "common/loot.h"
+#include "common/repositories/criteria/content_filter_criteria.h"
+#include "common/repositories/global_loot_repository.h"
+#include "zone/client.h"
+#include "zone/entity.h"
+#include "zone/global_loot_manager.h"
+#include "zone/mob.h"
+#include "zone/quest_parser_collection.h"
+#include "zone/zonedb.h"
 
 void NPC::AddLootTable(uint32 loottable_id, bool is_global)
 {
 	// check if it's a GM spawn
 	if (!npctype_id) {
+		return;
+	}
+
+	if (m_resumed_from_zone_suspend) {
+		LogZoneState("NPC [{}] is resuming from zone suspend, skipping", GetCleanName());
 		return;
 	}
 
@@ -52,7 +52,7 @@ void NPC::AddLootTable(uint32 loottable_id, bool is_global)
 		.content_flags_disabled = l->content_flags_disabled
 	};
 
-	if (!content_service.DoesPassContentFiltering(content_flags)) {
+	if (!WorldContentService::Instance()->DoesPassContentFiltering(content_flags)) {
 		return;
 	}
 
@@ -276,13 +276,18 @@ void NPC::AddLootDrop(
 	uint32 augment_six
 )
 {
+	if (m_resumed_from_zone_suspend) {
+		LogZoneState("NPC [{}] is resuming from zone suspend, skipping", GetCleanName());
+		return;
+	}
+
 	if (!item2) {
 		return;
 	}
 
 	auto item = new LootItem;
 
-	if (LogSys.log_settings[Logs::Loot].is_category_enabled == 1) {
+	if (EQEmuLogSys::Instance()->log_settings[Logs::Loot].is_category_enabled == 1) {
 		EQ::SayLinkEngine linker;
 		linker.SetLinkType(EQ::saylink::SayLinkItemData);
 		linker.SetItemData(item2);
@@ -370,6 +375,10 @@ void NPC::AddLootDrop(
 				if (item2->Slots & slots) {
 					if (equipment[i]) {
 						compitem = database.GetItem(equipment[i]);
+						if (!compitem) {
+							continue;
+						}
+
 						if (item2->AC > compitem->AC || (item2->AC == compitem->AC && item2->HP > compitem->HP)) {
 							// item would be an upgrade
 							// check if we're multi-slot, if yes then we have to keep
@@ -380,6 +389,9 @@ void NPC::AddLootDrop(
 							else {
 								// Unequip old item
 								auto *old_item = GetItem(i);
+								if (!old_item) {
+									continue;
+								}
 
 								old_item->equip_slot = EQ::invslot::SLOT_INVALID;
 
@@ -500,6 +512,7 @@ void NPC::AddLootDrop(
 		parse->EventNPC(EVENT_LOOT_ADDED, this, nullptr, "", 0, &args);
 	}
 
+	item->lootdrop_id = loot_drop.lootdrop_id;
 	m_loot_items.push_back(item);
 
 	if (found) {
@@ -671,7 +684,7 @@ LootItem *NPC::GetItem(int slot_id)
 	end = m_loot_items.end();
 	for (; cur != end; ++cur) {
 		LootItem *item = *cur;
-		if (item->equip_slot == slot_id) {
+		if (item && item->equip_slot == slot_id) {
 			return item;
 		}
 	}
@@ -687,6 +700,7 @@ void NPC::RemoveItem(uint32 item_id, uint16 quantity, uint16 slot)
 		LootItem *item = *cur;
 		if (item->item_id == item_id && slot <= 0 && quantity <= 0) {
 			m_loot_items.erase(cur);
+			safe_delete(item);
 			UpdateEquipmentLight();
 			if (UpdateActiveLight()) { SendAppearancePacket(AppearanceType::Light, GetActiveLightType()); }
 			return;
@@ -695,7 +709,10 @@ void NPC::RemoveItem(uint32 item_id, uint16 quantity, uint16 slot)
 			if (item->charges <= quantity) {
 				m_loot_items.erase(cur);
 				UpdateEquipmentLight();
-				if (UpdateActiveLight()) { SendAppearancePacket(AppearanceType::Light, GetActiveLightType()); }
+				if (UpdateActiveLight()) {
+					SendAppearancePacket(AppearanceType::Light, GetActiveLightType());
+				}
+				safe_delete(item);
 			}
 			else {
 				item->charges -= quantity;
@@ -859,9 +876,9 @@ bool NPC::HasItem(uint32 item_id)
 	return false;
 }
 
-uint16 NPC::CountItem(uint32 item_id)
+uint32 NPC::CountItem(uint32 item_id)
 {
-	uint16 item_count = 0;
+	uint32 item_count = 0;
 	if (!database.GetItem(item_id)) {
 		return item_count;
 	}

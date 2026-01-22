@@ -1,14 +1,13 @@
-
-
 #include "water_map.h"
-#include "water_map_v1.h"
-#include "water_map_v2.h"
-#include "../common/eqemu_logsys.h"
+
+#include "common/eqemu_logsys.h"
+#include "zone/water_map_v1.h"
+#include "zone/water_map_v2.h"
 
 #include <algorithm>
 #include <cctype>
-#include <stdio.h>
-#include <string.h>
+#include <cstdio>
+#include <cstring>
 
 /**
  * @param zone_name
@@ -17,7 +16,7 @@
 WaterMap* WaterMap::LoadWaterMapfile(std::string zone_name) {
 	std::transform(zone_name.begin(), zone_name.end(), zone_name.begin(), ::tolower);
 
-	std::string file_path = fmt::format("{}/water/{}.wtr", path.GetMapsPath(), zone_name);
+	std::string file_path = fmt::format("{}/water/{}.wtr", PathManager::Instance()->GetMapsPath(), zone_name);
 	LogDebug("Attempting to load water map with path [{}]", file_path.c_str());
 	FILE *f = fopen(file_path.c_str(), "rb");
 	if(f) {

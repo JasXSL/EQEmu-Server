@@ -15,16 +15,18 @@
 	along with this program; if not, write to the Free Software
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
-#ifndef ZONESERVER_H
-#define ZONESERVER_H
+
+#pragma once
 
 #include "world_tcp_connection.h"
-#include "../common/net/servertalk_server.h"
-#include "../common/event/timer.h"
-#include "../common/timer.h"
-#include "../common/emu_constants.h"
-#include "console.h"
-#include <string.h>
+
+#include "common/net/servertalk_server.h"
+#include "common/event/timer.h"
+#include "common/timer.h"
+#include "common/emu_constants.h"
+#include "world/console.h"
+
+#include <cstring>
 #include <string>
 
 class Client;
@@ -53,6 +55,9 @@ public:
 
 	inline const char*	GetZoneName() const	{ return zone_name; }
 	inline const char*	GetZoneLongName() const	{ return long_name; }
+	inline std::string  GetCurrentVersion() const { return CURRENT_VERSION; }
+	void                CheckToClearTraderAndBuyerTables();
+	inline std::string  GetCompileDate() const { return COMPILE_DATE; }
 	const char*			GetCompileTime() const{ return compiled; }
 	void				SetCompile(char* in_compile){ strcpy(compiled,in_compile); }
 	inline uint32		GetZoneID() const	{ return zone_server_zone_id; }
@@ -99,6 +104,3 @@ private:
 	std::string launched_name;	//the name of the zone we launched.
 	EQ::Net::ConsoleServer *console;
 };
-
-#endif
-

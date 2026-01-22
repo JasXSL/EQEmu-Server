@@ -1,10 +1,9 @@
-#include "../common/features.h"
-#include "client.h"
+#include "common/features.h"
 
 #ifdef EMBPERL_XS_CLASSES
 
-#include "../common/global_define.h"
-#include "embperl.h"
+#include "zone/client.h"
+#include "zone/embperl.h"
 
 bool Perl_Inventory_CanItemFitInContainer(EQ::InventoryProfile* self, EQ::ItemInstance* item_to_check, EQ::ItemInstance* container_to_check)
 {
@@ -150,7 +149,7 @@ bool Perl_Inventory_HasAugmentEquippedByID(EQ::InventoryProfile* self, uint32_t 
 	return self->HasAugmentEquippedByID(item_id);
 }
 
-int Perl_Inventory_CountAugmentEquippedByID(EQ::InventoryProfile* self, uint32_t item_id)
+uint32 Perl_Inventory_CountAugmentEquippedByID(EQ::InventoryProfile* self, uint32_t item_id)
 {
 	return self->CountAugmentEquippedByID(item_id);
 }
@@ -160,7 +159,7 @@ bool Perl_Inventory_HasItemEquippedByID(EQ::InventoryProfile* self, uint32_t ite
 	return self->HasItemEquippedByID(item_id);
 }
 
-int Perl_Inventory_CountItemEquippedByID(EQ::InventoryProfile* self, uint32_t item_id)
+uint32 Perl_Inventory_CountItemEquippedByID(EQ::InventoryProfile* self, uint32_t item_id)
 {
 	return self->CountItemEquippedByID(item_id);
 }

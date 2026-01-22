@@ -1,9 +1,9 @@
 #pragma once
 
-#include "tcp_connection.h"
-#include "../event/timer.h"
-#include "servertalk_common.h"
-#include "packet.h"
+#include "common/event/timer.h"
+#include "common/net/packet.h"
+#include "common/net/servertalk_common.h"
+#include "common/net/tcp_connection.h"
 
 namespace EQ
 {
@@ -23,6 +23,9 @@ namespace EQ
 			bool Connected() const { return m_connecting != true; }
 
 			std::shared_ptr<EQ::Net::TCPConnection> Handle() { return m_connection; }
+
+			const std::unique_ptr<EQ::Timer> &GetTimer() const { return m_timer; }
+
 		private:
 			void Connect();
 			void ProcessData(EQ::Net::TCPConnection *c, const unsigned char *data, size_t length);

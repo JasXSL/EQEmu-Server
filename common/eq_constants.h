@@ -17,11 +17,10 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-#ifndef COMMON_EQ_CONSTANTS_H
-#define COMMON_EQ_CONSTANTS_H
+#pragma once
 
-#include "skills.h"
-#include "types.h"
+#include "common/skills.h"
+#include "common/types.h"
 
 namespace AppearanceType {
 	constexpr uint32 Die                   = 0; // Causes the client to keel over and zone to bind point (default action)
@@ -974,43 +973,6 @@ namespace ZoneBlockedSpellTypes {
 	const uint8 Region   = 2;
 };
 
-enum class DynamicZoneType
-{
-	None = 0,
-	Expedition,
-	Tutorial,
-	Task,
-	Mission, // Shared Task
-	Quest
-};
-
-enum class DynamicZoneMemberStatus : uint8_t
-{
-	Unknown = 0,
-	Online,
-	Offline,
-	InDynamicZone,
-	LinkDead
-};
-
-enum LDoNThemes {
-	Unused = 0,
-	GUK,
-	MIR,
-	MMC,
-	RUJ,
-	TAK
-};
-
-enum LDoNThemeBits {
-	UnusedBit = 0,
-	GUKBit = 1,
-	MIRBit = 2,
-	MMCBit = 4,
-	RUJBit = 8,
-	TAKBit = 16
-};
-
 enum StartZoneIndex {
     Odus = 0,
     Qeynos,
@@ -1025,7 +987,8 @@ enum StartZoneIndex {
     Felwithe,
     Akanon,
     Cabilis,
-    SharVahl
+    SharVahl,
+    RatheMtn
 };
 
 enum FVNoDropFlagRule
@@ -1132,4 +1095,3 @@ enum ExpSource
 namespace DoorType {
 	constexpr uint32 BuyerStall = 155;
 }
-#endif /*COMMON_EQ_CONSTANTS_H*/

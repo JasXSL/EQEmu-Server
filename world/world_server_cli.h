@@ -1,8 +1,7 @@
-#include "iostream"
-#include "../common/cli/eqemu_command_handler.h"
 
-#ifndef EQEMU_WORLD_SERVER_COMMAND_HANDLER_H
-#define EQEMU_WORLD_SERVER_COMMAND_HANDLER_H
+#pragma once
+
+#include "common/cli/eqemu_command_handler.h"
 
 class WorldserverCLI {
 public:
@@ -25,7 +24,5 @@ public:
 	static void TestRepository2(int argc, char **argv, argh::parser &cmd, std::string &description);
 	static void TestDatabaseConcurrency(int argc, char **argv, argh::parser &cmd, std::string &description);
 	static void TestStringBenchmarkCommand(int argc, char **argv, argh::parser &cmd, std::string &description);
+	static void EtlGetSettings(int argc, char **argv, argh::parser &cmd, std::string &description);
 };
-
-
-#endif //EQEMU_WORLD_SERVER_COMMAND_HANDLER_H

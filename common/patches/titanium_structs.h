@@ -17,13 +17,15 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-#ifndef COMMON_TITANIUM_STRUCTS_H
-#define COMMON_TITANIUM_STRUCTS_H
+#pragma once
+
+#include "common/eq_packet_structs.h"
+#include "common/patches/titanium_limits.h"
+#include "common/textures.h"
+#include "common/types.h"
 
 
-namespace Titanium
-{
-	namespace structs {
+namespace Titanium { namespace structs {
 
 
 static const uint32 BUFF_COUNT = 25;
@@ -32,6 +34,7 @@ static const uint32 BUFF_COUNT = 25;
 ** Compiler override to ensure
 ** byte aligned structures
 */
+#pragma pack(push)
 #pragma pack(1)
 
 struct LoginInfo_Struct {
@@ -2463,25 +2466,25 @@ struct WhoAllReturnStruct {
 struct BeginTrader_Struct {
 	uint32 action;
 	uint32 unknown04;
-	uint64 serial_number[80];
-	uint32 cost[80];
+	uint64 serial_number[EQ::invtype::BAZAAR_SIZE];
+	uint32 cost[EQ::invtype::BAZAAR_SIZE];
 };
 
 struct Trader_Struct {
 	uint32 action;
 	uint32 unknown004;
-	uint64 item_id[80];
-	uint32 item_cost[80];
+	uint64 item_id[EQ::invtype::BAZAAR_SIZE];
+	uint32 item_cost[EQ::invtype::BAZAAR_SIZE];
 };
 
 struct ClickTrader_Struct {
 	uint32	code;
 	uint32	unknown[161];//damn soe this is totally pointless :/ but at least your finally using memset! Good job :) -LE
-	uint32	itemcost[80];
+	uint32	itemcost[EQ::invtype::BAZAAR_SIZE];
 };
 
 struct GetItems_Struct{
-	uint32	items[80];
+	uint32	items[EQ::invtype::BAZAAR_SIZE];
 };
 
 struct BecomeTrader_Struct {
@@ -3774,8 +3777,7 @@ enum TiBazaarTraderBuyerActions {
 	ReconcileItems  = 20
 };
 
-	}; /*structs*/
+#pragma pack(pop)
 
-}; /*Titanium*/
-
-#endif /*COMMON_TITANIUM_STRUCTS_H*/
+} /*structs*/
+} /*Titanium*/

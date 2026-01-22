@@ -16,25 +16,21 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-#include "../common/global_define.h"
-#include "../common/eqemu_logsys.h"
-#include "../common/proc_launcher.h"
-#include "../common/eqemu_config.h"
-#include "../common/servertalk.h"
-#include "../common/path_manager.h"
-#include "../common/platform.h"
-#include "../common/crash.h"
-#include "../common/unix.h"
-#include "worldserver.h"
-#include "zone_launch.h"
-#include <vector>
+#include "common/crash.h"
+#include "common/eqemu_config.h"
+#include "common/eqemu_logsys.h"
+#include "common/path_manager.h"
+#include "common/platform.h"
+#include "common/proc_launcher.h"
+#include "common/servertalk.h"
+#include "common/unix.h"
+#include "eqlaunch/worldserver.h"
+#include "eqlaunch/zone_launch.h"
+
+#include <csignal>
+#include <ctime>
 #include <map>
 #include <set>
-#include <signal.h>
-#include <time.h>
-
-EQEmuLogSys LogSys;
-PathManager path;
 
 bool RunLoops = false;
 
@@ -42,10 +38,10 @@ void CatchSignal(int sig_num);
 
 int main(int argc, char *argv[]) {
 	RegisterExecutablePlatform(ExePlatformLaunch);
-	LogSys.LoadLogSettingsDefaults();
+	EQEmuLogSys::Instance()->LoadLogSettingsDefaults();
 	set_exception_handler();
 
-	path.LoadPaths();
+	PathManager::Instance()->Init();
 
 	std::string launcher_name;
 	if(argc == 2) {
@@ -169,7 +165,7 @@ int main(int argc, char *argv[]) {
 		delete zone->second;
 	}
 
-	LogSys.CloseFileLogs();
+	EQEmuLogSys::Instance()->CloseFileLogs();
 
 	return 0;
 }

@@ -1,9 +1,9 @@
-#ifndef EQEMU_ADVENTURE_STATS_REPOSITORY_H
-#define EQEMU_ADVENTURE_STATS_REPOSITORY_H
+#pragma once
 
-#include "../database.h"
-#include "../strings.h"
-#include "base/base_adventure_stats_repository.h"
+#include "common/repositories/base/base_adventure_stats_repository.h"
+
+#include "common/database.h"
+#include "common/strings.h"
 
 class AdventureStatsRepository: public BaseAdventureStatsRepository {
 public:
@@ -49,23 +49,23 @@ public:
 		std::string field;
 
 		switch (theme_id) {
-			case LDoNThemes::GUK: {
+			case LDoNTheme::GUK: {
 				field = "guk_";
 				break;
 			}
-			case LDoNThemes::MIR: {
+			case LDoNTheme::MIR: {
 				field = "mir_";
 				break;
 			}
-			case LDoNThemes::MMC: {
+			case LDoNTheme::MMC: {
 				field = "mmc_";
 				break;
 			}
-			case LDoNThemes::RUJ: {
+			case LDoNTheme::RUJ: {
 				field = "ruj_";
 				break;
 			}
-			case LDoNThemes::TAK: {
+			case LDoNTheme::TAK: {
 				field = "tak_";
 				break;
 			}
@@ -104,5 +104,3 @@ public:
 		db.QueryDatabase(query);
 	}
 };
-
-#endif //EQEMU_ADVENTURE_STATS_REPOSITORY_H

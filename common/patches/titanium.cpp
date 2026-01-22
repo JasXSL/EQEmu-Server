@@ -17,25 +17,23 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-#include "../global_define.h"
-#include "../eqemu_config.h"
-#include "../eqemu_logsys.h"
 #include "titanium.h"
-#include "../opcodemgr.h"
-
-#include "../eq_stream_ident.h"
-#include "../crc32.h"
-#include "../races.h"
-
-#include "../eq_packet_structs.h"
-#include "../misc_functions.h"
-#include "../strings.h"
-#include "../item_instance.h"
 #include "titanium_structs.h"
-#include "../rulesys.h"
-#include "../path_manager.h"
-#include "../raid.h"
-#include "../guilds.h"
+
+#include "common/crc32.h"
+#include "common/eq_packet_structs.h"
+#include "common/eq_stream_ident.h"
+#include "common/eqemu_config.h"
+#include "common/eqemu_logsys.h"
+#include "common/guilds.h"
+#include "common/item_instance.h"
+#include "common/misc_functions.h"
+#include "common/opcodemgr.h"
+#include "common/path_manager.h"
+#include "common/races.h"
+#include "common/raid.h"
+#include "common/rulesys.h"
+#include "common/strings.h"
 
 #include <sstream>
 
@@ -73,7 +71,7 @@ namespace Titanium
 		auto Config = EQEmuConfig::get();
 		//create our opcode manager if we havent already
 		if (opcodes == nullptr) {
-			std::string opfile = fmt::format("{}/patch_{}.conf", path.GetPatchPath(), name);
+			std::string opfile = fmt::format("{}/patch_{}.conf", PathManager::Instance()->GetPatchPath(), name);
 			//load up the opcode manager.
 			//TODO: figure out how to support shared memory with multiple patches...
 			opcodes = new RegularOpcodeManager();
@@ -114,7 +112,7 @@ namespace Titanium
 		//we need to go to every stream and replace it's manager.
 
 		if (opcodes != nullptr) {
-			std::string opfile = fmt::format("{}/patch_{}.conf", path.GetPatchPath(), name);
+			std::string opfile = fmt::format("{}/patch_{}.conf", PathManager::Instance()->GetPatchPath(), name);
 			if (!opcodes->ReloadOpcodes(opfile.c_str())) {
 				LogNetcode("[OPCODES] Error reloading opcodes file [{}] for patch [{}]", opfile.c_str(), name);
 				return;
@@ -1059,7 +1057,7 @@ namespace Titanium
 		OUT(spawnid);
 		OUT_str(charname);
 
-		if (emu->race > 473)
+		if (emu->race > 474)
 			eq->race = 1;
 		else
 			OUT(race);
@@ -1840,7 +1838,7 @@ namespace Titanium
 			emu_cse = (CharacterSelectEntry_Struct *)emu_ptr;
 
 			eq->Race[char_index] = emu_cse->Race;
-			if (eq->Race[char_index] > 473)
+			if (eq->Race[char_index] > 474)
 				eq->Race[char_index] = 1;
 
 			for (int index = 0; index < EQ::textures::materialCount; ++index) {
@@ -2421,7 +2419,7 @@ namespace Titanium
 			strcpy(eq->title, emu->title);
 			//		eq->unknown0274 = emu->unknown0274;
 			eq->helm = emu->helm;
-			if (emu->race > 473)
+			if (emu->race > 474)
 				eq->race = 1;
 			else
 				eq->race = emu->race;
@@ -3596,12 +3594,12 @@ namespace Titanium
 		else if (server_slot == (EQ::invslot::POSSESSIONS_COUNT + EQ::invslot::slotAmmo)) {
 			titanium_slot = server_slot - 4;
 		}
-		else if (server_slot <= EQ::invbag::GENERAL_BAGS_8_END &&
+		else if (server_slot <= EQ::invbag::GENERAL_BAGS_END &&
 				 server_slot >= EQ::invbag::GENERAL_BAGS_BEGIN) {
-			titanium_slot = server_slot;
+			titanium_slot = server_slot - (EQ::invbag::GENERAL_BAGS_BEGIN - invbag::GENERAL_BAGS_BEGIN) - ((EQ::invbag::SLOT_COUNT - invbag::SLOT_COUNT) * ((server_slot - EQ::invbag::GENERAL_BAGS_BEGIN) / EQ::invbag::SLOT_COUNT));
 		}
 		else if (server_slot <= EQ::invbag::CURSOR_BAG_END && server_slot >= EQ::invbag::CURSOR_BAG_BEGIN) {
-			titanium_slot = server_slot - 20;
+			titanium_slot = server_slot - (EQ::invbag::CURSOR_BAG_BEGIN - invbag::CURSOR_BAG_BEGIN);
 		}
 		else if (server_slot <= EQ::invslot::TRIBUTE_END && server_slot >= EQ::invslot::TRIBUTE_BEGIN) {
 			titanium_slot = server_slot;
@@ -3616,21 +3614,21 @@ namespace Titanium
 		else if (server_slot <= EQ::invslot::BANK_END && server_slot >= EQ::invslot::BANK_BEGIN) {
 			titanium_slot = server_slot;
 		}
-		else if (server_slot <= EQ::invbag::BANK_BAGS_16_END && server_slot >= EQ::invbag::BANK_BAGS_BEGIN) {
-			titanium_slot = server_slot;
+		else if (server_slot <= EQ::invbag::BANK_BAGS_END && server_slot >= EQ::invbag::BANK_BAGS_BEGIN) {
+			titanium_slot = server_slot - (EQ::invbag::BANK_BAGS_BEGIN - invbag::BANK_BAGS_BEGIN) - ((EQ::invbag::SLOT_COUNT - invbag::SLOT_COUNT) * ((server_slot - EQ::invbag::BANK_BAGS_BEGIN) / EQ::invbag::SLOT_COUNT));
 		}
 		else if (server_slot <= EQ::invslot::SHARED_BANK_END && server_slot >= EQ::invslot::SHARED_BANK_BEGIN) {
 			titanium_slot = server_slot;
 		}
 		else if (server_slot <= EQ::invbag::SHARED_BANK_BAGS_END &&
 				 server_slot >= EQ::invbag::SHARED_BANK_BAGS_BEGIN) {
-			titanium_slot = server_slot;
+			titanium_slot = server_slot - (EQ::invbag::SHARED_BANK_BAGS_BEGIN - invbag::SHARED_BANK_BAGS_BEGIN) - ((EQ::invbag::SLOT_COUNT - invbag::SLOT_COUNT) * ((server_slot - EQ::invbag::SHARED_BANK_BAGS_BEGIN) / EQ::invbag::SLOT_COUNT));
 		}
 		else if (server_slot <= EQ::invslot::TRADE_END && server_slot >= EQ::invslot::TRADE_BEGIN) {
 			titanium_slot = server_slot;
 		}
 		else if (server_slot <= EQ::invbag::TRADE_BAGS_END && server_slot >= EQ::invbag::TRADE_BAGS_BEGIN) {
-			titanium_slot = server_slot;
+			titanium_slot = server_slot - (EQ::invbag::TRADE_BAGS_BEGIN - invbag::TRADE_BAGS_BEGIN) - ((EQ::invbag::SLOT_COUNT - invbag::SLOT_COUNT) * ((server_slot - EQ::invbag::TRADE_BAGS_BEGIN) / EQ::invbag::SLOT_COUNT));
 		}
 		else if (server_slot <= EQ::invslot::WORLD_END && server_slot >= EQ::invslot::WORLD_BEGIN) {
 			titanium_slot = server_slot;
@@ -3687,10 +3685,10 @@ namespace Titanium
 			server_slot = titanium_slot + 4;
 		}
 		else if (titanium_slot <= invbag::GENERAL_BAGS_END && titanium_slot >= invbag::GENERAL_BAGS_BEGIN) {
-			server_slot = titanium_slot;
+			server_slot = titanium_slot + (EQ::invbag::GENERAL_BAGS_BEGIN - invbag::GENERAL_BAGS_BEGIN) + ((EQ::invbag::SLOT_COUNT - invbag::SLOT_COUNT) * ((titanium_slot - invbag::GENERAL_BAGS_BEGIN) / invbag::SLOT_COUNT));
 		}
 		else if (titanium_slot <= invbag::CURSOR_BAG_END && titanium_slot >= invbag::CURSOR_BAG_BEGIN) {
-			server_slot = titanium_slot + 20;
+			server_slot = titanium_slot + (EQ::invbag::CURSOR_BAG_BEGIN - invbag::CURSOR_BAG_BEGIN);
 		}
 		else if (titanium_slot <= invslot::TRIBUTE_END && titanium_slot >= invslot::TRIBUTE_BEGIN) {
 			server_slot = titanium_slot;
@@ -3705,19 +3703,19 @@ namespace Titanium
 			server_slot = titanium_slot;
 		}
 		else if (titanium_slot <= invbag::BANK_BAGS_END && titanium_slot >= invbag::BANK_BAGS_BEGIN) {
-			server_slot = titanium_slot;
+			server_slot = titanium_slot + (EQ::invbag::BANK_BAGS_BEGIN - invbag::BANK_BAGS_BEGIN) + ((EQ::invbag::SLOT_COUNT - invbag::SLOT_COUNT) * ((titanium_slot - invbag::BANK_BAGS_BEGIN) / invbag::SLOT_COUNT));
 		}
 		else if (titanium_slot <= invslot::SHARED_BANK_END && titanium_slot >= invslot::SHARED_BANK_BEGIN) {
 			server_slot = titanium_slot;
 		}
 		else if (titanium_slot <= invbag::SHARED_BANK_BAGS_END && titanium_slot >= invbag::SHARED_BANK_BAGS_BEGIN) {
-			server_slot = titanium_slot;
+			server_slot = titanium_slot + (EQ::invbag::SHARED_BANK_BAGS_BEGIN - invbag::SHARED_BANK_BAGS_BEGIN) + ((EQ::invbag::SLOT_COUNT - invbag::SLOT_COUNT) * ((titanium_slot - invbag::SHARED_BANK_BAGS_BEGIN) / invbag::SLOT_COUNT));
 		}
 		else if (titanium_slot <= invslot::TRADE_END && titanium_slot >= invslot::TRADE_BEGIN) {
 			server_slot = titanium_slot;
 		}
 		else if (titanium_slot <= invbag::TRADE_BAGS_END && titanium_slot >= invbag::TRADE_BAGS_BEGIN) {
-			server_slot = titanium_slot;
+			server_slot = titanium_slot + (EQ::invbag::TRADE_BAGS_BEGIN - invbag::TRADE_BAGS_BEGIN) + ((EQ::invbag::SLOT_COUNT - invbag::SLOT_COUNT) * ((titanium_slot - invbag::TRADE_BAGS_BEGIN) / invbag::SLOT_COUNT));
 		}
 		else if (titanium_slot <= invslot::WORLD_END && titanium_slot >= invslot::WORLD_BEGIN) {
 			server_slot = titanium_slot;

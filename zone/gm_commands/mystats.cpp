@@ -1,4 +1,5 @@
-#include "../client.h"
+#include "zone/bot.h"
+#include "zone/client.h"
 
 void command_mystats(Client *c, const Seperator *sep)
 {

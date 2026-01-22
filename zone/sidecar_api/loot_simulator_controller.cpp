@@ -1,6 +1,7 @@
 #include "sidecar_api.h"
-#include "../../common/json/json.hpp"
-#include "../zone.h"
+
+#include "common/json/json.hpp"
+#include "zone/zone.h"
 
 extern Zone *zone;
 
@@ -11,7 +12,7 @@ void SidecarApi::LootSimulatorController(const httplib::Request &req, httplib::R
 	auto iterations   = 100;
 	auto log_enabled  = false;
 
-	LogSys.log_settings[Logs::Loot].log_to_console = 0;
+	EQEmuLogSys::Instance()->log_settings[Logs::Loot].log_to_console = 0;
 
 	nlohmann::json j;
 

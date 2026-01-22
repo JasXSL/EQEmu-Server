@@ -1,12 +1,11 @@
-#include "../common/global_define.h"
-#include "../common/eqemu_logsys.h"
 #include "ucs.h"
-#include "world_config.h"
 
-#include "../common/misc_functions.h"
-#include "../common/md5.h"
-#include "../common/packet_dump.h"
-#include "../common/event/timer.h"
+#include "common/eqemu_logsys.h"
+#include "common/event/timer.h"
+#include "common/md5.h"
+#include "common/misc_functions.h"
+#include "common/packet_dump.h"
+#include "world/world_config.h"
 
 UCSConnection::UCSConnection()
 {
@@ -31,8 +30,6 @@ void UCSConnection::SetConnection(std::shared_ptr<EQ::Net::ServertalkServerConne
 			)
 		);
 	}
-
-	m_keepalive = std::make_unique<EQ::Timer>(1000, true, std::bind(&UCSConnection::OnKeepAlive, this, std::placeholders::_1));
 }
 
 const std::shared_ptr<EQ::Net::ServertalkServerConnection> &UCSConnection::GetConnection() const
@@ -91,14 +88,4 @@ void UCSConnection::SendMessage(const char *From, const char *Message)
 
 	SendPacket(pack);
 	safe_delete(pack);
-}
-
-void UCSConnection::OnKeepAlive(EQ::Timer *t)
-{
-	if (!connection) {
-		return;
-	}
-
-	ServerPacket pack(ServerOP_KeepAlive, 0);
-	connection->SendPacket(&pack);
 }

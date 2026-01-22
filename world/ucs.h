@@ -1,10 +1,10 @@
-#ifndef UCS_H
-#define UCS_H
+#pragma once
 
-#include "../common/types.h"
-#include "../common/net/servertalk_server_connection.h"
-#include "../common/servertalk.h"
-#include "../common/event/timer.h"
+#include "common/event/timer.h"
+#include "common/net/servertalk_server_connection.h"
+#include "common/servertalk.h"
+#include "common/types.h"
+
 #include <memory>
 
 class UCSConnection
@@ -19,15 +19,14 @@ public:
 	const std::shared_ptr<EQ::Net::ServertalkServerConnection> &GetConnection() const;
 	inline bool IsConnected() const { return connection->Handle() ? connection->Handle()->IsConnected() : false; }
 
+	static UCSConnection* Instance()
+	{
+		static UCSConnection instance;
+		return &instance;
+	}
+
 private:
 	inline std::string GetIP() const { return (connection && connection->Handle()) ? connection->Handle()->RemoteIP() : 0; }
 	std::shared_ptr<EQ::Net::ServertalkServerConnection> connection;
 
-	/**
-	 * Keepalive
-	 */
-	std::unique_ptr<EQ::Timer> m_keepalive;
-	void OnKeepAlive(EQ::Timer *t);
 };
-
-#endif /*UCS_H_*/

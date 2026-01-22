@@ -16,15 +16,10 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-#include "../common/rulesys.h"
-
-#include "map.h"
-#include "water_map.h"
-#include "zone.h"
-
-#ifdef _WINDOWS
-#define snprintf	_snprintf
-#endif
+#include "common/rulesys.h"
+#include "zone/map.h"
+#include "zone/water_map.h"
+#include "zone/zone.h"
 
 extern Zone* zone;
 
@@ -365,7 +360,7 @@ void Mob::CalculateNewFearpoint()
 	// fallback logic if pathing system can't be used
 	bool inliquid = zone->HasWaterMap() && zone->watermap->InLiquid(glm::vec3(GetPosition())) || zone->IsWaterZone(GetZ());
 	bool stay_inliquid = (inliquid && IsNPC() && CastToNPC()->IsUnderwaterOnly());
-	bool levitating = IsClient() && (FindType(SE_Levitate) || flymode != GravityBehavior::Ground);
+	bool levitating = IsClient() && (FindType(SpellEffect::Levitate) || flymode != GravityBehavior::Ground);
 	bool open_outdoor_zone = !zone->CanCastOutdoor() && !zone->IsCity();
 
 	int loop = 0;

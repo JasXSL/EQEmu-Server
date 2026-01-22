@@ -6,14 +6,14 @@
  * Any modifications to base repositories are to be made by the generator only
  *
  * @generator ./utils/scripts/generators/repository-generator.pl
- * @docs https://docs.eqemu.io/developer/repositories
+ * @docs https://docs.eqemu.dev/developer/repositories
  */
 
-#ifndef EQEMU_BASE_CHARACTER_CORPSES_REPOSITORY_H
-#define EQEMU_BASE_CHARACTER_CORPSES_REPOSITORY_H
+#pragma once
 
-#include "../../database.h"
-#include "../../strings.h"
+#include "common/database.h"
+#include "common/strings.h"
+
 #include <ctime>
 
 class BaseCharacterCorpsesRepository {
@@ -70,6 +70,7 @@ public:
 		uint32_t    gm_exp;
 		uint32_t    killed_by;
 		uint8_t     rezzable;
+		std::string entity_variables;
 	};
 
 	static std::string PrimaryKey()
@@ -131,6 +132,7 @@ public:
 			"gm_exp",
 			"killed_by",
 			"rezzable",
+			"entity_variables",
 		};
 	}
 
@@ -188,6 +190,7 @@ public:
 			"gm_exp",
 			"killed_by",
 			"rezzable",
+			"entity_variables",
 		};
 	}
 
@@ -279,6 +282,7 @@ public:
 		e.gm_exp           = 0;
 		e.killed_by        = 0;
 		e.rezzable         = 0;
+		e.entity_variables = "";
 
 		return e;
 	}
@@ -366,6 +370,7 @@ public:
 			e.gm_exp           = row[48] ? static_cast<uint32_t>(strtoul(row[48], nullptr, 10)) : 0;
 			e.killed_by        = row[49] ? static_cast<uint32_t>(strtoul(row[49], nullptr, 10)) : 0;
 			e.rezzable         = row[50] ? static_cast<uint8_t>(strtoul(row[50], nullptr, 10)) : 0;
+			e.entity_variables = row[51] ? row[51] : "";
 
 			return e;
 		}
@@ -449,6 +454,7 @@ public:
 		v.push_back(columns[48] + " = " + std::to_string(e.gm_exp));
 		v.push_back(columns[49] + " = " + std::to_string(e.killed_by));
 		v.push_back(columns[50] + " = " + std::to_string(e.rezzable));
+		v.push_back(columns[51] + " = '" + Strings::Escape(e.entity_variables) + "'");
 
 		auto results = db.QueryDatabase(
 			fmt::format(
@@ -521,6 +527,7 @@ public:
 		v.push_back(std::to_string(e.gm_exp));
 		v.push_back(std::to_string(e.killed_by));
 		v.push_back(std::to_string(e.rezzable));
+		v.push_back("'" + Strings::Escape(e.entity_variables) + "'");
 
 		auto results = db.QueryDatabase(
 			fmt::format(
@@ -601,6 +608,7 @@ public:
 			v.push_back(std::to_string(e.gm_exp));
 			v.push_back(std::to_string(e.killed_by));
 			v.push_back(std::to_string(e.rezzable));
+			v.push_back("'" + Strings::Escape(e.entity_variables) + "'");
 
 			insert_chunks.push_back("(" + Strings::Implode(",", v) + ")");
 		}
@@ -685,6 +693,7 @@ public:
 			e.gm_exp           = row[48] ? static_cast<uint32_t>(strtoul(row[48], nullptr, 10)) : 0;
 			e.killed_by        = row[49] ? static_cast<uint32_t>(strtoul(row[49], nullptr, 10)) : 0;
 			e.rezzable         = row[50] ? static_cast<uint8_t>(strtoul(row[50], nullptr, 10)) : 0;
+			e.entity_variables = row[51] ? row[51] : "";
 
 			all_entries.push_back(e);
 		}
@@ -760,6 +769,7 @@ public:
 			e.gm_exp           = row[48] ? static_cast<uint32_t>(strtoul(row[48], nullptr, 10)) : 0;
 			e.killed_by        = row[49] ? static_cast<uint32_t>(strtoul(row[49], nullptr, 10)) : 0;
 			e.rezzable         = row[50] ? static_cast<uint8_t>(strtoul(row[50], nullptr, 10)) : 0;
+			e.entity_variables = row[51] ? row[51] : "";
 
 			all_entries.push_back(e);
 		}
@@ -885,6 +895,7 @@ public:
 		v.push_back(std::to_string(e.gm_exp));
 		v.push_back(std::to_string(e.killed_by));
 		v.push_back(std::to_string(e.rezzable));
+		v.push_back("'" + Strings::Escape(e.entity_variables) + "'");
 
 		auto results = db.QueryDatabase(
 			fmt::format(
@@ -958,6 +969,7 @@ public:
 			v.push_back(std::to_string(e.gm_exp));
 			v.push_back(std::to_string(e.killed_by));
 			v.push_back(std::to_string(e.rezzable));
+			v.push_back("'" + Strings::Escape(e.entity_variables) + "'");
 
 			insert_chunks.push_back("(" + Strings::Implode(",", v) + ")");
 		}
@@ -975,5 +987,3 @@ public:
 		return (results.Success() ? results.RowsAffected() : 0);
 	}
 };
-
-#endif //EQEMU_BASE_CHARACTER_CORPSES_REPOSITORY_H

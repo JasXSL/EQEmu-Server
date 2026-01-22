@@ -16,26 +16,22 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-#include "../common/global_define.h"
-#include "../common/features.h"
-#include "../common/rulesys.h"
-#include "../common/strings.h"
-
-#include "client.h"
-#include "data_bucket.h"
-#include "groups.h"
-#include "mob.h"
-#include "raids.h"
-
-#include "queryserv.h"
-#include "quest_parser_collection.h"
-#include "lua_parser.h"
-#include "string_ids.h"
-#include "../common/data_verification.h"
-
-#include "bot.h"
-#include "../common/events/player_event_logs.h"
-#include "worldserver.h"
+#include "common/data_bucket.h"
+#include "common/data_verification.h"
+#include "common/events/player_event_logs.h"
+#include "common/features.h"
+#include "common/rulesys.h"
+#include "common/strings.h"
+#include "zone/bot.h"
+#include "zone/client.h"
+#include "zone/groups.h"
+#include "zone/lua_parser.h"
+#include "zone/mob.h"
+#include "zone/queryserv.h"
+#include "zone/quest_parser_collection.h"
+#include "zone/raids.h"
+#include "zone/string_ids.h"
+#include "zone/worldserver.h"
 
 extern WorldServer worldserver;
 
@@ -130,7 +126,7 @@ uint64 Client::CalcEXP(uint8 consider_level, bool ignore_modifiers) {
 			if (
 				GetClass() == Class::Warrior ||
 				GetClass() == Class::Rogue ||
-				GetBaseRace() == HALFLING
+				GetBaseRace() == Race::Halfling
 			) {
 				total_modifier *= 1.05;
 			}
@@ -291,7 +287,7 @@ void Client::CalculateStandardAAExp(uint64 &add_aaxp, uint8 conlevel, bool resex
 	// Shouldn't race not affect AA XP?
 	if (RuleB(Character, UseRaceClassExpBonuses))
 	{
-		if (GetBaseRace() == HALFLING) {
+		if (GetBaseRace() == Race::Halfling) {
 			aatotalmod *= 1.05;
 		}
 
@@ -439,7 +435,7 @@ void Client::CalculateExp(uint64 in_add_exp, uint64 &add_exp, uint64 &add_aaxp, 
 
 		if (RuleB(Character, UseRaceClassExpBonuses))
 		{
-			if (GetBaseRace() == HALFLING) {
+			if (GetBaseRace() == Race::Halfling) {
 				totalmod *= 1.05;
 			}
 
@@ -497,13 +493,10 @@ void Client::CalculateExp(uint64 in_add_exp, uint64 &add_exp, uint64 &add_aaxp, 
 	add_exp = GetEXP() + add_exp;
 }
 
-void Client::AddEXP(ExpSource exp_source, uint64 in_add_exp, uint8 conlevel, bool resexp) {
+void Client::AddEXP(ExpSource exp_source, uint64 in_add_exp, uint8 conlevel, bool resexp, NPC* npc) {
 	if (!IsEXPEnabled()) {
 		return;
 	}
-
-
-	EVENT_ITEM_ScriptStopReturn();
 
 	uint64 exp = 0;
 	uint64 aaexp = 0;
@@ -574,10 +567,10 @@ void Client::AddEXP(ExpSource exp_source, uint64 in_add_exp, uint8 conlevel, boo
 	}
 
 	// Now update our character's normal and AA xp
-	SetEXP(exp_source, exp, aaexp, resexp);
+	SetEXP(exp_source, exp, aaexp, resexp, npc);
 }
 
-void Client::SetEXP(ExpSource exp_source, uint64 set_exp, uint64 set_aaxp, bool isrezzexp) {
+void Client::SetEXP(ExpSource exp_source, uint64 set_exp, uint64 set_aaxp, bool isrezzexp, NPC* npc) {
 	uint64 current_exp = GetEXP();
 	uint64 current_aa_exp = GetAAXP();
 	uint64 total_current_exp = current_exp + current_aa_exp;
@@ -677,6 +670,7 @@ void Client::SetEXP(ExpSource exp_source, uint64 set_exp, uint64 set_aaxp, bool 
 				}
 			}
 		}
+		ProcessEvolvingItem(exp_gained, npc);
 	} else if(total_add_exp < total_current_exp) { //only loss message if you lose exp, no message if you gained/lost nothing.
 		uint64 exp_lost = current_exp - set_exp;
 		float exp_percent = (float)((float)exp_lost / (float)(GetEXPForLevel(GetLevel() + 1) - GetEXPForLevel(GetLevel())))*(float)100;
@@ -924,7 +918,7 @@ void Client::SetLevel(uint8 set_level, bool command)
 			parse->EventPlayer(EVENT_LEVEL_UP, this, std::to_string(levels_gained), 0);
 		}
 
-		if (player_event_logs.IsEventEnabled(PlayerEvent::LEVEL_GAIN)) {
+		if (PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::LEVEL_GAIN)) {
 			auto e = PlayerEvent::LevelGainedEvent{
 				.from_level = m_pp.level,
 				.to_level = set_level,
@@ -933,17 +927,6 @@ void Client::SetLevel(uint8 set_level, bool command)
 
 			RecordPlayerEventLog(PlayerEvent::LEVEL_GAIN, e);
 		}
-
-		if (RuleB(QueryServ, PlayerLogLevels)) {
-			const auto event_desc = fmt::format(
-				"Leveled UP :: to Level:{} from Level:{} in zoneid:{} instid:{}",
-				set_level,
-				m_pp.level,
-				GetZoneID(),
-				GetInstanceID()
-			);
-			QServ->PlayerLogEvent(Player_Log_Levels, CharacterID(), event_desc);
-		}
 	} else if (set_level < m_pp.level) {
 		int levels_lost = (m_pp.level - set_level);
 
@@ -951,7 +934,7 @@ void Client::SetLevel(uint8 set_level, bool command)
 			parse->EventPlayer(EVENT_LEVEL_DOWN, this, std::to_string(levels_lost), 0);
 		}
 
-		if (player_event_logs.IsEventEnabled(PlayerEvent::LEVEL_LOSS)) {
+		if (PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::LEVEL_LOSS)) {
 			auto e = PlayerEvent::LevelLostEvent{
 				.from_level = m_pp.level,
 				.to_level = set_level,
@@ -959,17 +942,6 @@ void Client::SetLevel(uint8 set_level, bool command)
 			};
 
 			RecordPlayerEventLog(PlayerEvent::LEVEL_LOSS, e);
-		}
-
-		if (RuleB(QueryServ, PlayerLogLevels)) {
-			const auto event_desc = fmt::format(
-				"Leveled DOWN :: to Level:{} from Level:{} in zoneid:{} instid:{}",
-				set_level,
-				m_pp.level,
-				GetZoneID(),
-				GetInstanceID()
-			);
-			QServ->PlayerLogEvent(Player_Log_Levels, CharacterID(), event_desc);
 		}
 	}
 
@@ -1081,13 +1053,13 @@ uint32 Client::GetEXPForLevel(uint16 check_level)
 	if(RuleB(Character,UseOldRaceExpPenalties))
 	{
 		float racemod = 1.0;
-		if(GetBaseRace() == TROLL || GetBaseRace() == IKSAR) {
+		if(GetBaseRace() == Race::Troll || GetBaseRace() == Race::Iksar) {
 			racemod = 1.2;
-		} else if(GetBaseRace() == OGRE) {
+		} else if(GetBaseRace() == Race::Ogre) {
 			racemod = 1.15;
-		} else if(GetBaseRace() == BARBARIAN) {
+		} else if(GetBaseRace() == Race::Barbarian) {
 			racemod = 1.05;
-		} else if(GetBaseRace() == HALFLING) {
+		} else if(GetBaseRace() == Race::Halfling) {
 			racemod = 0.95;
 		}
 
@@ -1205,7 +1177,7 @@ void Group::SplitExp(ExpSource exp_source, const uint64 exp, Mob* other) {
 			if (diff >= max_diff) {
 				const uint64 tmp  = (m->GetLevel() + 3) * (m->GetLevel() + 3) * 75 * 35 / 10;
 				const uint64 tmp2 = group_experience / member_count;
-				m->CastToClient()->AddEXP(exp_source, tmp < tmp2 ? tmp : tmp2, consider_level);
+				m->CastToClient()->AddEXP(exp_source, tmp < tmp2 ? tmp : tmp2, consider_level, false, other->CastToNPC());
 			}
 		}
 	}
@@ -1256,7 +1228,7 @@ void Raid::SplitExp(ExpSource exp_source, const uint64 exp, Mob* other) {
 			if (diff >= max_diff) {
 				const uint64 tmp  = (m.member->GetLevel() + 3) * (m.member->GetLevel() + 3) * 75 * 35 / 10;
 				const uint64 tmp2 = (raid_experience / member_modifier) + 1;
-				m.member->AddEXP(exp_source, tmp < tmp2 ? tmp : tmp2, consider_level);
+				m.member->AddEXP(exp_source, tmp < tmp2 ? tmp : tmp2, consider_level, false, other->CastToNPC());
 			}
 		}
 	}
@@ -1323,7 +1295,7 @@ uint8 Client::GetCharMaxLevelFromBucket()
 	DataBucketKey k = GetScopedBucketKeys();
 	k.key = "CharMaxLevel";
 
-	auto b = DataBucket::GetData(k);
+	auto b = DataBucket::GetData(&database, k);
 	if (!b.value.empty()) {
 		if (Strings::IsNumber(b.value)) {
 			return static_cast<uint8>(Strings::ToUnsignedInt(b.value));

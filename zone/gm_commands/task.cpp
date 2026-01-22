@@ -1,13 +1,17 @@
-#include "../client.h"
-#include "../worldserver.h"
+#include "common/repositories/completed_tasks_repository.h"
+#include "common/shared_tasks.h"
+#include "zone/client.h"
+#include "zone/worldserver.h"
 
 extern WorldServer worldserver;
 
-#include "../../common/shared_tasks.h"
-#include "../../common/repositories/completed_tasks_repository.h"
-
 void command_task(Client *c, const Seperator *sep)
 {
+	if (!RuleB(TaskSystem, EnableTaskSystem)) {
+		c->Message(Chat::White, "This command cannot be used while the Task system is disabled.");
+		return;
+	}
+
 	const int arguments = sep->argnum;
 	if (!arguments) {
 		c->Message(Chat::White, "Syntax: #task [subcommand]");
@@ -171,7 +175,7 @@ void command_task(Client *c, const Seperator *sep)
 				Chat::White,
 				fmt::format(
 					"Assigned {} (ID {}) to {}.",
-					task_manager->GetTaskName(task_id),
+					TaskManager::Instance()->GetTaskName(task_id),
 					task_id,
 					c->GetTargetDescription(t)
 				).c_str()
@@ -192,7 +196,7 @@ void command_task(Client *c, const Seperator *sep)
 						Chat::White,
 						fmt::format(
 							"Successfully completed {} (ID {}) for {}.",
-							task_manager->GetTaskName(task_id),
+							TaskManager::Instance()->GetTaskName(task_id),
 							task_id,
 							c->GetTargetDescription(t)
 						).c_str()
@@ -202,7 +206,7 @@ void command_task(Client *c, const Seperator *sep)
 						Chat::White,
 						fmt::format(
 							"Failed to complete {} (ID {}) for {}.",
-							task_manager->GetTaskName(task_id),
+							TaskManager::Instance()->GetTaskName(task_id),
 							task_id,
 							c->GetTargetDescription(t)
 						).c_str()
@@ -215,7 +219,7 @@ void command_task(Client *c, const Seperator *sep)
 						"{} {} not have not {} (ID {}) assigned to them.",
 						c->GetTargetDescription(t, TargetDescriptionType::UCYou),
 						c == t ? "do" : "does",
-						task_manager->GetTaskName(task_id),
+						TaskManager::Instance()->GetTaskName(task_id),
 						task_id
 					).c_str()
 				);
@@ -251,7 +255,7 @@ void command_task(Client *c, const Seperator *sep)
 						Chat::White,
 						fmt::format(
 							"Attempting to reload {} (ID {}).",
-							task_manager->GetTaskName(task_id),
+							TaskManager::Instance()->GetTaskName(task_id),
 							task_id
 						).c_str()
 					);
@@ -260,7 +264,7 @@ void command_task(Client *c, const Seperator *sep)
 						Chat::White,
 						fmt::format(
 							"Successfully reloaded {} (ID {}).",
-							task_manager->GetTaskName(task_id),
+							TaskManager::Instance()->GetTaskName(task_id),
 							task_id
 						).c_str()
 					);
@@ -299,21 +303,12 @@ void command_task(Client *c, const Seperator *sep)
 				return;
 			}
 
-			if (
-				CompletedTasksRepository::DeleteWhere(
-					database,
-					fmt::format(
-						"charid = {} AND taskid = {}",
-						t->CharacterID(),
-						task_id
-					)
-				)
-			) {
+			if (t->UncompleteTask(task_id)) {
 				c->Message(
 					Chat::White,
 					fmt::format(
 						"Successfully uncompleted {} (ID {}) for {}.",
-						task_manager->GetTaskName(task_id),
+						TaskManager::Instance()->GetTaskName(task_id),
 						task_id,
 						c->GetTargetDescription(t)
 					).c_str()
@@ -325,7 +320,7 @@ void command_task(Client *c, const Seperator *sep)
 						"{} {} not completed {} (ID {}).",
 						c->GetTargetDescription(t, TargetDescriptionType::UCYou),
 						c == t ? "have" : "has",
-						task_manager->GetTaskName(task_id),
+						TaskManager::Instance()->GetTaskName(task_id),
 						task_id
 					).c_str()
 				);
@@ -348,7 +343,7 @@ void command_task(Client *c, const Seperator *sep)
 				Chat::White,
 				fmt::format(
 					"Updating {} (ID {}), activity {} with a count of {} for {}.",
-					task_manager->GetTaskName(task_id),
+					TaskManager::Instance()->GetTaskName(task_id),
 					task_id,
 					activity_id,
 					count,

@@ -1,13 +1,13 @@
-#include "../common/features.h"
+#include "common/features.h"
 
 #ifdef EMBPERL_XS_CLASSES
 
-#include "embperl.h"
-#include "entity.h"
-#include "mob.h"
-#include "../common/global_define.h"
-#include "../common/rulesys.h"
-#include "../common/say_link.h"
+#include "common/rulesys.h"
+#include "common/say_link.h"
+#include "zone/embperl.h"
+#include "zone/entity.h"
+#include "zone/mob.h"
+
 #include <list>
 
 Mob* Perl_EntityList_GetMobID(EntityList* self, uint16_t mob_id) // @categories Script Utility
@@ -419,10 +419,13 @@ perl::array Perl_EntityList_GetBotList(EntityList* self) // @categories Script U
 {
 	perl::array result;
 	auto current_bot_list = self->GetBotList();
-	for (Bot* bot_iterator : current_bot_list)
-	{
-		result.push_back(bot_iterator);
+	auto it = current_bot_list.begin();
+
+	while (it != current_bot_list.end()) {
+		result.push_back(it->second);
+		++it;
 	}
+
 	return result;
 }
 

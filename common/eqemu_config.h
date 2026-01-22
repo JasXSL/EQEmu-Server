@@ -15,14 +15,15 @@
 	along with this program; if not, write to the Free Software
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
-#ifndef __EQEmuConfig_H
-#define __EQEmuConfig_H
 
-#include "json/json.h"
-#include "linked_list.h"
-#include "path_manager.h"
+#pragma once
+
+#include "common/json/json.h"
+#include "common/linked_list.h"
+#include "common/path_manager.h"
+
+#include "fmt/format.h"
 #include <fstream>
-#include <fmt/format.h>
 
 struct LoginConfig {
 	std::string LoginHost;
@@ -81,7 +82,9 @@ class EQEmuConfig
 		std::string QSDatabaseUsername;
 		std::string QSDatabasePassword;
 		std::string QSDatabaseDB;
-		uint16 QSDatabasePort;
+		uint16      QSDatabasePort;
+		std::string QSHost;
+		int         QSPort;
 
 		// From <files/>
 		std::string SpellsFile;
@@ -118,6 +121,22 @@ class EQEmuConfig
 		const std::string &GetUCSHost() const;
 		uint16 GetUCSPort() const;
 
+		std::vector<std::string> GetQuestDirectories() const
+		{
+			return m_quest_directories;
+		}
+
+		std::vector<std::string> GetPluginsDirectories() const
+		{
+			return m_plugin_directories;
+		}
+
+		std::vector<std::string> GetLuaModuleDirectories() const
+		{
+			return m_lua_module_directories;
+		}
+
+
 //	uint16 DynamicCount;
 
 //	map<string,uint16> StaticZones;
@@ -131,15 +150,20 @@ class EQEmuConfig
 		Json::Value _root;
 		static std::string ConfigFile;
 
+		std::vector<std::string> m_quest_directories = {};
+		std::vector<std::string> m_plugin_directories = {};
+		std::vector<std::string> m_lua_module_directories = {};
+
+	protected:
 		void parse_config();
 
 		EQEmuConfig()
 		{
 
 		}
-		virtual ~EQEmuConfig() {}
 
 	public:
+		virtual ~EQEmuConfig() {}
 
 		// Produce a const singleton
 		static const EQEmuConfig *get()
@@ -168,7 +192,7 @@ class EQEmuConfig
 
 			std::string file = fmt::format(
 				"{}/{}",
-				(file_path.empty() ? path.GetServerPath() : file_path),
+				(file_path.empty() ? PathManager::Instance()->GetServerPath() : file_path),
 				EQEmuConfig::ConfigFile
 			);
 
@@ -187,5 +211,3 @@ class EQEmuConfig
 		void Dump() const;
 		void CheckUcsConfigConversion();
 };
-
-#endif

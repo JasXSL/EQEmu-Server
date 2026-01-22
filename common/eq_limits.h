@@ -17,18 +17,17 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-#ifndef COMMON_EQ_LIMITS_H
-#define COMMON_EQ_LIMITS_H
+#pragma once
 
-#include "types.h"
-#include "eq_constants.h"
-#include "emu_versions.h"
-#include "../common/patches/titanium_limits.h"
-#include "../common/patches/sof_limits.h"
-#include "../common/patches/sod_limits.h"
-#include "../common/patches/uf_limits.h"
-#include "../common/patches/rof_limits.h"
-#include "../common/patches/rof2_limits.h"
+#include "common/emu_versions.h"
+#include "common/eq_constants.h"
+#include "common/patches/rof_limits.h"
+#include "common/patches/rof2_limits.h"
+#include "common/patches/sod_limits.h"
+#include "common/patches/sof_limits.h"
+#include "common/patches/titanium_limits.h"
+#include "common/patches/uf_limits.h"
+#include "common/types.h"
 
 
 namespace EQ
@@ -42,6 +41,7 @@ namespace EQ
 			uint32 ExpansionsMask;
 			int16 CharacterCreationLimit;
 			size_t SayLinkBodySize;
+			uint32 BazaarTraderLimit;
 			
 			LookupEntry(const LookupEntry *lookup_entry) { }
 			LookupEntry(
@@ -49,13 +49,15 @@ namespace EQ
 				uint32 ExpansionBit,
 				uint32 ExpansionsMask,
 				int16 CharacterCreationLimit,
-				size_t SayLinkBodySize
+				size_t SayLinkBodySize,
+				uint32 BazaarTraderLimit
 			) :
 				Expansion(Expansion),
 				ExpansionBit(ExpansionBit),
 				ExpansionsMask(ExpansionsMask),
 				CharacterCreationLimit(CharacterCreationLimit),
-				SayLinkBodySize(SayLinkBodySize)
+				SayLinkBodySize(SayLinkBodySize),
+				BazaarTraderLimit(BazaarTraderLimit)
 			{ }
 		};
 
@@ -84,7 +86,7 @@ namespace EQ
 				int16 ViewMODPC,	ViewMODBank,		ViewMODSharedBank;
 				int16 ViewMODLimbo,	AltStorage,			Archived;
 				int16 Mail,			GuildTrophyTribute,	Krono;
-				int16 Other;
+				int16 GuildBankMain,GuildBankDeposit,   Other;
 
 				InventoryTypeSize_Struct(
 					int16 Possessions,	int16 Bank,					int16 SharedBank,
@@ -95,7 +97,7 @@ namespace EQ
 					int16 ViewMODPC,	int16 ViewMODBank,			int16 ViewMODSharedBank,
 					int16 ViewMODLimbo,	int16 AltStorage,			int16 Archived,
 					int16 Mail,			int16 GuildTrophyTribute,	int16 Krono,
-					int16 Other
+					int16 GuildBankMain,int16 GuildBankDeposit,     int16 Other
 				) :
 					Possessions(Possessions),	Bank(Bank),								SharedBank(SharedBank),
 					Trade(Trade),				World(World),							Limbo(Limbo),
@@ -105,7 +107,7 @@ namespace EQ
 					ViewMODPC(ViewMODPC),		ViewMODBank(ViewMODBank),				ViewMODSharedBank(ViewMODSharedBank),
 					ViewMODLimbo(ViewMODLimbo),	AltStorage(AltStorage),					Archived(Archived),
 					Mail(Mail),					GuildTrophyTribute(GuildTrophyTribute),	Krono(Krono),
-					Other(Other)
+					GuildBankMain(GuildBankMain), GuildBankDeposit(GuildBankDeposit),   Other(Other)
 				{ }
 			};
 
@@ -265,5 +267,3 @@ namespace Client62
 	} // namespace constants
 
 } /*Client62*/
-
-#endif /*COMMON_EQ_LIMITS_H*/

@@ -1,10 +1,9 @@
-#include "../common/features.h"
+#include "common/features.h"
 
 #ifdef EMBPERL_XS_CLASSES
 
-#include "../common/global_define.h"
-#include "embperl.h"
-#include "corpse.h"
+#include "zone/corpse.h"
+#include "zone/embperl.h"
 
 uint32_t Perl_Corpse_GetCharID(Corpse* self) // @categories Account and Character, Corpse
 {
@@ -161,7 +160,7 @@ bool Perl_Corpse_HasItem(Corpse* self, uint32_t item_id) // @categories Script U
 	return self->HasItem(item_id);
 }
 
-int Perl_Corpse_CountItem(Corpse* self, uint32_t item_id) // @categories Script Utility
+uint32 Perl_Corpse_CountItem(Corpse* self, uint32_t item_id) // @categories Script Utility
 {
 	return self->CountItem(item_id);
 }

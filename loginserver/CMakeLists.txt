@@ -1,37 +1,39 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 3.12)
+cmake_minimum_required(VERSION 3.20)
 
-SET(eqlogin_sources
+set(eqlogin_sources
 	account_management.cpp
 	client.cpp
 	client_manager.cpp
-	database.cpp
 	encryption.cpp
 	loginserver_command_handler.cpp
 	loginserver_webserver.cpp
 	main.cpp
-	server_manager.cpp
+	world_server_manager.cpp
 	world_server.cpp
 )
 
-SET(eqlogin_headers
+set(eqlogin_headers
 	account_management.h
 	client.h
 	client_manager.h
-	database.h
 	encryption.h
 	loginserver_command_handler.h
 	loginserver_webserver.h
 	login_server.h
 	login_types.h
 	options.h
-	server_manager.h
+	world_server_manager.h
 	world_server.h
 )
 
-ADD_EXECUTABLE(loginserver ${eqlogin_sources} ${eqlogin_headers})
+add_compile_definitions(EQEMU_USE_OPENSSL)
 
-INSTALL(TARGETS loginserver RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+add_executable(loginserver ${eqlogin_sources} ${eqlogin_headers})
 
-TARGET_LINK_LIBRARIES(loginserver ${SERVER_LIBS})
+install(TARGETS loginserver RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
 
-SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
+target_link_libraries(loginserver common)
+target_include_directories(loginserver PRIVATE ..)
+
+set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
+set_property(TARGET loginserver PROPERTY FOLDER executables/servers)

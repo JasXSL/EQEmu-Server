@@ -1,8 +1,7 @@
-#ifndef DOORS_H
-#define DOORS_H
+#pragma once
 
-#include "mob.h"
-#include "../common/repositories/doors_repository.h"
+#include "common/repositories/doors_repository.h"
+#include "zone/mob.h"
 
 class Client;
 class Mob;
@@ -76,6 +75,9 @@ public:
 	bool IsDestinationZoneSame() const;
 
 	bool IsDoorBlacklisted();
+	bool IsDoorBetween(glm::vec4 loc_a, glm::vec4 loc_c, uint16 door_size = 15, float door_depth = 5.0f, bool draw_box = false);
+
+	const char* GetDoorZone() const { return m_zone_name; }
 
 private:
 	bool GetIsDoorBlacklisted();
@@ -110,4 +112,3 @@ private:
 	uint32    m_client_version_mask;
 	bool      m_is_blacklisted_to_open = false; // is door blacklisted to open by npcs
 };
-#endif

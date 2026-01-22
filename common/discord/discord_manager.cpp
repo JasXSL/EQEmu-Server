@@ -1,6 +1,7 @@
 #include "discord_manager.h"
-#include "../../common/discord/discord.h"
-#include "../events/player_event_logs.h"
+
+#include "common/discord/discord.h"
+#include "common/events/player_event_logs.h"
 
 void DiscordManager::QueueWebhookMessage(uint32 webhook_id, const std::string &message)
 {
@@ -26,7 +27,7 @@ void DiscordManager::ProcessMessageQueue()
 			continue;
 		}
 
-		auto        webhook  = LogSys.GetDiscordWebhooks()[q.first];
+		auto        webhook  = EQEmuLogSys::Instance()->GetDiscordWebhooks()[q.first];
 		std::string message;
 
 		for (auto &m: q.second) {
@@ -68,7 +69,7 @@ void DiscordManager::ProcessMessageQueue()
 
 void DiscordManager::QueuePlayerEventMessage(const PlayerEvent::PlayerEventContainer& e)
 {
-	auto w = player_event_logs.GetDiscordWebhookUrlFromEventType(e.player_event_log.event_type_id);
+	auto w = PlayerEventLogs::Instance()->GetDiscordWebhookUrlFromEventType(e.player_event_log.event_type_id);
 	if (!w.empty()) {
 		Discord::SendPlayerEventMessage(e, w);
 	}

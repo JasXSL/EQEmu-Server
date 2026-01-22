@@ -1,9 +1,8 @@
-#ifndef WORLD_DYNAMIC_ZONE_H
-#define WORLD_DYNAMIC_ZONE_H
+#pragma once
 
-#include "../common/dynamic_zone_base.h"
-#include "../common/rulesys.h"
-#include "../common/timer.h"
+#include "common/dynamic_zone_base.h"
+#include "common/rulesys.h"
+#include "common/timer.h"
 
 class Database;
 class ServerPacket;
@@ -22,7 +21,6 @@ public:
 	using DynamicZoneBase::DynamicZoneBase; // inherit base constructors
 
 	static DynamicZone* FindDynamicZoneByID(uint32_t dz_id);
-	static void HandleZoneMessage(ServerPacket* pack);
 
 	void SetSecondsRemaining(uint32_t seconds_remaining) override;
 
@@ -33,7 +31,7 @@ public:
 protected:
 	Database& GetDatabase() override;
 	void ProcessMemberAddRemove(const DynamicZoneMember& member, bool removed) override;
-	bool ProcessMemberStatusChange(uint32_t member_id, DynamicZoneMemberStatus status) override;
+	bool ProcessMemberStatusChange(uint32_t character_id, DynamicZoneMemberStatus status) override;
 	bool SendServerPacket(ServerPacket* packet) override;
 
 private:
@@ -53,5 +51,3 @@ private:
 	Timer m_choose_leader_cooldown_timer{ static_cast<uint32_t>(RuleI(Expedition, ChooseLeaderCooldownTime)) };
 	Timer m_warning_cooldown_timer{ 1 }; // non-zero so it's enabled initially
 };
-
-#endif

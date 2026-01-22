@@ -18,28 +18,20 @@
  *
 */
 
-#include <string>
-#include <cstdio>
-#include <iterator>
 #include "database_dump_service.h"
-#include "../eqemu_logsys.h"
-#include "../strings.h"
-#include "../eqemu_config.h"
-#include "../database_schema.h"
-#include "../file.h"
-#include "../process/process.h"
-#include "../termcolor/rang.hpp"
+
+#include "common/database_schema.h"
+#include "common/eqemu_config.h"
+#include "common/eqemu_logsys.h"
+#include "common/file.h"
+#include "common/process/process.h"
+#include "common/strings.h"
+#include "common/termcolor/rang.hpp"
 
 #include <ctime>
+#include <iterator>
+#include <string>
 
-#if _WIN32
-#include <windows.h>
-#else
-
-#include <sys/time.h>
-#include <thread>
-
-#endif
 
 #define DATABASE_DUMP_PATH "backups/"
 
@@ -50,7 +42,7 @@ bool DatabaseDumpService::IsMySQLInstalled()
 {
 	std::string version_output = GetMySQLVersion();
 
-	return version_output.find("mysql") != std::string::npos && version_output.find("Ver") != std::string::npos;
+	return version_output.find("mysql") != std::string::npos && (version_output.find("Ver") != std::string::npos || version_output.find("from") != std::string::npos);
 }
 
 /**
@@ -136,11 +128,6 @@ std::string DatabaseDumpService::GetLoginTableList()
 	return Strings::Join(DatabaseSchema::GetLoginTables(), " ");
 }
 
-std::string DatabaseDumpService::GetQueryServTables()
-{
-	return Strings::Join(DatabaseSchema::GetQueryServerTables(), " ");
-}
-
 std::string DatabaseDumpService::GetSystemTablesList()
 {
 	auto system_tables  = DatabaseSchema::GetServerTables();
@@ -209,7 +196,7 @@ void DatabaseDumpService::DatabaseDump()
 	}
 
 	if (IsDumpOutputToConsole()) {
-		LogSys.SilenceConsoleLogging();
+		EQEmuLogSys::Instance()->SilenceConsoleLogging();
 	}
 
 	LogInfo("MySQL installed [{}]", GetMySQLVersion());
@@ -272,11 +259,6 @@ void DatabaseDumpService::DatabaseDump()
 			tables_to_dump += GetLoginTableList() + " ";
 			dump_descriptor += "-login";
 		}
-
-		if (IsDumpQueryServerTables()) {
-			tables_to_dump += GetQueryServTables();
-			dump_descriptor += "-queryserv";
-		}
 	}
 
 	if (IsDumpStaticInstanceData()) {
@@ -334,7 +316,7 @@ void DatabaseDumpService::DatabaseDump()
 	}
 
 	if (!IsDumpOutputToConsole()) {
-		LogSys.LoadLogSettingsDefaults();
+		EQEmuLogSys::Instance()->LoadLogSettingsDefaults();
 	}
 
 	if (!pipe_file.empty()) {
@@ -401,7 +383,6 @@ void DatabaseDumpService::DatabaseDump()
 //	LogDebug("[{}] dump-to-console", IsDumpOutputToConsole());
 //	LogDebug("[{}] dump-path", GetSetDumpPath());
 //	LogDebug("[{}] compression", (IsDumpWithCompression() ? "true" : "false"));
-//	LogDebug("[{}] query-serv", (IsDumpQueryServerTables() ? "true" : "false"));
 //	LogDebug("[{}] has-compression-binary", (HasCompressionBinary() ? "true" : "false"));
 //	LogDebug("[{}] content", (IsDumpContentTables() ? "true" : "false"));
 //	LogDebug("[{}] no-data", (IsDumpWithNoData() ? "true" : "false"));
@@ -511,16 +492,6 @@ const std::string &DatabaseDumpService::GetDumpFileName() const
 	return dump_file_name;
 }
 
-bool DatabaseDumpService::IsDumpQueryServerTables() const
-{
-	return dump_query_server_tables;
-}
-
-void DatabaseDumpService::SetDumpQueryServerTables(bool dump_query_server_tables)
-{
-	DatabaseDumpService::dump_query_server_tables = dump_query_server_tables;
-}
-
 bool DatabaseDumpService::IsDumpOutputToConsole() const
 {
 	return dump_output_to_console;
@@ -617,7 +588,12 @@ void DatabaseDumpService::BuildCredentialsFile()
 void DatabaseDumpService::RemoveCredentialsFile()
 {
 	if (File::Exists(CREDENTIALS_FILE)) {
-		std::filesystem::remove(CREDENTIALS_FILE);
+		try {
+			std::filesystem::remove(CREDENTIALS_FILE);
+		}
+		catch (std::exception &e) {
+			LogError("std::filesystem::remove err [{}]", e.what());
+		}
 	}
 }
 

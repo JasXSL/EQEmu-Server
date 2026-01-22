@@ -1,31 +1,13 @@
-#ifdef _WINDOWS
-#include <winsock2.h>
-#endif
-
-#include "misc_functions.h"
-#include "eqemu_logsys.h"
-#include "timer.h"
-
 #include "dbcore.h"
-#include "mysql_stmt.h"
 
-#include <fstream>
-#include <iostream>
-#include <mysqld_error.h>
-#include <string.h>
-#include "strings.h"
+#include "common/eqemu_logsys.h"
+#include "common/misc_functions.h"
+#include "common/mysql_stmt.h"
+#include "common/strings.h"
+#include "common/timer.h"
+#include "common/types.h"
 
-#ifdef _WINDOWS
-#define snprintf	_snprintf
-#define strncasecmp	_strnicmp
-#define strcasecmp	_stricmp
-#include <process.h>
-#else
-
-#include "unix.h"
-#include <pthread.h>
-
-#endif
+#include "mysqld_error.h"
 
 #ifdef _EQDEBUG
 #define DEBUG_MYSQL_QUERIES 0
@@ -160,7 +142,7 @@ MySQLRequestResult DBcore::QueryDatabase(const char *query, uint32 querylen, boo
 		(uint32) mysql_insert_id(mysql)
 	);
 
-	if (LogSys.log_settings[Logs::MySQLQuery].is_category_enabled == 1) {
+	if (EQEmuLogSys::Instance()->log_settings[Logs::MySQLQuery].is_category_enabled == 1) {
 		if ((strncasecmp(query, "select", 6) == 0)) {
 			LogMySQLQuery(
 				"{0} -- ({1} row{2} returned) ({3}s)",
@@ -189,9 +171,9 @@ void DBcore::TransactionBegin()
 	QueryDatabase("START TRANSACTION");
 }
 
-void DBcore::TransactionCommit()
+MySQLRequestResult DBcore::TransactionCommit()
 {
-	QueryDatabase("COMMIT");
+	return QueryDatabase("COMMIT");
 }
 
 void DBcore::TransactionRollback()
@@ -258,8 +240,16 @@ bool DBcore::Open(uint32 *errnum, char *errbuf)
 	if (pCompress) {
 		flags |= CLIENT_COMPRESS;
 	}
+
+	//todo: we need to revisit this ssl handling later
+	//the whole connect code is ancient and tls is starting to come as a default requirement for many db setups
 	if (pSSL) {
 		flags |= CLIENT_SSL;
+	}
+	else {
+		int off = 0;
+		mysql_options(mysql, MYSQL_OPT_SSL_ENFORCE, &off);
+		mysql_options(mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &off);
 	}
 	if (mysql_real_connect(mysql, pHost, pUser, pPassword, pDatabase, pPort, 0, flags)) {
 		pStatus = Connected;
@@ -302,7 +292,9 @@ std::string DBcore::Escape(const std::string& s)
 
 void DBcore::SetMutex(Mutex *mutex)
 {
-	safe_delete(m_mutex);
+	if (m_mutex && m_mutex != mutex) {
+		safe_delete(m_mutex);
+	}
 
 	DBcore::m_mutex = mutex;
 }

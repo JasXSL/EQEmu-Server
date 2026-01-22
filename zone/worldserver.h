@@ -15,12 +15,13 @@
 	along with this program; if not, write to the Free Software
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
-#ifndef WORLDSERVER_H
-#define WORLDSERVER_H
 
-#include "../common/eq_packet_structs.h"
-#include "../common/net/servertalk_client_connection.h"
-#include "zone_event_scheduler.h"
+#pragma once
+
+#include "common/eq_packet_structs.h"
+#include "common/net/servertalk_client_connection.h"
+#include "common/server_reload_types.h"
+#include "zone/zone_event_scheduler.h"
 
 class ServerPacket;
 class EQApplicationPacket;
@@ -31,6 +32,7 @@ public:
 	WorldServer();
 	~WorldServer();
 
+	void Process();
 	void Connect();
 	bool SendPacket(ServerPacket* pack);
 	std::string GetIP() const;
@@ -52,7 +54,6 @@ public:
 	void SetLaunchedName(const char *n) { m_launchedName = n; }
 	void SetLauncherName(const char *n) { m_launcherName = n; }
 	void SendReloadTasks(uint8 reload_type, uint32 task_id = 0);
-	void HandleReloadTasks(ServerPacket *pack);
 	void UpdateLFP(uint32 LeaderID, uint8 Action, uint8 MatchFilter, uint32 FromLevel, uint32 ToLevel, uint32 Classes, const char *Comments,
 				GroupLFPMemberEntry *LFPMembers);
 	void UpdateLFP(uint32 LeaderID, GroupLFPMemberEntry *LFPMembers);
@@ -61,7 +62,8 @@ public:
 	void HandleLFPMatches(ServerPacket *pack);
 
 	void RequestTellQueue(const char *who);
-
+	void QueueReload(ServerReload::Request r);
+	void ProcessReload(const ServerReload::Request &request);
 private:
 	virtual void OnConnected();
 
@@ -73,15 +75,16 @@ private:
 	uint32 cur_groupid;
 	uint32 last_groupid;
 
-	void OnKeepAlive(EQ::Timer *t);
-
 	std::unique_ptr<EQ::Net::ServertalkClient> m_connection;
 	std::unique_ptr<EQ::Timer> m_keepalive;
 
 	ZoneEventScheduler *m_zone_scheduler;
+
+	// server reload queue
+	std::mutex                           m_reload_mutex   = {};
+	std::map<int, ServerReload::Request> m_reload_queue   = {};
 public:
 	ZoneEventScheduler *GetScheduler() const;
 	void SetScheduler(ZoneEventScheduler *scheduler);
+	void SendReload(ServerReload::Type type, bool is_global = true);
 };
-#endif
-

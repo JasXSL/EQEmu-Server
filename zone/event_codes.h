@@ -1,5 +1,4 @@
-#ifndef EVENT_CODES_H
-#define EVENT_CODES_H
+#pragma once
 
 typedef enum {
 	EVENT_SAY = 0,
@@ -145,6 +144,9 @@ typedef enum {
 	EVENT_AA_LOSS,
 	EVENT_SPELL_BLOCKED,
 	EVENT_READ_ITEM,
+	EVENT_PET_COMMAND,
+	EVENT_CHARM_START,
+	EVENT_CHARM_END,
 
 	// Add new events before these or Lua crashes
 	EVENT_SPELL_EFFECT_BOT,
@@ -153,6 +155,3 @@ typedef enum {
 } QuestEventID;
 
 extern const char *QuestEventSubroutines[_LargestEventID];
-
-#endif
-

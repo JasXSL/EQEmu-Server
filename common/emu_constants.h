@@ -17,14 +17,13 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-#ifndef COMMON_EMU_CONSTANTS_H
-#define COMMON_EMU_CONSTANTS_H
+#pragma once
 
-#include "eq_limits.h"
-#include "emu_versions.h"
-#include "bodytypes.h"
+#include "common/bodytypes.h"
+#include "common/emu_versions.h"
+#include "common/eq_limits.h"
 
-#include <string.h>
+#include <cstring>
 
 namespace AccountStatus {
 	constexpr uint8 Player          = 0;
@@ -130,9 +129,11 @@ namespace EQ
 		using RoF2::invtype::MAIL_SIZE;
 		using RoF2::invtype::GUILD_TROPHY_TRIBUTE_SIZE;
 		using RoF2::invtype::KRONO_SIZE;
+		using RoF2::invtype::GUILD_BANK_MAIN_SIZE;
+		using RoF2::invtype::GUILD_BANK_DEPOSIT_SIZE;
 		using RoF2::invtype::OTHER_SIZE;
 
-		using Titanium::invtype::TRADE_NPC_SIZE;
+		using RoF2::invtype::TRADE_NPC_SIZE;
 
 		using RoF2::invtype::TYPE_INVALID;
 		using RoF2::invtype::TYPE_BEGIN;
@@ -159,7 +160,7 @@ namespace EQ
 		using RoF2::invslot::SLOT_INVALID;
 		using RoF2::invslot::SLOT_BEGIN;
 
-		using Titanium::invslot::SLOT_TRADESKILL_EXPERIMENT_COMBINE;
+		using RoF2::invslot::SLOT_TRADESKILL_EXPERIMENT_COMBINE;
 
 		const int16 SLOT_AUGMENT_GENERIC_RETURN = 1001; // clients don't appear to use this method... (internal inventory return value)
 
@@ -179,28 +180,28 @@ namespace EQ
 		using RoF2::invslot::BONUS_STAT_END;
 		using RoF2::invslot::BONUS_SKILL_END;
 
-		using Titanium::invslot::BANK_BEGIN;
-		using SoF::invslot::BANK_END;
+		using RoF2::invslot::BANK_BEGIN;
+		using RoF2::invslot::BANK_END;
 
-		using Titanium::invslot::SHARED_BANK_BEGIN;
-		using Titanium::invslot::SHARED_BANK_END;
+		using RoF2::invslot::SHARED_BANK_BEGIN;
+		using RoF2::invslot::SHARED_BANK_END;
 
-		using Titanium::invslot::TRADE_BEGIN;
-		using Titanium::invslot::TRADE_END;
+		using RoF2::invslot::TRADE_BEGIN;
+		using RoF2::invslot::TRADE_END;
 
-		using Titanium::invslot::TRADE_NPC_END;
+		using RoF2::invslot::TRADE_NPC_END;
 
-		using Titanium::invslot::WORLD_BEGIN;
-		using Titanium::invslot::WORLD_END;
+		using RoF2::invslot::WORLD_BEGIN;
+		using RoF2::invslot::WORLD_END;
 
-		using Titanium::invslot::TRIBUTE_BEGIN;
-		using Titanium::invslot::TRIBUTE_END;
+		using RoF2::invslot::TRIBUTE_BEGIN;
+		using RoF2::invslot::TRIBUTE_END;
 
-		using Titanium::invslot::GUILD_TRIBUTE_BEGIN;
-		using Titanium::invslot::GUILD_TRIBUTE_END;
+		using RoF2::invslot::GUILD_TRIBUTE_BEGIN;
+		using RoF2::invslot::GUILD_TRIBUTE_END;
 
 		const int16 CORPSE_BEGIN = invslot::slotGeneral1;
-		const int16 CORPSE_END = CORPSE_BEGIN + invslot::slotCursor;
+		const int16 CORPSE_END   = CORPSE_BEGIN + invslot::slotCursor;
 
 		using RoF2::invslot::EQUIPMENT_BITMASK;
 		using RoF2::invslot::GENERAL_BITMASK;
@@ -214,38 +215,40 @@ namespace EQ
 	} // namespace invslot
 
 	namespace invbag {
-		using Titanium::invbag::SLOT_INVALID;
-		using Titanium::invbag::SLOT_BEGIN;
-		using Titanium::invbag::SLOT_END;
-		using Titanium::invbag::SLOT_COUNT;
+		using RoF2::invbag::SLOT_INVALID;
+		using RoF2::invbag::SLOT_BEGIN;
+		using RoF2::invbag::SLOT_END;
+		using RoF2::invbag::SLOT_COUNT;
 
-		using Titanium::invbag::GENERAL_BAGS_BEGIN;
+		using RoF2::invslot::WORLD_END;
+
+		const int16 GENERAL_BAGS_BEGIN = WORLD_END + 1;
 		const int16 GENERAL_BAGS_COUNT = invslot::GENERAL_COUNT * SLOT_COUNT;
-		const int16 GENERAL_BAGS_END = (GENERAL_BAGS_BEGIN + GENERAL_BAGS_COUNT) - 1;
+		const int16 GENERAL_BAGS_END   = (GENERAL_BAGS_BEGIN + GENERAL_BAGS_COUNT) - 1;
 
 		const int16 GENERAL_BAGS_8_COUNT = 8 * SLOT_COUNT;
-		const int16 GENERAL_BAGS_8_END = (GENERAL_BAGS_BEGIN + GENERAL_BAGS_8_COUNT) - 1;
+		const int16 GENERAL_BAGS_8_END   = (GENERAL_BAGS_BEGIN + GENERAL_BAGS_8_COUNT) - 1;
 
-		const int16 CURSOR_BAG_BEGIN = 351;
+		const int16 CURSOR_BAG_BEGIN = GENERAL_BAGS_END + 1;
 		const int16 CURSOR_BAG_COUNT = SLOT_COUNT;
-		const int16 CURSOR_BAG_END = (CURSOR_BAG_BEGIN + CURSOR_BAG_COUNT) - 1;
+		const int16 CURSOR_BAG_END   = (CURSOR_BAG_BEGIN + CURSOR_BAG_COUNT) - 1;
 
-		using Titanium::invbag::BANK_BAGS_BEGIN;
+		const int16 BANK_BAGS_BEGIN = CURSOR_BAG_END + 1;
 		const int16 BANK_BAGS_COUNT = (invtype::BANK_SIZE * SLOT_COUNT);
-		const int16 BANK_BAGS_END = (BANK_BAGS_BEGIN + BANK_BAGS_COUNT) - 1;
+		const int16 BANK_BAGS_END   = (BANK_BAGS_BEGIN + BANK_BAGS_COUNT) - 1;
 
 		const int16 BANK_BAGS_16_COUNT = 16 * SLOT_COUNT;
-		const int16 BANK_BAGS_16_END = (BANK_BAGS_BEGIN + BANK_BAGS_16_COUNT) - 1;
+		const int16 BANK_BAGS_16_END   = (BANK_BAGS_BEGIN + BANK_BAGS_16_COUNT) - 1;
 
-		using Titanium::invbag::SHARED_BANK_BAGS_BEGIN;
+		const int16 SHARED_BANK_BAGS_BEGIN = BANK_BAGS_END + 1;
 		const int16 SHARED_BANK_BAGS_COUNT = invtype::SHARED_BANK_SIZE * SLOT_COUNT;
-		const int16 SHARED_BANK_BAGS_END = (SHARED_BANK_BAGS_BEGIN + SHARED_BANK_BAGS_COUNT) - 1;
+		const int16 SHARED_BANK_BAGS_END   = (SHARED_BANK_BAGS_BEGIN + SHARED_BANK_BAGS_COUNT) - 1;
 
-		using Titanium::invbag::TRADE_BAGS_BEGIN;
+		const int16 TRADE_BAGS_BEGIN = SHARED_BANK_BAGS_END + 1;
 		const int16 TRADE_BAGS_COUNT = invtype::TRADE_SIZE * SLOT_COUNT;
-		const int16 TRADE_BAGS_END = (TRADE_BAGS_BEGIN + TRADE_BAGS_COUNT) - 1;
+		const int16 TRADE_BAGS_END   = (TRADE_BAGS_BEGIN + TRADE_BAGS_COUNT) - 1;
 
-		using Titanium::invbag::GetInvBagIndexName;
+		using RoF2::invbag::GetInvBagIndexName;
 
 	} // namespace invbag
 
@@ -351,9 +354,6 @@ namespace EQ
 
 		extern const std::map<uint8, std::string>& GetLanguageMap();
 		std::string GetLanguageName(uint8 language_id);
-
-		extern const std::map<uint32, std::string>& GetLDoNThemeMap();
-		std::string GetLDoNThemeName(uint32 theme_id);
 
 		extern const std::map<int8, std::string>& GetFlyModeMap();
 		std::string GetFlyModeName(int8 flymode_id);
@@ -751,6 +751,35 @@ static std::map<uint32, std::string> stance_names = {
 	{ Stance::AEBurn,     "AE Burn" }
 };
 
+namespace LDoNTheme {
+	constexpr uint32 Unused = 0;
+	constexpr uint32 GUK    = 1;
+	constexpr uint32 MIR    = 2;
+	constexpr uint32 MMC    = 3;
+	constexpr uint32 RUJ    = 4;
+	constexpr uint32 TAK    = 5;
+
+	constexpr uint32 UnusedBit = 0;
+	constexpr uint32 GUKBit    = 1;
+	constexpr uint32 MIRBit    = 2;
+	constexpr uint32 MMCBit    = 4;
+	constexpr uint32 RUJBit    = 8;
+	constexpr uint32 TAKBit    = 16;
+
+	uint32 GetBitmask(uint32 theme_id);
+	std::string GetName(uint32 theme_id);
+	bool IsValid(uint32 theme_id);
+}
+
+static std::map<uint32, std::pair<std::string, uint32>> ldon_theme_names = {
+	{ LDoNTheme::Unused, { "Unused",              LDoNTheme::UnusedBit }, },
+	{ LDoNTheme::GUK,    { "Deepest Guk",         LDoNTheme::GUKBit }, },
+	{ LDoNTheme::MIR,    { "Miragul's Menagerie", LDoNTheme::MIRBit }, },
+	{ LDoNTheme::MMC,    { "Mistmoore Catacombs", LDoNTheme::MMCBit }, },
+	{ LDoNTheme::RUJ,    { "Rujarkian Hills",     LDoNTheme::RUJBit }, },
+	{ LDoNTheme::TAK,    { "Takish-Hiz",          LDoNTheme::TAKBit }, },
+};
+
 namespace PCNPCOnlyFlagType {
 	constexpr int PC  = 1;
 	constexpr int NPC = 2;
@@ -762,4 +791,129 @@ namespace BookType {
 	constexpr uint8 ItemInfo = 2;
 }
 
-#endif /*COMMON_EMU_CONSTANTS_H*/
+namespace PetButton {
+	constexpr uint8 Sit         = 0;
+	constexpr uint8 Stop        = 1;
+	constexpr uint8 Regroup     = 2;
+	constexpr uint8 Follow      = 3;
+	constexpr uint8 Guard       = 4;
+	constexpr uint8 Taunt       = 5;
+	constexpr uint8 Hold        = 6;
+	constexpr uint8 GreaterHold = 7;
+	constexpr uint8 Focus       = 8;
+	constexpr uint8 SpellHold   = 9;
+}
+
+namespace PetButtonState {
+	constexpr uint8 Off = 0;
+	constexpr uint8 On  = 1;
+}
+
+namespace PetCommand {
+	constexpr uint8 HealthReport   = 0;  // /pet health or Pet Window
+	constexpr uint8 Leader         = 1;  // /pet leader or Pet Window
+	constexpr uint8 Attack         = 2;  // /pet attack or Pet Window
+	constexpr uint8 QAttack        = 3;  // /pet qattack or Pet Window
+	constexpr uint8 FollowMe       = 4;  // /pet follow or Pet Window
+	constexpr uint8 GuardHere      = 5;  // /pet guard or Pet Window
+	constexpr uint8 Sit            = 6;  // /pet sit or Pet Window
+	constexpr uint8 SitDown        = 7;  // /pet sit on
+	constexpr uint8 StandUp        = 8;  // /pet sit off
+	constexpr uint8 Stop           = 9;  // /pet stop or Pet Window - Not implemented
+	constexpr uint8 StopOn         = 10; // /pet stop on - Not implemented
+	constexpr uint8 StopOff        = 11; // /pet stop off - Not implemented
+	constexpr uint8 Taunt          = 12; // /pet taunt or Pet Window
+	constexpr uint8 TauntOn        = 13; // /pet taunt on
+	constexpr uint8 TauntOff       = 14; // /pet taunt off
+	constexpr uint8 Hold           = 15; // /pet hold or Pet Window, won't add to hate list unless attacking
+	constexpr uint8 HoldOn         = 16; // /pet hold on
+	constexpr uint8 HoldOff        = 17; // /pet hold off
+	constexpr uint8 GreaterHold    = 18; // /pet ghold, will never add to hate list unless told to
+	constexpr uint8 GreaterHoldOn  = 19; // /pet ghold on
+	constexpr uint8 GreaterHoldOff = 20; // /pet ghold off
+	constexpr uint8 SpellHold      = 21; // /pet no cast or /pet spellhold or Pet Window
+	constexpr uint8 SpellHoldOn    = 22; // /pet spellhold on
+	constexpr uint8 SpellHoldOff   = 23; // /pet spellhold off
+	constexpr uint8 Focus          = 24; // /pet focus or Pet Window
+	constexpr uint8 FocusOn        = 25; // /pet focus on
+	constexpr uint8 FocusOff       = 26; // /pet focus off
+	constexpr uint8 Feign          = 27; // /pet feign
+	constexpr uint8 BackOff        = 28; // /pet back off
+	constexpr uint8 GetLost        = 29; // /pet get lost
+	constexpr uint8 GuardMe        = 30; // Same as /pet follow, but different message in older clients
+	constexpr uint8 Regroup        = 31; // /pet regroup, acts like classic hold
+	constexpr uint8 RegroupOn      = 32; // /pet regroup on
+	constexpr uint8 RegroupOff     = 33; // /pet regroup off
+	constexpr uint8 Max            = 34;
+
+	static std::map<uint8, std::string> pet_commands = {
+		{ PetCommand::HealthReport,   "Health Report" },
+		{ PetCommand::Leader,         "Leader" },
+		{ PetCommand::Attack,         "Attack" },
+		{ PetCommand::QAttack,        "QAttack" },
+		{ PetCommand::FollowMe,       "Follow Me" },
+		{ PetCommand::GuardHere,      "Guard Here" },
+		{ PetCommand::Sit,            "Sit" },
+		{ PetCommand::SitDown,        "Sit Down" },
+		{ PetCommand::StandUp,        "Stand Up" },
+		{ PetCommand::Stop,           "Stop" },
+		{ PetCommand::StopOn,         "Stop On" },
+		{ PetCommand::StopOff,        "Stop Off" },
+		{ PetCommand::Taunt,          "Taunt" },
+		{ PetCommand::TauntOn,        "Taunt On" },
+		{ PetCommand::TauntOff,       "Taunt Off" },
+		{ PetCommand::Hold,           "Hold" },
+		{ PetCommand::HoldOn,         "Hold On" },
+		{ PetCommand::HoldOff,        "Hold Off" },
+		{ PetCommand::GreaterHold,    "Greater Hold" },
+		{ PetCommand::GreaterHoldOn,  "Greater Hold On" },
+		{ PetCommand::GreaterHoldOff, "Greater Hold Off" },
+		{ PetCommand::SpellHold,      "Spell Hold" },
+		{ PetCommand::SpellHoldOn,    "Spell Hold On" },
+		{ PetCommand::SpellHoldOff,   "Spell Hold Off" },
+		{ PetCommand::Focus,          "Focus" },
+		{ PetCommand::FocusOn,        "Focus On" },
+		{ PetCommand::FocusOff,       "Focus Off" },
+		{ PetCommand::Feign,          "Feign" },
+		{ PetCommand::BackOff,        "Back Off" },
+		{ PetCommand::GetLost,        "Get Lost" },
+		{ PetCommand::GuardMe,        "Guard Me" },
+		{ PetCommand::Regroup,        "Regroup" },
+		{ PetCommand::RegroupOn,      "Regroup On" },
+		{ PetCommand::RegroupOff,     "Regroup Off" },
+		{ PetCommand::Max,            "Max" }
+	};
+
+	std::string GetName(uint8 pet_command);
+	bool IsValid(uint8 pet_command);
+}
+
+namespace PetOrder {
+	constexpr uint8 Follow = 0;
+	constexpr uint8 Sit    = 1;
+	constexpr uint8 Guard  = 2;
+	constexpr uint8 Feign  = 3;
+}
+
+namespace PetType {
+	constexpr uint8 Familiar   = 0;
+	constexpr uint8 Animation  = 1;
+	constexpr uint8 Normal     = 2;
+	constexpr uint8 Charmed    = 3;
+	constexpr uint8 Follow     = 4;
+	constexpr uint8 TargetLock = 5;
+	constexpr uint8 None       = 255;
+
+	static std::map<uint8, std::string> pet_types = {
+		{ PetType::Familiar, "Familiar" },
+		{ PetType::Animation, "Animation" },
+		{ PetType::Normal, "Normal" },
+		{ PetType::Charmed, "Charmed" },
+		{ PetType::Follow, "Follow" },
+		{ PetType::TargetLock, "Target Lock" },
+		{ PetType::None, "None" }
+	};
+
+	std::string GetName(uint8 pet_type);
+	bool IsValid(uint8 pet_type);
+}

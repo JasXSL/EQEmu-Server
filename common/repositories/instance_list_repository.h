@@ -1,55 +1,17 @@
-#ifndef EQEMU_INSTANCE_LIST_REPOSITORY_H
-#define EQEMU_INSTANCE_LIST_REPOSITORY_H
+#pragma once
 
-#include "../database.h"
-#include "../strings.h"
-#include "base/base_instance_list_repository.h"
+#include "common/repositories/base/base_instance_list_repository.h"
+
+#include "common/database.h"
+#include "common/strings.h"
 
 class InstanceListRepository: public BaseInstanceListRepository {
 public:
-
-    /**
-     * This file was auto generated and can be modified and extended upon
-     *
-     * Base repository methods are automatically
-     * generated in the "base" version of this repository. The base repository
-     * is immutable and to be left untouched, while methods in this class
-     * are used as extension methods for more specific persistence-layer
-     * accessors or mutators.
-     *
-     * Base Methods (Subject to be expanded upon in time)
-     *
-     * Note: Not all tables are designed appropriately to fit functionality with all base methods
-     *
-     * InsertOne
-     * UpdateOne
-     * DeleteOne
-     * FindOne
-     * GetWhere(std::string where_filter)
-     * DeleteWhere(std::string where_filter)
-     * InsertMany
-     * All
-     *
-     * Example custom methods in a repository
-     *
-     * InstanceListRepository::GetByZoneAndVersion(int zone_id, int zone_version)
-     * InstanceListRepository::GetWhereNeverExpires()
-     * InstanceListRepository::GetWhereXAndY()
-     * InstanceListRepository::DeleteWhereXAndY()
-     *
-     * Most of the above could be covered by base methods, but if you as a developer
-     * find yourself re-using logic for other parts of the code, its best to just make a
-     * method that can be re-used easily elsewhere especially if it can use a base repository
-     * method and encapsulate filters there
-     */
-
-	// Custom extended repository methods here
-
 	static int UpdateDuration(Database& db, uint16 instance_id, uint32_t new_duration)
 	{
 		auto results = db.QueryDatabase(
 			fmt::format(
-				"UPDATE `{}` SET `duration` = {} WHERE `{}` = {}",
+				"UPDATE `{}` SET `duration` = {}, `expire_at` = (`duration` + `start_time`) WHERE `{}` = {}",
 				TableName(),
 				new_duration,
 				PrimaryKey(),
@@ -65,7 +27,7 @@ public:
 		auto results = db.QueryDatabase(
 			fmt::format(
 				SQL(
-					SELECT ((start_time + duration) - UNIX_TIMESTAMP()) AS `remaining` FROM `{}`
+					SELECT (`expire_at` - UNIX_TIMESTAMP()) AS `remaining` FROM `{}`
 					WHERE `id` = {}
 				),
 				TableName(),
@@ -82,5 +44,3 @@ public:
 		return Strings::ToUnsignedInt(row[0]);
 	}
 };
-
-#endif //EQEMU_INSTANCE_LIST_REPOSITORY_H

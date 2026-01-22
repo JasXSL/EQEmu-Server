@@ -1,10 +1,12 @@
-#ifndef EQEMU_CHARACTER_CORPSES_REPOSITORY_H
-#define EQEMU_CHARACTER_CORPSES_REPOSITORY_H
+#pragma once
 
-#include <glm/vec4.hpp>
-#include "../database.h"
-#include "../strings.h"
-#include "base/base_character_corpses_repository.h"
+#include "common/repositories/base/base_character_corpses_repository.h"
+#include "common/rulesys.h"
+
+#include "common/database.h"
+#include "common/strings.h"
+
+#include "glm/vec4.hpp"
 
 class CharacterCorpsesRepository: public BaseCharacterCorpsesRepository {
 public:
@@ -231,6 +233,19 @@ public:
 
 		return UpdateOne(db, corpse);
 	}
-};
 
-#endif //EQEMU_CHARACTER_CORPSES_REPOSITORY_H
+	static int UpdateEntityVariables(Database& db, uint32 corpse_id, const std::string& json_string)
+	{
+		auto results = db.QueryDatabase(
+			fmt::format(
+				"UPDATE `{}` SET `entity_variables` = '{}' WHERE `{}` = {}",
+				TableName(),
+				Strings::Escape(json_string),
+				PrimaryKey(),
+				corpse_id
+			)
+		);
+
+		return results.Success() ? results.RowsAffected() : 0;
+	}
+};

@@ -17,24 +17,22 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-#include "../global_define.h"
-#include "../eqemu_config.h"
-#include "../eqemu_logsys.h"
 #include "rof.h"
-#include "../opcodemgr.h"
-
-#include "../eq_stream_ident.h"
-#include "../crc32.h"
-
-#include "../eq_packet_structs.h"
-#include "../misc_functions.h"
-#include "../strings.h"
-#include "../inventory_profile.h"
 #include "rof_structs.h"
-#include "../rulesys.h"
-#include "../path_manager.h"
-#include "../races.h"
-#include "../raid.h"
+
+#include "common/crc32.h"
+#include "common/eq_packet_structs.h"
+#include "common/eq_stream_ident.h"
+#include "common/eqemu_config.h"
+#include "common/eqemu_logsys.h"
+#include "common/inventory_profile.h"
+#include "common/misc_functions.h"
+#include "common/opcodemgr.h"
+#include "common/path_manager.h"
+#include "common/races.h"
+#include "common/raid.h"
+#include "common/rulesys.h"
+#include "common/strings.h"
 
 #include <iostream>
 #include <sstream>
@@ -78,7 +76,7 @@ namespace RoF
 	{
 		//create our opcode manager if we havent already
 		if (opcodes == nullptr) {
-			std::string opfile = fmt::format("{}/patch_{}.conf", path.GetPatchPath(), name);
+			std::string opfile = fmt::format("{}/patch_{}.conf", PathManager::Instance()->GetPatchPath(), name);
 
 			//load up the opcode manager.
 			//TODO: figure out how to support shared memory with multiple patches...
@@ -117,7 +115,7 @@ namespace RoF
 		//we need to go to every stream and replace it's manager.
 
 		if (opcodes != nullptr) {
-			std::string opfile = fmt::format("{}/patch_{}.conf", path.GetPatchPath(), name);
+			std::string opfile = fmt::format("{}/patch_{}.conf", PathManager::Instance()->GetPatchPath(), name);
 			if (!opcodes->ReloadOpcodes(opfile.c_str())) {
 				LogNetcode("[OPCODES] Error reloading opcodes file [{}] for patch [{}]", opfile.c_str(), name);
 				return;
@@ -1213,22 +1211,22 @@ namespace RoF
 		case 1: { // GuildBankItemUpdate
 			auto emu = (GuildBankItemUpdate_Struct *)in->pBuffer;
 			auto eq = (structs::GuildBankItemUpdate_Struct *)outapp->pBuffer;
-			eq->Action = 0;
-			OUT(Unknown004);
-			eq->Unknown08 = 0;
-			OUT(SlotID);
-			OUT(Area);
-			OUT(Unknown012);
-			OUT(ItemID);
-			OUT(Icon);
-			OUT(Quantity);
-			OUT(Permissions);
-			OUT(AllowMerge);
-			OUT(Useable);
-			OUT_str(ItemName);
-			OUT_str(Donator);
-			OUT_str(WhoFor);
-			OUT(Unknown226);
+			eq->action = 0;
+			OUT(unknown004);
+			eq->unknown008 = 0;
+			OUT(slot_id);
+			OUT(area);
+			OUT(display);
+			OUT(item_id);
+			OUT(icon_id);
+			OUT(quantity);
+			OUT(permissions);
+			OUT(allow_merge);
+			OUT(is_useable);
+			OUT_str(item_name);
+			OUT_str(donator);
+			OUT_str(who_for);
+			OUT(unknown226);
 			break;
 		}
 		default:
@@ -5188,7 +5186,14 @@ namespace RoF
 
 		//sprintf(hdr.unknown000, "06e0002Y1W00");
 
-		snprintf(hdr.unknown000, sizeof(hdr.unknown000), "%016d", item->ID);
+		strn0cpy(
+			hdr.unknown000,
+			fmt::format(
+				"{:016}\0",
+				packet_type == ItemPacketInvalid ? 0 : inst->GetSerialNumber()
+			).c_str(),
+			sizeof(hdr.unknown000)
+		);
 
 		hdr.stacksize = (inst->IsStackable() ? ((inst->GetCharges() > 1000) ? 0xFFFFFFFF : inst->GetCharges()) : 1);
 		hdr.unknown004 = 0;

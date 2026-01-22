@@ -1,16 +1,11 @@
-#include "../common/global_define.h"
-#include "../common/eqemu_logsys.h"
 #include "queryserv.h"
-#include "world_config.h"
-#include "clientlist.h"
-#include "zonelist.h"
 
-
-#include "../common/md5.h"
-#include "../common/packet_dump.h"
-
-extern ClientList client_list;
-extern ZSList zoneserver_list;
+#include "common/eqemu_logsys.h"
+#include "common/md5.h"
+#include "common/packet_dump.h"
+#include "world/clientlist.h"
+#include "world/world_config.h"
+#include "world/zonelist.h"
 
 QueryServConnection::QueryServConnection()
 {
@@ -22,7 +17,6 @@ void QueryServConnection::AddConnection(std::shared_ptr<EQ::Net::ServertalkServe
 	connection->OnMessage(ServerOP_QueryServGeneric, std::bind(&QueryServConnection::HandleGenericMessage, this, std::placeholders::_1, std::placeholders::_2));
 	connection->OnMessage(ServerOP_LFGuildUpdate, std::bind(&QueryServConnection::HandleLFGuildUpdateMessage, this, std::placeholders::_1, std::placeholders::_2));
 	m_streams.emplace(std::make_pair(connection->GetUUID(), connection));
-	m_keepalive = std::make_unique<EQ::Timer>(1000, true, std::bind(&QueryServConnection::OnKeepAlive, this, std::placeholders::_1));
 }
 
 void QueryServConnection::RemoveConnection(std::shared_ptr<EQ::Net::ServertalkServerConnection> connection)
@@ -37,12 +31,12 @@ void QueryServConnection::HandleGenericMessage(uint16_t opcode, EQ::Net::Packet 
 	uint32 ZoneID = p.GetUInt32(0);
 	uint16 InstanceID = p.GetUInt32(4);
 	ServerPacket pack(opcode, p);
-	zoneserver_list.SendPacket(ZoneID, InstanceID, &pack);
+	ZSList::Instance()->SendPacket(ZoneID, InstanceID, &pack);
 }
 
 void QueryServConnection::HandleLFGuildUpdateMessage(uint16_t opcode, EQ::Net::Packet &p) {
 	ServerPacket pack(opcode, p);
-	zoneserver_list.SendPacket(&pack);
+	ZSList::Instance()->SendPacket(&pack);
 }
 
 bool QueryServConnection::SendPacket(ServerPacket* pack)
@@ -54,8 +48,3 @@ bool QueryServConnection::SendPacket(ServerPacket* pack)
 	return true;
 }
 
-void QueryServConnection::OnKeepAlive(EQ::Timer *t)
-{
-	ServerPacket pack(ServerOP_KeepAlive, 0);
-	SendPacket(&pack);
-}

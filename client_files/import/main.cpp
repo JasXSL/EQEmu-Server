@@ -16,26 +16,20 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-#include "../../common/eqemu_logsys.h"
-#include "../../common/global_define.h"
-#include "../../common/shareddb.h"
-#include "../../common/eqemu_config.h"
-#include "../../common/platform.h"
-#include "../../common/crash.h"
-#include "../../common/rulesys.h"
-#include "../../common/strings.h"
-#include "../../common/content/world_content_service.h"
-#include "../../common/zone_store.h"
-#include "../../common/path_manager.h"
-#include "../../common/repositories/base_data_repository.h"
-#include "../../common/file.h"
-#include "../../common/events/player_event_logs.h"
-
-EQEmuLogSys         LogSys;
-WorldContentService content_service;
-ZoneStore           zone_store;
-PathManager         path;
-PlayerEventLogs     player_event_logs;
+#include "common/content/world_content_service.h"
+#include "common/crash.h"
+#include "common/eqemu_config.h"
+#include "common/eqemu_logsys.h"
+#include "common/events/player_event_logs.h"
+#include "common/evolving_items.h"
+#include "common/file.h"
+#include "common/path_manager.h"
+#include "common/platform.h"
+#include "common/repositories/base_data_repository.h"
+#include "common/rulesys.h"
+#include "common/shareddb.h"
+#include "common/strings.h"
+#include "common/zone_store.h"
 
 void ImportSpells(SharedDatabase *db);
 void ImportSkillCaps(SharedDatabase *db);
@@ -44,10 +38,10 @@ void ImportDBStrings(SharedDatabase *db);
 
 int main(int argc, char **argv) {
 	RegisterExecutablePlatform(ExePlatformClientImport);
-	LogSys.LoadLogSettingsDefaults();
+	EQEmuLogSys::Instance()->LoadLogSettingsDefaults();
 	set_exception_handler();
 
-	path.LoadPaths();
+	PathManager::Instance()->Init();
 
 	LogInfo("Client Files Import Utility");
 	if(!EQEmuConfig::LoadConfig()) {
@@ -90,8 +84,8 @@ int main(int argc, char **argv) {
 		content_db.SetMySQL(database);
 	}
 
-	LogSys.SetDatabase(&database)
-		->SetLogPath(path.GetLogPath())
+	EQEmuLogSys::Instance()->SetDatabase(&database)
+		->SetLogPath(PathManager::Instance()->GetLogPath())
 		->LoadLogDatabaseSettings()
 		->StartFileLogs();
 
@@ -100,7 +94,7 @@ int main(int argc, char **argv) {
 	ImportBaseData(&content_db);
 	ImportDBStrings(&database);
 
-	LogSys.CloseFileLogs();
+	EQEmuLogSys::Instance()->CloseFileLogs();
 
 	return 0;
 }
@@ -136,7 +130,7 @@ bool IsStringField(int i) {
 
 void ImportSpells(SharedDatabase *db) {
 	LogInfo("Importing Spells");
-	std::string file = fmt::format("{}/import/spells_us.txt", path.GetServerPath());
+	std::string file = fmt::format("{}/import/spells_us.txt", PathManager::Instance()->GetServerPath());
 	FILE *f = fopen(file.c_str(), "r");
 	if(!f) {
 		LogError("Unable to open {} to read, skipping.", file);
@@ -226,7 +220,7 @@ void ImportSpells(SharedDatabase *db) {
 void ImportSkillCaps(SharedDatabase *db) {
 	LogInfo("Importing Skill Caps");
 
-	std::string file = fmt::format("{}/import/SkillCaps.txt", path.GetServerPath());
+	std::string file = fmt::format("{}/import/SkillCaps.txt", PathManager::Instance()->GetServerPath());
 	FILE *f = fopen(file.c_str(), "r");
 	if(!f) {
 		LogError("Unable to open {} to read, skipping.", file);
@@ -263,7 +257,7 @@ void ImportBaseData(SharedDatabase *db)
 {
 	LogInfo("Importing Base Data");
 
-	const std::string& file_name = fmt::format("{}/import/BaseData.txt", path.GetServerPath());
+	const std::string& file_name = fmt::format("{}/import/BaseData.txt", PathManager::Instance()->GetServerPath());
 
 	const auto& file_contents = File::GetContents(file_name);
 	if (!file_contents.error.empty()) {
@@ -303,7 +297,7 @@ void ImportBaseData(SharedDatabase *db)
 void ImportDBStrings(SharedDatabase *db) {
 	LogInfo("Importing DB Strings");
 
-	std::string file = fmt::format("{}/import/dbstr_us.txt", path.GetServerPath());
+	std::string file = fmt::format("{}/import/dbstr_us.txt", PathManager::Instance()->GetServerPath());
 	FILE *f = fopen(file.c_str(), "r");
 	if(!f) {
 		LogError("Unable to open {} to read, skipping.", file);

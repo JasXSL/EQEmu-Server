@@ -15,10 +15,10 @@
 	along with this program; if not, write to the Free Software
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
-#ifndef __ZoneConfig_H
-#define __ZoneConfig_H
 
-#include "../common/eqemu_config.h"
+#pragma once
+
+#include "common/eqemu_config.h"
 
 class ZoneConfig : public EQEmuConfig {
 	public:
@@ -43,11 +43,13 @@ class ZoneConfig : public EQEmuConfig {
 	}
 
 	// Load the config
-	static bool LoadConfig(const std::string& path = "") {
-		if (_zone_config != nullptr)
-			delete _zone_config;
-		_zone_config=new ZoneConfig;
-		_config=_zone_config;
+	static bool LoadConfig(const std::string &path = "")
+	{
+		safe_delete(_zone_config);
+		safe_delete(_config);
+
+		_zone_config = new ZoneConfig;
+		_config      = _zone_config;
 
 		return _config->parseFile(path);
 	}
@@ -57,5 +59,3 @@ class ZoneConfig : public EQEmuConfig {
 
 	void Dump() const;
 };
-
-#endif

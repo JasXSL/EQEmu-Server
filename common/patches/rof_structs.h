@@ -17,18 +17,19 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-#ifndef COMMON_ROF_STRUCTS_H
-#define COMMON_ROF_STRUCTS_H
+#pragma once
 
+#include "common/patches/rof_limits.h"
+#include "common/textures.h"
+#include "common/types.h"
 
-namespace RoF
-{
-	namespace structs {
+namespace RoF { namespace structs {
 
 /*
 ** Compiler override to ensure
 ** byte aligned structures
 */
+#pragma pack(push)
 #pragma pack(1)
 
 struct LoginInfo_Struct {
@@ -1946,38 +1947,38 @@ struct GuildBankItemUpdate_Struct
 	void Init(uint32 inAction, uint32 inUnknown004, uint16 inSlotID, uint16 inArea, uint16 inUnknown012, uint32 inItemID, uint32 inIcon, uint32 inQuantity,
 			uint32 inPermissions, uint32 inAllowMerge, bool inUseable)
 	{
-		Action = inAction;
-		Unknown004 = inUnknown004;
-		SlotID = inSlotID;
-		Area = inArea;
-		Unknown012 = inUnknown012;
-		ItemID = inItemID;
-		Icon = inIcon;
-		Quantity = inQuantity;
-		Permissions = inPermissions;
-		AllowMerge = inAllowMerge;
-		Useable = inUseable;
-		ItemName[0] = '\0';
-		Donator[0] = '\0';
-		WhoFor[0] = '\0';
+		action       = inAction;
+		unknown004   = inUnknown004;
+		slot_id      = inSlotID;
+		area         = inArea;
+		display      = inUnknown012;
+		item_id      = inItemID;
+		icon_id      = inIcon;
+		quantity     = inQuantity;
+		permissions  = inPermissions;
+		allow_merge  = inAllowMerge;
+		is_useable   = inUseable;
+		item_name[0] = '\0';
+		donator[0]   = '\0';
+		who_for[0]   = '\0';
 	};
 
-/*000*/	uint32	Action;
-/*004*/	uint32	Unknown004;
-/*008*/	uint32	Unknown08;
-/*012*/	uint16	SlotID;
-/*014*/	uint16	Area;
-/*016*/	uint32	Unknown012;
-/*020*/	uint32	ItemID;
-/*024*/	uint32	Icon;
-/*028*/	uint32	Quantity;
-/*032*/	uint32	Permissions;
-/*036*/	uint8	AllowMerge;
-/*037*/	uint8	Useable;	// Used in conjunction with the Public-if-useable permission.
-/*038*/	char	ItemName[64];
-/*102*/	char	Donator[64];
-/*166*/ char	WhoFor[64];
-/*230*/	uint16	Unknown226;
+/*000*/	uint32	action;
+/*004*/	uint32	unknown004;
+/*008*/	uint32	unknown008;
+/*012*/	uint16	slot_id;
+/*014*/	uint16	area;
+/*016*/	uint32	display;
+/*020*/	uint32	item_id;
+/*024*/	uint32	icon_id;
+/*028*/	uint32	quantity;
+/*032*/	uint32	permissions;
+/*036*/	uint8	allow_merge;
+/*037*/	uint8	is_useable;	// Used in conjunction with the Public-if-useable permission.
+/*038*/	char	item_name[64];
+/*102*/	char	donator[64];
+/*166*/ char	who_for[64];
+/*230*/	uint16	unknown226;
 };
 
 struct GuildBankClear_Struct
@@ -5139,8 +5140,7 @@ struct SayLinkBodyFrame_Struct {
 /*055*/
 };
 
-	}; /*structs*/
+#pragma pack(pop)
 
-}; /*RoF*/
-
-#endif /*COMMON_ROF_STRUCTS_H*/
+} /*structs*/
+} /*RoF*/

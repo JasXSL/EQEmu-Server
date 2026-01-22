@@ -16,51 +16,35 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-#include <iostream>
-#include <cstring>
-#include <fmt/format.h>
-
-#if defined(_MSC_VER) && _MSC_VER >= 1800
-	#include <algorithm>
-#endif
-
-#include "classes.h"
-#include "eq_packet_structs.h"
-#include "faction.h"
-#include "features.h"
-#include "ipc_mutex.h"
-#include "inventory_profile.h"
-#include "memory_mapped_file.h"
-#include "mysql.h"
-#include "rulesys.h"
 #include "shareddb.h"
-#include "strings.h"
-#include "eqemu_config.h"
-#include "data_verification.h"
-#include "repositories/criteria/content_filter_criteria.h"
-#include "repositories/account_repository.h"
-#include "repositories/faction_association_repository.h"
-#include "repositories/starting_items_repository.h"
-#include "path_manager.h"
-#include "repositories/loottable_repository.h"
-#include "repositories/character_item_recast_repository.h"
-#include "repositories/character_corpses_repository.h"
-#include "repositories/skill_caps_repository.h"
-#include "repositories/inventory_repository.h"
-#include "repositories/books_repository.h"
 
-namespace ItemField
-{
-	enum {
-		source = 0,
-#define F(x) x,
-#include "item_fieldlist.h"
-#undef F
-		updated,
-		minstatus,
-		comment,
-	};
-}
+#include "common/classes.h"
+#include "common/data_verification.h"
+#include "common/eq_packet_structs.h"
+#include "common/eqemu_config.h"
+#include "common/evolving_items.h"
+#include "common/faction.h"
+#include "common/inventory_profile.h"
+#include "common/ipc_mutex.h"
+#include "common/memory_mapped_file.h"
+#include "common/path_manager.h"
+#include "common/repositories/account_repository.h"
+#include "common/repositories/books_repository.h"
+#include "common/repositories/character_corpses_repository.h"
+#include "common/repositories/character_inspect_messages_repository.h"
+#include "common/repositories/character_item_recast_repository.h"
+#include "common/repositories/criteria/content_filter_criteria.h"
+#include "common/repositories/damageshieldtypes_repository.h"
+#include "common/repositories/inventory_repository.h"
+#include "common/repositories/items_repository.h"
+#include "common/repositories/sharedbank_repository.h"
+#include "common/repositories/starting_items_repository.h"
+#include "common/rulesys.h"
+#include "common/strings.h"
+#include "zone/client.h"
+
+#include "fmt/format.h"
+#include <algorithm>
 
 SharedDatabase::SharedDatabase()
 : Database()
@@ -128,327 +112,321 @@ bool SharedDatabase::SetGMFlymode(uint32 account_id, uint8 flymode)
 	return a.id > 0;
 }
 
-uint32 SharedDatabase::GetTotalTimeEntitledOnAccount(uint32 AccountID) {
-	uint32 EntitledTime = 0;
-	const std::string query = StringFormat("SELECT `time_played` FROM `character_data` WHERE `account_id` = %u", AccountID);
-	auto results = QueryDatabase(query);
-	for (auto& row = results.begin(); row != results.end(); ++row) {
-		EntitledTime += Strings::ToUnsignedInt(row[0]);
+void SharedDatabase::SetMailKey(uint32 character_id, uint32 ip_address, uint32 mail_key)
+{
+	std::string full_mail_key;
+
+	if (RuleB(Chat, EnableMailKeyIPVerification)) {
+		full_mail_key = fmt::format("{:08X}{:08X}", ip_address, mail_key);
+	} else {
+		full_mail_key = fmt::format("{:08X}", mail_key);
 	}
-	return EntitledTime;
+
+	auto e = CharacterDataRepository::FindOne(*this, character_id);
+	if (!e.id) {
+		LogError("Failed to find character_id [{}] when setting mailkey", character_id);
+		return;
+	}
+
+	e.mailkey = full_mail_key;
+
+	if (!CharacterDataRepository::UpdateOne(*this, e)) {
+		LogError("Failed to set mailkey to [{}] for character_id [{}]", full_mail_key, character_id);
+	}
 }
 
-void SharedDatabase::SetMailKey(int CharID, int IPAddress, int MailKey)
+SharedDatabase::MailKeys SharedDatabase::GetMailKey(uint32 character_id)
 {
-	char mail_key[17];
+	auto e = CharacterDataRepository::FindOne(*this, character_id);
 
-	if (RuleB(Chat, EnableMailKeyIPVerification) == true) {
-		sprintf(mail_key, "%08X%08X", IPAddress, MailKey);
-	}
-	else {
-		sprintf(mail_key, "%08X", MailKey);
+	if (!e.id) {
+		return MailKeys{ };
 	}
 
-	const std::string query = StringFormat(
-		"UPDATE character_data SET mailkey = '%s' WHERE id = '%i'",
-		mail_key, CharID
+	return MailKeys{
+		.mail_key = e.mailkey.substr(8),
+		.mail_key_full = e.mailkey
+	};
+}
+
+bool SharedDatabase::SaveCursor(
+	uint32 char_id,
+	std::list<EQ::ItemInstance*>::const_iterator& start,
+	std::list<EQ::ItemInstance*>::const_iterator& end
+)
+{
+	const int deleted = InventoryRepository::DeleteWhere(
+		*this,
+		fmt::format(
+			"`character_id` = {} AND (`slot_id` = {} OR `slot_id` BETWEEN {} AND {})",
+			char_id,
+			EQ::invslot::slotCursor,
+			EQ::invbag::CURSOR_BAG_BEGIN,
+			EQ::invbag::CURSOR_BAG_END
+		)
 	);
 
-	const auto        results = QueryDatabase(query);
-	if (!results.Success()) {
-		LogError("SharedDatabase::SetMailKey({}, {}) : {}", CharID, mail_key, results.ErrorMessage().c_str());
-	}
-}
+	int16 i = EQ::invbag::CURSOR_BAG_BEGIN;
+	for (auto& it = start; it != end; ++it, i++) {
+		// shouldn't be anything in the queue that indexes this high
+		if (i > EQ::invbag::CURSOR_BAG_END) {
+			break;
+		}
 
-SharedDatabase::MailKeys SharedDatabase::GetMailKey(int character_id)
-{
-	const std::string query   = StringFormat("SELECT `mailkey` FROM `character_data` WHERE `id`='%i' LIMIT 1", character_id);
-	auto              results = QueryDatabase(query);
-	if (!results.Success()) {
-		return MailKeys{};
-	}
-
-	if (!results.RowCount()) {
-		Log(Logs::General,
-			Logs::ClientLogin,
-			"Error: Mailkey for character id [%i] does not exist or could not be found",
-			character_id
-		);
-		return MailKeys{};
-	}
-
-	auto &row = results.begin();
-	if (row != results.end()) {
-		std::string mail_key = row[0];
-
-		return MailKeys{
-			.mail_key = mail_key.substr(8),
-			.mail_key_full = mail_key
-		};
-	}
-
-	return MailKeys{};
-}
-
-bool SharedDatabase::SaveCursor(uint32 char_id, std::list<EQ::ItemInstance*>::const_iterator &start, std::list<EQ::ItemInstance*>::const_iterator &end)
-{
-	// Delete cursor items
-	const std::string query = StringFormat("DELETE FROM inventory WHERE charid = %i "
-	                                       "AND ((slotid >= 8000 AND slotid <= 8999) "
-	                                       "OR slotid = %i OR (slotid >= %i AND slotid <= %i) )",
-	                                       char_id, EQ::invslot::slotCursor,
-	                                       EQ::invbag::CURSOR_BAG_BEGIN, EQ::invbag::CURSOR_BAG_END);
-	const auto results = QueryDatabase(query);
-    if (!results.Success()) {
-        std::cout << "Clearing cursor failed: " << results.ErrorMessage() << std::endl;
-        return false;
-    }
-
-    int i = 8000;
-    for(auto& it = start; it != end; ++it, i++) {
-		if (i > 8999) { break; } // shouldn't be anything in the queue that indexes this high
-		const EQ::ItemInstance *inst = *it;
-		const int16 use_slot = (i == 8000) ? EQ::invslot::slotCursor : i;
+		const EQ::ItemInstance* inst = *it;
+		const int16 use_slot = i == EQ::invbag::CURSOR_BAG_BEGIN ? EQ::invslot::slotCursor : i;
 		if (!SaveInventory(char_id, inst, use_slot)) {
 			return false;
 		}
-    }
+	}
 
 	return true;
 }
 
 bool SharedDatabase::VerifyInventory(uint32 account_id, int16 slot_id, const EQ::ItemInstance* inst)
 {
-	// Delete cursor items
-	const std::string query = StringFormat("SELECT itemid, charges FROM sharedbank "
-	                                       "WHERE acctid = %d AND slotid = %d",
-	                                       account_id, slot_id);
-    auto results = QueryDatabase(query);
-	if (!results.Success()) {
-		//returning true is less harmful in the face of a query error
-		return true;
+	if (!inst || !inst->GetItem()) {
+		return false;
 	}
 
-	if (results.RowCount() == 0)
-        return false;
+	const auto& l = SharedbankRepository::GetWhere(
+		*this,
+		fmt::format(
+			"`account_id` = {} AND `slot_id` = {} LIMIT 1",
+			account_id,
+			slot_id
+		)
+	);
 
-	auto& row = results.begin();
+	if (l.empty()) {
+		return false;
+	}
 
-	const uint32 id = Strings::ToUnsignedInt(row[0]);
-	const uint16 charges = Strings::ToUnsignedInt(row[1]);
+	const auto& e = l.front();
 
-    uint16 expect_charges;
+	uint16 expect_charges = inst->GetCharges() >= 0 ? inst->GetCharges() : std::numeric_limits<int16>::max();
 
-    if(inst->GetCharges() >= 0)
-        expect_charges = inst->GetCharges();
-    else
-        expect_charges = 0x7FFF;
-
-    if(id != inst->GetItem()->ID || charges != expect_charges)
-        return false;
-
-	return true;
+	return e.item_id == inst->GetID() && e.charges == expect_charges;
 }
 
-bool SharedDatabase::SaveInventory(uint32 char_id, const EQ::ItemInstance* inst, int16 slot_id) {
-
-	//never save tribute slots:
-	if (slot_id >= EQ::invslot::TRIBUTE_BEGIN && slot_id <= EQ::invslot::TRIBUTE_END)
+bool SharedDatabase::SaveInventory(uint32 char_id, const EQ::ItemInstance* inst, int16 slot_id)
+{
+	// Don't save any Tribute slots
+	if (
+		EQ::ValueWithin(slot_id, EQ::invslot::GUILD_TRIBUTE_BEGIN, EQ::invslot::GUILD_TRIBUTE_END) ||
+		EQ::ValueWithin(slot_id, EQ::invslot::TRIBUTE_BEGIN, EQ::invslot::TRIBUTE_END)
+	) {
 		return true;
-	if (slot_id >= EQ::invslot::GUILD_TRIBUTE_BEGIN && slot_id <= EQ::invslot::GUILD_TRIBUTE_END)
-		return true;
+	}
 
-	if (slot_id >= EQ::invslot::SHARED_BANK_BEGIN && slot_id <= EQ::invbag::SHARED_BANK_BAGS_END) {
-        // Shared bank inventory
+	if (
+		EQ::ValueWithin(slot_id, EQ::invslot::SHARED_BANK_BEGIN, EQ::invslot::SHARED_BANK_END) ||
+		EQ::ValueWithin(slot_id, EQ::invbag::SHARED_BANK_BAGS_BEGIN, EQ::invbag::SHARED_BANK_BAGS_END)
+	) {
 		if (!inst) {
 			return DeleteSharedBankSlot(char_id, slot_id);
-		}
-		else {
+		} else {
 			// Needed to clear out bag slots that 'REPLACE' in UpdateSharedBankSlot does not overwrite..otherwise, duplication occurs
 			// (This requires that parent then child items be sent..which should be how they are currently passed)
-			if (EQ::InventoryProfile::SupportsContainers(slot_id))
+			if (EQ::InventoryProfile::SupportsContainers(slot_id)) {
 				DeleteSharedBankSlot(char_id, slot_id);
+			}
+
 			return UpdateSharedBankSlot(char_id, inst, slot_id);
 		}
-	}
-	else if (!inst) { // All other inventory
+	} else if (!inst) { // All other inventory
 		return DeleteInventorySlot(char_id, slot_id);
 	}
 
 	// Needed to clear out bag slots that 'REPLACE' in UpdateInventorySlot does not overwrite..otherwise, duplication occurs
 	// (This requires that parent then child items be sent..which should be how they are currently passed)
-	if (EQ::InventoryProfile::SupportsContainers(slot_id))
+	if (EQ::InventoryProfile::SupportsContainers(slot_id)) {
 		DeleteInventorySlot(char_id, slot_id);
-    return UpdateInventorySlot(char_id, inst, slot_id);
-}
-
-bool SharedDatabase::UpdateInventorySlot(uint32 char_id, const EQ::ItemInstance* inst, int16 slot_id) {
-	// need to check 'inst' argument for valid pointer
-
-	uint32 augslot[EQ::invaug::SOCKET_COUNT] = { 0, 0, 0, 0, 0, 0 };
-	if (inst->IsClassCommon()) {
-		for (int i = EQ::invaug::SOCKET_BEGIN; i <= EQ::invaug::SOCKET_END; i++) {
-			const EQ::ItemInstance *auginst = inst->GetItem(i);
-			augslot[i] = (auginst && auginst->GetItem()) ? auginst->GetItem()->ID : 0;
-		}
 	}
 
-    uint16 charges;
-	if(inst->GetCharges() >= 0)
-		charges = inst->GetCharges();
-	else
-		charges = 0x7FFF;
-
-	// Update/Insert item
-	const std::string query = StringFormat("REPLACE INTO inventory "
-	                                       "(charid, slotid, itemid, charges, instnodrop, custom_data, color, "
-	                                       "augslot1, augslot2, augslot3, augslot4, augslot5, augslot6, ornamenticon, ornamentidfile, ornament_hero_model, guid) "
-	                                       "VALUES( %lu, %lu, %lu, %lu, %lu, '%s', %lu, "
-	                                       "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu)",
-	                                       static_cast<unsigned long>(char_id), static_cast<unsigned long>(slot_id), static_cast<unsigned long>(inst->GetItem()->ID),
-	                                       static_cast<unsigned long>(charges), static_cast<unsigned long>(inst->IsAttuned() ? 1 : 0),
-	                                       inst->GetCustomDataString().c_str(), static_cast<unsigned long>(inst->GetColor()),
-	                                       static_cast<unsigned long>(augslot[0]), static_cast<unsigned long>(augslot[1]), static_cast<unsigned long>(augslot[2]),
-	                                       static_cast<unsigned long>(augslot[3]), static_cast<unsigned long>(augslot[4]), static_cast<unsigned long>(augslot[5]), static_cast<unsigned long>(inst->GetOrnamentationIcon()),
-	                                       static_cast<unsigned long>(inst->GetOrnamentationIDFile()), static_cast<unsigned long>(inst->GetOrnamentHeroModel()), inst->GetSerialNumber());
-	const auto results = QueryDatabase(query);
-
-    // Save bag contents, if slot supports bag contents
-	if (inst->IsClassBag() && EQ::InventoryProfile::SupportsContainers(slot_id))
-		// Limiting to bag slot count will get rid of 'hidden' duplicated items and 'Invalid Slot ID'
-		// messages through attrition (and the modded code in SaveInventory)
-		for (uint8 idx = EQ::invbag::SLOT_BEGIN; idx < inst->GetItem()->BagSlots && idx <= EQ::invbag::SLOT_END; idx++) {
-			const EQ::ItemInstance* baginst = inst->GetItem(idx);
-			SaveInventory(char_id, baginst, EQ::InventoryProfile::CalcSlotId(slot_id, idx));
-		}
-
-    if (!results.Success()) {
-        return false;
-    }
-
-	return true;
+	return UpdateInventorySlot(char_id, inst, slot_id);
 }
 
-bool SharedDatabase::UpdateSharedBankSlot(uint32 char_id, const EQ::ItemInstance* inst, int16 slot_id) {
-	// need to check 'inst' argument for valid pointer
-
-	uint32 augslot[EQ::invaug::SOCKET_COUNT] = { 0, 0, 0, 0, 0, 0 };
-	if (inst->IsClassCommon()) {
-		for (int i = EQ::invaug::SOCKET_BEGIN; i <= EQ::invaug::SOCKET_END; i++) {
-			const EQ::ItemInstance *auginst = inst->GetItem(i);
-			augslot[i] = (auginst && auginst->GetItem()) ? auginst->GetItem()->ID : 0;
-		}
-	}
-
-// Update/Insert item
-	const uint32 account_id = GetAccountIDByChar(char_id);
-    uint16 charges;
-    if(inst->GetCharges() >= 0)
-        charges = inst->GetCharges();
-    else
-        charges = 0x7FFF;
-
-	const std::string query = StringFormat("REPLACE INTO sharedbank "
-	                                       "(acctid, slotid, itemid, charges, custom_data, "
-	                                       "augslot1, augslot2, augslot3, augslot4, augslot5, augslot6) "
-	                                       "VALUES( %lu, %lu, %lu, %lu, '%s', "
-	                                       "%lu, %lu, %lu, %lu, %lu, %lu)",
-	                                       static_cast<unsigned long>(account_id), static_cast<unsigned long>(slot_id), static_cast<unsigned long>(inst->GetItem()->ID),
-	                                       static_cast<unsigned long>(charges), inst->GetCustomDataString().c_str(), static_cast<unsigned long>(augslot[0]),
-	                                       static_cast<unsigned long>(augslot[1]), static_cast<unsigned long>(augslot[2]), static_cast<unsigned long>(augslot[3]), static_cast<unsigned long>(augslot[4]),
-	                                       static_cast<unsigned long>(augslot[5]));
-	const auto results = QueryDatabase(query);
-
-    // Save bag contents, if slot supports bag contents
-	if (inst->IsClassBag() && EQ::InventoryProfile::SupportsContainers(slot_id)) {
-		// Limiting to bag slot count will get rid of 'hidden' duplicated items and 'Invalid Slot ID'
-		// messages through attrition (and the modded code in SaveInventory)
-		for (uint8 idx = EQ::invbag::SLOT_BEGIN; idx < inst->GetItem()->BagSlots && idx <= EQ::invbag::SLOT_END; idx++) {
-			const EQ::ItemInstance* baginst = inst->GetItem(idx);
-			SaveInventory(char_id, baginst, EQ::InventoryProfile::CalcSlotId(slot_id, idx));
-		}
-	}
-
-    if (!results.Success()) {
-        return false;
-    }
-
-	return true;
-}
-
-bool SharedDatabase::DeleteInventorySlot(uint32 char_id, int16 slot_id) {
-
-	// Delete item
-	std::string query = StringFormat("DELETE FROM inventory WHERE charid = %i AND slotid = %i", char_id, slot_id);
-    auto results = QueryDatabase(query);
-    if (!results.Success()) {
-        return false;
-    }
-
-    // Delete bag slots, if need be
-	if (!EQ::InventoryProfile::SupportsContainers(slot_id))
-        return true;
-
-	const int16 base_slot_id = EQ::InventoryProfile::CalcSlotId(slot_id, EQ::invbag::SLOT_BEGIN);
-    query = StringFormat("DELETE FROM inventory WHERE charid = %i AND slotid >= %i AND slotid < %i",
-                        char_id, base_slot_id, (base_slot_id+10));
-    results = QueryDatabase(query);
-    if (!results.Success()) {
-        return false;
-    }
-
-    // @merth: need to delete augments here
-    return true;
-}
-
-bool SharedDatabase::DeleteSharedBankSlot(uint32 char_id, int16 slot_id) {
-
-    // Delete item
-    const uint32 account_id = GetAccountIDByChar(char_id);
-	std::string query = StringFormat("DELETE FROM sharedbank WHERE acctid=%i AND slotid=%i", account_id, slot_id);
-    auto results = QueryDatabase(query);
-    if (!results.Success()) {
-        return false;
-    }
-
-	// Delete bag slots, if need be
-	if (!EQ::InventoryProfile::SupportsContainers(slot_id))
-        return true;
-
-    const int16 base_slot_id = EQ::InventoryProfile::CalcSlotId(slot_id, EQ::invbag::SLOT_BEGIN);
-    query = StringFormat("DELETE FROM sharedbank WHERE acctid = %i "
-                        "AND slotid >= %i AND slotid < %i",
-                        account_id, base_slot_id, (base_slot_id+10));
-    results = QueryDatabase(query);
-    if (!results.Success()) {
-        return false;
-    }
-
-    // @merth: need to delete augments here
-    return true;
-}
-
-
-int32 SharedDatabase::GetSharedPlatinum(uint32 account_id)
+bool SharedDatabase::UpdateInventorySlot(uint32 char_id, const EQ::ItemInstance* inst, int16 slot_id)
 {
-	const auto query   = fmt::format("SELECT sharedplat FROM account WHERE id = {}", account_id);
-	auto       results = QueryDatabase(query);
-	if (!results.Success() || !results.RowCount()) {
-		return 0;
-	}
-
-	auto row = results.begin();
-	return Strings::ToInt(row[0]);
-}
-
-bool SharedDatabase::SetSharedPlatinum(uint32 account_id, int32 amount_to_add) {
-	const std::string query = StringFormat("UPDATE account SET sharedplat = sharedplat + %i WHERE id = %i", amount_to_add, account_id);
-	const auto results = QueryDatabase(query);
-	if (!results.Success()) {
+	if (!inst || !inst->GetItem()) {
 		return false;
 	}
 
-	return true;
+	std::vector<uint32> augment_ids = inst->GetAugmentIDs();
+
+	uint16 charges = inst->GetCharges() >= 0 ? inst->GetCharges() : std::numeric_limits<int16>::max();
+
+	auto e = InventoryRepository::NewEntity();
+
+	e.character_id        = char_id;
+	e.slot_id             = slot_id;
+	e.item_id             = inst->GetID();
+	e.charges             = charges;
+	e.color               = inst->GetColor();
+	e.augment_one         = augment_ids[0];
+	e.augment_two         = augment_ids[1];
+	e.augment_three       = augment_ids[2];
+	e.augment_four        = augment_ids[3];
+	e.augment_five        = augment_ids[4];
+	e.augment_six         = augment_ids[5];
+	e.instnodrop          = inst->IsAttuned() ? 1 : 0;
+	e.custom_data         = inst->GetCustomDataString();
+	e.ornament_icon       = inst->GetOrnamentationIcon();
+	e.ornament_idfile     = inst->GetOrnamentationIDFile();
+	e.ornament_hero_model = inst->GetOrnamentHeroModel();
+	e.guid                = inst->GetSerialNumber();
+
+	const int replaced = InventoryRepository::ReplaceOne(*this, e);
+
+	// Save bag contents, if slot supports bag contents
+	if (inst->IsClassBag() && EQ::InventoryProfile::SupportsContainers(slot_id)) {
+		// Limiting to bag slot count will get rid of 'hidden' duplicated items and 'Invalid Slot ID'
+		// messages through attrition (and the modded code in SaveInventory)
+		for (
+			uint8 i = EQ::invbag::SLOT_BEGIN;
+			i < inst->GetItem()->BagSlots && i <= EQ::invbag::SLOT_END;
+			i++
+		) {
+			const EQ::ItemInstance* bag_inst = inst->GetItem(i);
+			SaveInventory(char_id, bag_inst, EQ::InventoryProfile::CalcSlotId(slot_id, i));
+		}
+	}
+
+	return replaced;
+}
+
+bool SharedDatabase::UpdateSharedBankSlot(uint32 char_id, const EQ::ItemInstance* inst, int16 slot_id)
+{
+	if (!inst || !inst->GetItem()) {
+		return false;
+	}
+
+	std::vector<uint32> augment_ids = inst->GetAugmentIDs();
+
+	uint16 charges = inst->GetCharges() >= 0 ? inst->GetCharges() : std::numeric_limits<int16>::max();
+
+	const uint32 account_id = GetAccountIDByChar(char_id);
+
+	auto e = SharedbankRepository::NewEntity();
+
+	e.account_id          = account_id;
+	e.slot_id             = slot_id;
+	e.item_id             = inst->GetID();
+	e.charges             = charges;
+	e.color               = inst->GetColor();
+	e.augment_one         = augment_ids[0];
+	e.augment_two         = augment_ids[1];
+	e.augment_three       = augment_ids[2];
+	e.augment_four        = augment_ids[3];
+	e.augment_five        = augment_ids[4];
+	e.augment_six         = augment_ids[5];
+	e.custom_data         = inst->GetCustomDataString();
+	e.ornament_icon       = inst->GetOrnamentationIcon();
+	e.ornament_idfile     = inst->GetOrnamentationIDFile();
+	e.ornament_hero_model = inst->GetOrnamentHeroModel();
+	e.guid                = inst->GetSerialNumber();
+
+	const int replaced = SharedbankRepository::ReplaceOne(*this, e);
+
+	// Save bag contents, if slot supports bag contents
+	if (inst->IsClassBag() && EQ::InventoryProfile::SupportsContainers(slot_id)) {
+		// Limiting to bag slot count will get rid of 'hidden' duplicated items and 'Invalid Slot ID'
+		// messages through attrition (and the modded code in SaveInventory)
+		for (
+			uint8 i = EQ::invbag::SLOT_BEGIN;
+			i < inst->GetItem()->BagSlots && i <= EQ::invbag::SLOT_END;
+			i++
+		) {
+			const EQ::ItemInstance* bag_inst = inst->GetItem(i);
+			SaveInventory(char_id, bag_inst, EQ::InventoryProfile::CalcSlotId(slot_id, i));
+		}
+	}
+
+	return replaced;
+}
+
+bool SharedDatabase::DeleteInventorySlot(uint32 char_id, int16 slot_id)
+{
+	const int deleted = InventoryRepository::DeleteWhere(
+		*this,
+		fmt::format(
+			"`character_id` = {} AND `slot_id` = {}",
+			char_id,
+			slot_id
+		)
+	);
+
+	if (!deleted) {
+		return false;
+	}
+
+	// Delete bag slots, if need be
+	if (!EQ::InventoryProfile::SupportsContainers(slot_id)) {
+		return true;
+	}
+
+	const int16 base_slot_id = EQ::InventoryProfile::CalcSlotId(slot_id, EQ::invbag::SLOT_BEGIN);
+
+	return InventoryRepository::DeleteWhere(
+		*this,
+		fmt::format(
+			"`character_id` = {} AND `slot_id` BETWEEN {} AND {}",
+			char_id,
+			base_slot_id,
+			base_slot_id + (EQ::invbag::SLOT_COUNT - 1)
+		)
+	);
+}
+
+bool SharedDatabase::DeleteSharedBankSlot(uint32 char_id, int16 slot_id)
+{
+	const uint32 account_id = GetAccountIDByChar(char_id);
+
+	const int deleted = SharedbankRepository::DeleteWhere(
+		*this,
+		fmt::format(
+			"`account_id` = {} AND `slot_id` = {}",
+			account_id,
+			slot_id
+		)
+	);
+
+	if (!deleted) {
+		return false;
+	}
+
+	if (!EQ::InventoryProfile::SupportsContainers(slot_id)) {
+		return true;
+	}
+
+	const int16 base_slot_id = EQ::InventoryProfile::CalcSlotId(slot_id, EQ::invbag::SLOT_BEGIN);
+
+	return SharedbankRepository::DeleteWhere(
+		*this,
+		fmt::format(
+			"`account_id` = {} AND `slot_id` BETWEEN {} AND {}",
+			account_id,
+			base_slot_id,
+			base_slot_id + (EQ::invbag::SLOT_COUNT - 1)
+		)
+	);
+}
+
+int32 SharedDatabase::GetSharedPlatinum(uint32 account_id)
+{
+	const auto& e = AccountRepository::FindOne(*this, account_id);
+
+	return e.sharedplat;
+}
+
+bool SharedDatabase::AddSharedPlatinum(uint32 account_id, int amount)
+{
+	auto e = AccountRepository::FindOne(*this, account_id);
+
+	e.sharedplat += amount;
+
+	return AccountRepository::UpdateOne(*this, e);
 }
 
 bool SharedDatabase::SetStartingItems(
@@ -550,169 +528,159 @@ bool SharedDatabase::SetStartingItems(
 // Retrieve shared bank inventory based on either account or character
 bool SharedDatabase::GetSharedBank(uint32 id, EQ::InventoryProfile *inv, bool is_charid)
 {
-	std::string query;
+	const uint32 account_id = is_charid ? GetAccountIDByChar(id) : id;
 
-	if (is_charid) {
-		query = fmt::format(
-			"SELECT sb.slotid, sb.itemid, sb.charges, "
-			"sb.augslot1, sb.augslot2, sb.augslot3, "
-			"sb.augslot4, sb.augslot5, sb.augslot6, sb.custom_data "
-			"FROM sharedbank sb INNER JOIN character_data ch "
-			"ON ch.account_id = sb.acctid WHERE ch.id = {} ORDER BY sb.slotid",
-			id
-		);
-	} else {
-		query = fmt::format(
-			"SELECT slotid, itemid, charges, "
-			"augslot1, augslot2, augslot3, "
-			"augslot4, augslot5, augslot6, custom_data "
-			"FROM sharedbank WHERE acctid = {} ORDER BY slotid",
-			id
-		);
-	}
-
-	auto results = QueryDatabase(query);
-	// If we have no results we still need to return true
-	if (!results.Success()) {
+	if (!account_id) {
 		return false;
 	}
 
-	for (auto row : results) {
-		int16 slot_id = static_cast<int16>(Strings::ToInt(row[0]));
-		uint32 item_id = Strings::ToUnsignedInt(row[1]);
-		const int16 charges = static_cast<int16>(Strings::ToInt(row[2]));
+	const auto& l = SharedbankRepository::GetWhere(
+		*this,
+		fmt::format(
+			"`account_id` = {}",
+			account_id
+		)
+	);
 
-		uint32 aug[EQ::invaug::SOCKET_COUNT];
-		aug[0] = Strings::ToUnsignedInt(row[3]);
-		aug[1] = Strings::ToUnsignedInt(row[4]);
-		aug[2] = Strings::ToUnsignedInt(row[5]);
-		aug[3] = Strings::ToUnsignedInt(row[6]);
-		aug[4] = Strings::ToUnsignedInt(row[7]);
-		aug[5] = Strings::ToUnsignedInt(row[8]);
+	if (l.empty()) {
+		return true;
+	}
 
-		const EQ::ItemData *item = GetItem(item_id);
+	for (const auto& e : l) {
+		uint32 augment_ids[EQ::invaug::SOCKET_COUNT] = {
+			e.augment_one,
+			e.augment_two,
+			e.augment_three,
+			e.augment_four,
+			e.augment_five,
+			e.augment_six
+		};
+
+		const EQ::ItemData* item = GetItem(e.item_id);
 
 		if (!item) {
 			LogError(
-				"Warning: [{}] [{}] has an invalid item_id [{}] in inventory slot [{}]",
-				is_charid ? "charid" : "acctid",
+				"Warning: {} [{}] has an invalid item_id [{}] in slot_id [{}]",
+				is_charid ? "character_id" : "account_id",
 				id,
-				item_id,
-				slot_id
+				e.item_id,
+				e.slot_id
 			);
 			continue;
 		}
 
-		auto inst = CreateBaseItem(item, charges);
+		EQ::ItemInstance* inst = CreateBaseItem(item, e.charges);
 		if (!inst) {
 			continue;
 		}
 
-		if (inst && item->IsClassCommon()) {
+		if (item->IsClassCommon()) {
 			for (int i = EQ::invaug::SOCKET_BEGIN; i <= EQ::invaug::SOCKET_END; i++) {
-				if (aug[i]) {
-					inst->PutAugment(this, i, aug[i]);
+				if (augment_ids[i]) {
+					inst->PutAugment(this, i, augment_ids[i]);
 				}
 			}
 		}
 
-		if (inst && row[9]) {
-			std::string data_str(row[9]);
-			inst->SetCustomDataString(data_str);
+		if (!e.custom_data.empty()) {
+			inst->SetCustomDataString(e.custom_data);
 		}
 
-		// theoretically inst can be nullptr ... this would be very bad ...
-		const int16 put_slot_id = inv->PutItem(slot_id, *inst);
+		const int16 put_slot_id = inv->PutItem(e.slot_id, *inst);
 		safe_delete(inst);
 
-		// Save ptr to item in inventory
 		if (put_slot_id != INVALID_INDEX) {
 			continue;
 		}
 
 		LogError(
-			"Warning: Invalid slot_id for item in shared bank inventory: [{}]=[{}], item_id=[{}], slot_id=[{}]",
-			is_charid ? "charid" : "acctid",
+			"Warning: Invalid slot_id for item in shared bank inventory for {} [{}] item_id [{}] slot_id [{}]",
+			is_charid ? "character_id" : "account_id",
 			id,
-			item_id,
-			slot_id
+			e.item_id,
+			e.slot_id
 		);
 
 		if (is_charid) {
-			SaveInventory(id, nullptr, slot_id);
+			SaveInventory(id, nullptr, e.slot_id);
 		}
 	}
 
 	return true;
 }
-
 // Overloaded: Retrieve character inventory based on character id (zone entry)
-bool SharedDatabase::GetInventory(uint32 char_id, EQ::InventoryProfile *inv)
+//bool SharedDatabase::GetInventory(uint32 char_id, EQ::InventoryProfile *inv)
+bool SharedDatabase::GetInventory(Client *c)
 {
-	if (!char_id || !inv)
+	if (!c) {
 		return false;
+	}
+
+	uint32                char_id = c->CharacterID();
+	EQ::InventoryProfile &inv     = c->GetInv();
 
 	// Retrieve character inventory
-	auto results = InventoryRepository::GetWhere(*this, fmt::format("`charid` = '{}' ORDER BY `slotid`;", char_id));
+	auto results   = InventoryRepository::GetWhere(*this, fmt::format("`character_id` = '{}' ORDER BY `slot_id`", char_id));
+	auto e_results = CharacterEvolvingItemsRepository::GetWhere(
+		*this, fmt::format("`character_id` = '{}' AND `deleted_at` IS NULL", char_id)
+	);
+
 	if (results.empty()) {
 		LogError("Error loading inventory for char_id {} from the database.", char_id);
 		return false;
 	}
 
-	for (auto const &row: results) {
+	for (auto const& row: results) {
 		if (row.guid != 0) {
 			EQ::ItemInstance::AddGUIDToMap(row.guid);
 		}
 	}
 
-	const auto timestamps = GetItemRecastTimestamps(char_id);
-	auto cv_conflict      = false;
-	const auto pmask      = inv->GetLookup()->PossessionsBitmask;
-	const auto bank_size  = inv->GetLookup()->InventoryTypeSize.Bank;
+	const auto timestamps  = GetItemRecastTimestamps(char_id);
+	auto       cv_conflict = false;
+	const auto pmask       = inv.GetLookup()->PossessionsBitmask;
+	const auto bank_size   = inv.GetLookup()->InventoryTypeSize.Bank;
 
-	std::vector<InventoryRepository::Inventory> queue{};
-	for (auto &row: results) {
-		const int16 slot_id              = row.slotid;
-		const uint32 item_id             = row.itemid;
+	std::vector<InventoryRepository::Inventory> queue{ };
+	for (auto& row: results) {
+		const int16  slot_id             = row.slot_id;
+		const uint32 item_id             = row.item_id;
 		const uint16 charges             = row.charges;
 		const uint32 color               = row.color;
-		const bool instnodrop            = row.instnodrop;
-		const uint32 ornament_icon       = row.ornamenticon;
-		const uint32 ornament_idfile     = row.ornamentidfile;
+		const bool   instnodrop          = row.instnodrop;
+		const uint32 ornament_icon       = row.ornament_icon;
+		const uint32 ornament_idfile     = row.ornament_idfile;
 		const uint32 ornament_hero_model = row.ornament_hero_model;
 
-		uint32 aug[EQ::invaug::SOCKET_COUNT];
-		aug[0] = row.augslot1;
-		aug[1] = row.augslot2;
-		aug[2] = row.augslot3;
-		aug[3] = row.augslot4;
-		aug[4] = row.augslot5;
-		aug[5] = row.augslot6;
+		uint32 augment_ids[EQ::invaug::SOCKET_COUNT] = {
+			row.augment_one,
+			row.augment_two,
+			row.augment_three,
+			row.augment_four,
+			row.augment_five,
+			row.augment_six
+		};
 
-		if (slot_id <= EQ::invslot::POSSESSIONS_END && slot_id >= EQ::invslot::POSSESSIONS_BEGIN) {
+		if (EQ::ValueWithin(slot_id, EQ::invslot::POSSESSIONS_BEGIN, EQ::invslot::POSSESSIONS_END)) {
 			// Titanium thru UF check
 			if (((static_cast<uint64>(1) << slot_id) & pmask) == 0) {
 				cv_conflict = true;
 				continue;
 			}
-		}
-		else if (slot_id <= EQ::invbag::GENERAL_BAGS_END && slot_id >= EQ::invbag::GENERAL_BAGS_BEGIN) {
+		} else if (EQ::ValueWithin(slot_id, EQ::invbag::GENERAL_BAGS_BEGIN, EQ::invbag::GENERAL_BAGS_END)) {
 			// Titanium thru UF check
-			const auto parent_slot = EQ::invslot::GENERAL_BEGIN + (
-				                         (slot_id - EQ::invbag::GENERAL_BAGS_BEGIN) / EQ::invbag::SLOT_COUNT);
+			const auto parent_slot = EQ::invslot::GENERAL_BEGIN + ((slot_id - EQ::invbag::GENERAL_BAGS_BEGIN) / EQ::invbag::SLOT_COUNT);
 			if (((static_cast<uint64>(1) << parent_slot) & pmask) == 0) {
 				cv_conflict = true;
 				continue;
 			}
-		}
-		else if (slot_id <= EQ::invslot::BANK_END && slot_id >= EQ::invslot::BANK_BEGIN) {
+		} else if (EQ::ValueWithin(slot_id, EQ::invslot::BANK_BEGIN, EQ::invslot::BANK_END)) {
 			// Titanium check
 			if ((slot_id - EQ::invslot::BANK_BEGIN) >= bank_size) {
 				cv_conflict = true;
 				continue;
 			}
-		}
-		else if (slot_id <= EQ::invbag::BANK_BAGS_END && slot_id >= EQ::invbag::BANK_BAGS_BEGIN) {
+		} else if (EQ::ValueWithin(slot_id, EQ::invbag::BANK_BAGS_BEGIN, EQ::invbag::BANK_BAGS_END)) {
 			// Titanium check
 			const auto parent_index = ((slot_id - EQ::invbag::BANK_BAGS_BEGIN) / EQ::invbag::SLOT_COUNT);
 			if (parent_index >= bank_size) {
@@ -721,7 +689,7 @@ bool SharedDatabase::GetInventory(uint32 char_id, EQ::InventoryProfile *inv)
 			}
 		}
 
-		auto *item = GetItem(item_id);
+		auto* item = GetItem(item_id);
 		if (!item) {
 			LogError(
 				"Warning: charid [{}] has an invalid item_id [{}] in inventory slot [{}]",
@@ -732,7 +700,7 @@ bool SharedDatabase::GetInventory(uint32 char_id, EQ::InventoryProfile *inv)
 			continue;
 		}
 
-		auto *inst = CreateBaseItem(item, charges);
+		auto* inst = CreateBaseItem(item, charges);
 		if (!inst) {
 			continue;
 		}
@@ -745,8 +713,13 @@ bool SharedDatabase::GetInventory(uint32 char_id, EQ::InventoryProfile *inv)
 		inst->SetOrnamentationIDFile(ornament_idfile);
 		inst->SetOrnamentHeroModel(item->HerosForgeModel);
 
-		if (instnodrop || (inst->GetItem()->Attuneable && slot_id >= EQ::invslot::EQUIPMENT_BEGIN && slot_id <=
-		                   EQ::invslot::EQUIPMENT_END)) {
+		if (
+			instnodrop ||
+			(
+				inst->GetItem()->Attuneable &&
+				EQ::ValueWithin(slot_id, EQ::invslot::EQUIPMENT_BEGIN, EQ::invslot::EQUIPMENT_END)
+			)
+		) {
 			inst->SetAttuned(true);
 		}
 
@@ -754,53 +727,85 @@ bool SharedDatabase::GetInventory(uint32 char_id, EQ::InventoryProfile *inv)
 			inst->SetColor(color);
 		}
 
-		if (charges == 0x7FFF) {
+		if (charges == std::numeric_limits<int16>::max()) {
 			inst->SetCharges(-1);
-		}
-		else if (charges == 0 && inst->IsStackable()) {
+		} else if (charges == 0 && inst->IsStackable()) {
 			// Stackable items need a minimum charge of 1 remain moveable.
 			inst->SetCharges(1);
-		}
-		else {
+		} else {
 			inst->SetCharges(charges);
 		}
 
 		if (item->RecastDelay) {
 			if (item->RecastType != RECAST_TYPE_UNLINKED_ITEM && timestamps.count(item->RecastType)) {
 				inst->SetRecastTimestamp(timestamps.at(item->RecastType));
-			}
-			else if (item->RecastType == RECAST_TYPE_UNLINKED_ITEM && timestamps.count(item->ID)) {
+			} else if (item->RecastType == RECAST_TYPE_UNLINKED_ITEM && timestamps.count(item->ID)) {
 				inst->SetRecastTimestamp(timestamps.at(item->ID));
-			}
-			else {
+			} else {
 				inst->SetRecastTimestamp(0);
 			}
 		}
 
 		if (item->IsClassCommon()) {
 			for (int i = EQ::invaug::SOCKET_BEGIN; i <= EQ::invaug::SOCKET_END; i++) {
-				if (aug[i]) {
-					inst->PutAugment(this, i, aug[i]);
+				if (augment_ids[i]) {
+					inst->PutAugment(this, i, augment_ids[i]);
 				}
 			}
 		}
 
-		int16 put_slot_id;
-		if (slot_id >= 8000 && slot_id <= 8999) {
-			put_slot_id = inv->PushCursor(*inst);
-		}
-		else if (slot_id >= 3111 && slot_id <= 3179) {
-			// Admins: please report any occurrences of this error
-			LogError(
-				"Warning: Defunct location for item in inventory: charid={}, item_id={}, slot_id={} .. pushing to cursor...",
-				char_id,
-				item_id,
-				slot_id
+		if (item->EvolvingItem) {
+			if (slot_id >= EQ::invslot::EQUIPMENT_BEGIN && slot_id <= EQ::invslot::EQUIPMENT_END) {
+				inst->SetEvolveEquipped(true);
+			}
+
+			auto t = std::ranges::find_if(
+				e_results.cbegin(),
+				e_results.cend(),
+				[&](const CharacterEvolvingItemsRepository::CharacterEvolvingItems &x) {
+					return x.item_id == item_id;
+				}
 			);
-			put_slot_id = inv->PushCursor(*inst);
+
+			if (t == std::end(e_results)) {
+				auto e = CharacterEvolvingItemsRepository::NewEntity();
+
+				e.character_id  = char_id;
+				e.item_id       = item_id;
+				e.equipped      = inst->GetEvolveEquipped();
+				e.final_item_id = EvolvingItemsManager::Instance()->GetFinalItemID(*inst);
+
+				auto r = CharacterEvolvingItemsRepository::InsertOne(*this, e);
+				e.id = r.id;
+				e_results.push_back(e);
+
+				inst->SetEvolveUniqueID(e.id);
+				inst->SetEvolveCharID(e.character_id);
+				inst->SetEvolveItemID(e.item_id);
+				inst->SetEvolveActivated(e.activated);
+				inst->SetEvolveEquipped(e.equipped);
+				inst->SetEvolveCurrentAmount(e.current_amount);
+				inst->CalculateEvolveProgression();
+				inst->SetEvolveFinalItemID(e.final_item_id);
+			}
+			else {
+				inst->SetEvolveUniqueID(t->id);
+				inst->SetEvolveCharID(t->character_id);
+				inst->SetEvolveItemID(t->item_id);
+				inst->SetEvolveActivated(t->activated);
+				inst->SetEvolveEquipped(t->equipped);
+				inst->SetEvolveCurrentAmount(t->current_amount);
+				inst->CalculateEvolveProgression();
+				inst->SetEvolveFinalItemID(t->final_item_id);
+			}
 		}
-		else {
-			put_slot_id = inv->PutItem(slot_id, *inst);
+
+		int16 put_slot_id;
+		// this had  || slot_id == EQ::invslot::slotCursor ??s
+		if (EQ::ValueWithin(slot_id, EQ::invbag::CURSOR_BAG_BEGIN, EQ::invbag::CURSOR_BAG_END)) {
+			put_slot_id = inv.PushCursor(*inst);
+		} else {
+			put_slot_id = inv.PutItem(slot_id, *inst);
 		}
 
 		row.guid = inst->GetSerialNumber();
@@ -811,7 +816,7 @@ bool SharedDatabase::GetInventory(uint32 char_id, EQ::InventoryProfile *inv)
 		// Save ptr to item in inventory
 		if (put_slot_id == INVALID_INDEX) {
 			LogError(
-				"Warning: Invalid slot_id for item in inventory: charid=[{}], item_id=[{}], slot_id=[{}]",
+				"Warning: Invalid slot_id for item in inventory for character_id [{}] item_id [{}] slot_id [{}]",
 				char_id,
 				item_id,
 				slot_id
@@ -820,13 +825,13 @@ bool SharedDatabase::GetInventory(uint32 char_id, EQ::InventoryProfile *inv)
 	}
 
 	if (cv_conflict) {
-		const std::string &char_name = GetCharName(char_id);
+		const std::string& char_name = GetCharName(char_id);
 		LogError(
 			"ClientVersion/Expansion conflict during inventory load at zone entry for [{}] (charid: [{}], inver: [{}], gmi: [{}])",
 			char_name,
 			char_id,
-			EQ::versions::MobVersionName(inv->InventoryVersion()),
-			(inv->GMInventory() ? "true" : "false")
+			EQ::versions::MobVersionName(inv.InventoryVersion()),
+			(inv.GMInventory() ? "true" : "false")
 		);
 	}
 
@@ -837,95 +842,7 @@ bool SharedDatabase::GetInventory(uint32 char_id, EQ::InventoryProfile *inv)
 	EQ::ItemInstance::ClearGUIDMap();
 
 	// Retrieve shared inventory
-	return GetSharedBank(char_id, inv, true);
-}
-
-// Overloaded: Retrieve character inventory based on account_id and character name (char select)
-bool SharedDatabase::GetInventory(uint32 account_id, char *name, EQ::InventoryProfile *inv) // deprecated
-{
-	// Retrieve character inventory
-	const std::string query =
-	    StringFormat("SELECT slotid, itemid, charges, color, augslot1, "
-			 "augslot2, augslot3, augslot4, augslot5, augslot6, instnodrop, custom_data, ornamenticon, "
-			 "ornamentidfile, ornament_hero_model "
-			 "FROM inventory INNER JOIN character_data ch "
-			 "ON ch.id = charid WHERE ch.name = '%s' AND ch.account_id = %i ORDER BY slotid",
-			 name, account_id);
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
-		LogError("If you got an error related to the 'instnodrop' field, run the "
-						    "following SQL Queries:\nalter table inventory add instnodrop "
-						    "tinyint(1) unsigned default 0 not null;\n");
-		return false;
-	}
-
-	for (auto& row = results.begin(); row != results.end(); ++row) {
-		int16 slot_id = Strings::ToInt(row[0]);
-		uint32 item_id = Strings::ToUnsignedInt(row[1]);
-		const int8 charges = Strings::ToInt(row[2]);
-		const uint32 color = Strings::ToUnsignedInt(row[3]);
-
-		uint32 aug[EQ::invaug::SOCKET_COUNT];
-		aug[0] = Strings::ToUnsignedInt(row[4]);
-		aug[1] = Strings::ToUnsignedInt(row[5]);
-		aug[2] = Strings::ToUnsignedInt(row[6]);
-		aug[3] = Strings::ToUnsignedInt(row[7]);
-		aug[4] = Strings::ToUnsignedInt(row[8]);
-		aug[5] = Strings::ToUnsignedInt(row[9]);
-
-		const bool instnodrop = (row[10] && static_cast<uint16>(Strings::ToUnsignedInt(row[10])));
-		const uint32 ornament_icon = Strings::ToUnsignedInt(row[12]);
-		const uint32 ornament_idfile = Strings::ToUnsignedInt(row[13]);
-		uint32 ornament_hero_model = Strings::ToUnsignedInt(row[14]);
-
-		const EQ::ItemData *item = GetItem(item_id);
-		if (!item)
-			continue;
-
-		EQ::ItemInstance *inst = CreateBaseItem(item, charges);
-
-		if (inst == nullptr)
-			continue;
-
-		inst->SetAttuned(instnodrop);
-
-		if (row[11]) {
-			std::string data_str(row[11]);
-			inst->SetCustomDataString(data_str);
-		}
-
-		inst->SetOrnamentIcon(ornament_icon);
-		inst->SetOrnamentationIDFile(ornament_idfile);
-		inst->SetOrnamentHeroModel(item->HerosForgeModel);
-
-		if (color > 0)
-			inst->SetColor(color);
-
-		inst->SetCharges(charges);
-
-		if (item->IsClassCommon()) {
-			for (int i = EQ::invaug::SOCKET_BEGIN; i <= EQ::invaug::SOCKET_END; i++) {
-				if (aug[i])
-					inst->PutAugment(this, i, aug[i]);
-			}
-		}
-
-		int16 put_slot_id;
-		if (slot_id >= 8000 && slot_id <= 8999)
-			put_slot_id = inv->PushCursor(*inst);
-		else
-			put_slot_id = inv->PutItem(slot_id, *inst);
-
-		safe_delete(inst);
-
-		// Save ptr to item in inventory
-		if (put_slot_id == INVALID_INDEX)
-			LogError("Warning: Invalid slot_id for item in inventory: name={}, acctid={}, item_id={}, slot_id={}",
-				name, account_id, item_id, slot_id);
-	}
-
-	// Retrieve shared inventory
-	return GetSharedBank(account_id, inv, false);
+	return GetSharedBank(char_id, &inv, true);
 }
 
 std::map<uint32, uint32> SharedDatabase::GetItemRecastTimestamps(uint32 char_id)
@@ -976,27 +893,10 @@ void SharedDatabase::ClearOldRecastTimestamps(uint32 char_id)
 	);
 }
 
-void SharedDatabase::GetItemsCount(int32 &item_count, uint32 &max_id)
+void SharedDatabase::GetItemsCount(int32& item_count, uint32& max_id)
 {
-	item_count = -1;
-	max_id = 0;
-
-	const std::string query = "SELECT MAX(id), count(*) FROM items";
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
-		return;
-	}
-
-	if (results.RowCount() == 0)
-		return;
-
-	auto& row = results.begin();
-
-	if (row[0])
-		max_id = Strings::ToUnsignedInt(row[0]);
-
-	if (row[1])
-		item_count = Strings::ToUnsignedInt(row[1]);
+	max_id     = ItemsRepository::GetMaxId(*this);
+	item_count = ItemsRepository::Count(*this);
 }
 
 bool SharedDatabase::LoadItems(const std::string &prefix) {
@@ -1006,7 +906,7 @@ bool SharedDatabase::LoadItems(const std::string &prefix) {
 		const auto Config = EQEmuConfig::get();
 		EQ::IPCMutex mutex("items");
 		mutex.Lock();
-		std::string file_name = fmt::format("{}/{}{}", path.GetSharedMemoryPath(), prefix, std::string("items"));
+		std::string file_name = fmt::format("{}/{}{}", PathManager::Instance()->GetSharedMemoryPath(), prefix, std::string("items"));
 		items_mmf = std::make_unique<EQ::MemoryMappedFile>(file_name);
 		items_hash = std::make_unique<EQ::FixedMemoryHashSet<EQ::ItemData>>(static_cast<uint8*>(items_mmf->Get()), items_mmf->Size());
 		mutex.Unlock();
@@ -1026,14 +926,14 @@ void SharedDatabase::LoadItems(void *data, uint32 size, int32 items, uint32 max_
 
 	std::string variable_buffer;
 
-	bool disable_attuneable = RuleB(Items, DisableAttuneable);
-	bool disable_bard_focus_effects = RuleB(Items, DisableBardFocusEffects);
-	bool disable_lore = RuleB(Items, DisableLore);
-	bool disable_no_drop = RuleB(Items, DisableNoDrop);
-	bool disable_no_pet = RuleB(Items, DisableNoPet);
-	bool disable_no_rent = RuleB(Items, DisableNoRent);
-	bool disable_no_transfer = RuleB(Items, DisableNoTransfer);
-	bool disable_potion_belt = RuleB(Items, DisablePotionBelt);
+	bool disable_attuneable          = RuleB(Items, DisableAttuneable);
+	bool disable_bard_focus_effects  = RuleB(Items, DisableBardFocusEffects);
+	bool disable_lore                = RuleB(Items, DisableLore);
+	bool disable_no_drop             = RuleB(Items, DisableNoDrop);
+	bool disable_no_pet              = RuleB(Items, DisableNoPet);
+	bool disable_no_rent             = RuleB(Items, DisableNoRent);
+	bool disable_no_transfer         = RuleB(Items, DisableNoTransfer);
+	bool disable_potion_belt         = RuleB(Items, DisablePotionBelt);
 	bool disable_spell_focus_effects = RuleB(Items, DisableSpellFocusEffects);
 
 	// Old Variable Code
@@ -1064,206 +964,204 @@ void SharedDatabase::LoadItems(void *data, uint32 size, int32 items, uint32 max_
 
 	EQ::ItemData item;
 
-	const std::string query = "SELECT source,"
-#define F(x) "`"#x"`,"
-#include "item_fieldlist.h"
-#undef F
-		"updated, minstatus, comment FROM items ORDER BY id";
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
+	const auto& l = ItemsRepository::All(*this);
+
+	if (l.empty()) {
 		return;
 	}
 
-	for (auto& row = results.begin(); row != results.end(); ++row) {
+	for (const auto& e : l) {
 		memset(&item, 0, sizeof(EQ::ItemData));
 
 		// Unique Identifier
-		item.ID = Strings::ToUnsignedInt(row[ItemField::id]);
+		item.ID = e.id;
 
 		// Minimum Status
-		item.MinStatus = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::minstatus]));
+		item.MinStatus = static_cast<uint8>(e.minstatus);
 
 		// Name, Lore, and Comment
-		strn0cpy(item.Name, row[ItemField::name], sizeof(item.Name));
-		strn0cpy(item.Lore, row[ItemField::lore], sizeof(item.Lore));
-		strn0cpy(item.Comment, row[ItemField::comment], sizeof(item.Comment));
+		strn0cpy(item.Name, e.Name.c_str(), sizeof(item.Name));
+		strn0cpy(item.Lore, e.lore.c_str(), sizeof(item.Lore));
+		strn0cpy(item.Comment, e.comment.c_str(), sizeof(item.Comment));
 
 		// Flags
-		item.ArtifactFlag = Strings::ToBool(row[ItemField::artifactflag]);
-		item.Attuneable = !disable_attuneable && Strings::ToBool(row[ItemField::attuneable]);
-		item.BenefitFlag = Strings::ToBool(row[ItemField::benefitflag]);
-		item.FVNoDrop = Strings::ToBool(row[ItemField::fvnodrop]);
-		item.Magic = Strings::ToBool(row[ItemField::magic]);
-		item.NoDrop = disable_no_drop ? static_cast<uint8>(255) : static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::nodrop]));
-		item.NoPet = !disable_no_pet && Strings::ToBool(row[ItemField::nopet]);
-		item.NoRent = disable_no_rent ? static_cast<uint8>(255) : static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::norent]));
-		item.NoTransfer = !disable_no_transfer && Strings::ToBool(row[ItemField::notransfer]);
-		item.PendingLoreFlag = Strings::ToBool(row[ItemField::pendingloreflag]);
-		item.QuestItemFlag = Strings::ToBool(row[ItemField::questitemflag]);
-		item.Stackable = Strings::ToBool(row[ItemField::stackable]);
-		item.Tradeskills = Strings::ToBool(row[ItemField::tradeskills]);
-		item.SummonedFlag = Strings::ToBool(row[ItemField::summonedflag]);
+		item.ArtifactFlag    = e.artifactflag;
+		item.Attuneable      = !disable_attuneable && e.attuneable;
+		item.BenefitFlag     = e.benefitflag;
+		item.FVNoDrop        = e.fvnodrop;
+		item.Magic           = e.magic;
+		item.NoDrop          = disable_no_drop ? std::numeric_limits<uint8>::max() : e.nodrop;
+		item.NoPet           = !disable_no_pet && e.nopet;
+		item.NoRent          = disable_no_rent ? std::numeric_limits<uint8>::max() : e.norent;
+		item.NoTransfer      = !disable_no_transfer && e.notransfer;
+		item.PendingLoreFlag = e.pendingloreflag;
+		item.QuestItemFlag   = e.questitemflag;
+		item.Stackable       = e.stackable;
+		item.Tradeskills     = e.tradeskills;
+		item.SummonedFlag    = e.summonedflag;
 
 		// Lore
-		item.LoreGroup = disable_lore ? 0 : Strings::ToInt(row[ItemField::loregroup]);
-		item.LoreFlag = !disable_lore && item.LoreGroup != 0;
+		item.LoreGroup = disable_lore ? 0 : e.loregroup;
+		item.LoreFlag  = !disable_lore && item.LoreGroup != 0;
 
 		// Type
-		item.AugType = Strings::ToUnsignedInt(row[ItemField::augtype]);
-		item.ItemType = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::itemtype]));
-		item.SubType = Strings::ToInt(row[ItemField::subtype]);
+		item.AugType  = e.augtype;
+		item.ItemType = static_cast<uint8>(e.itemtype);
+		item.SubType  = e.subtype;
 
 		// Miscellaneous
-		item.ExpendableArrow = static_cast<uint16>(Strings::ToUnsignedInt(row[ItemField::expendablearrow]));
-		item.Light = static_cast<int8>(Strings::ToInt(row[ItemField::light]));
-		item.MaxCharges = static_cast<int16>(Strings::ToInt(row[ItemField::maxcharges]));
-		item.Size = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::size]));
-		item.StackSize = static_cast<int16>(Strings::ToInt(row[ItemField::stacksize]));
-		item.Weight = Strings::ToInt(row[ItemField::weight]);
+		item.ExpendableArrow = e.expendablearrow;
+		item.Light           = EQ::Clamp(e.light, -128, 127);
+		item.MaxCharges      = e.maxcharges;
+		item.Size            = static_cast<uint8>(e.size);
+		item.StackSize       = e.stacksize;
+		item.Weight          = e.weight;
 
 		// Potion Belt
-		item.PotionBelt = !disable_potion_belt && Strings::ToBool(row[ItemField::potionbelt]);
-		item.PotionBeltSlots = disable_potion_belt ? 0 : static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::potionbeltslots]));
+		item.PotionBelt      = !disable_potion_belt && e.potionbelt;
+		item.PotionBeltSlots = disable_potion_belt ? 0 : static_cast<uint8>(e.potionbeltslots);
 
 		// Merchant
-		item.Favor = Strings::ToUnsignedInt(row[ItemField::favor]);
-		item.GuildFavor = Strings::ToUnsignedInt(row[ItemField::guildfavor]);
-		item.Price = Strings::ToUnsignedInt(row[ItemField::price]);
-		item.SellRate = Strings::ToFloat(row[ItemField::sellrate]);
+		item.Favor      = e.favor;
+		item.GuildFavor = e.guildfavor;
+		item.Price      = e.price;
+		item.SellRate   = e.sellrate;
 
 		// Display
-		item.Color = Strings::ToUnsignedInt(row[ItemField::color]);
-		item.EliteMaterial = Strings::ToUnsignedInt(row[ItemField::elitematerial]);
-		item.HerosForgeModel = Strings::ToUnsignedInt(row[ItemField::herosforgemodel]);
-		item.Icon = Strings::ToUnsignedInt(row[ItemField::icon]);
-		strn0cpy(item.IDFile, row[ItemField::idfile], sizeof(item.IDFile));
-		item.Material = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::material]));
+		item.Color           = e.color;
+		item.EliteMaterial   = e.elitematerial;
+		item.HerosForgeModel = e.herosforgemodel;
+		item.Icon            = e.icon;
+		strn0cpy(item.IDFile, e.idfile.c_str(), sizeof(item.IDFile));
+		item.Material = e.material;
 
 		// Resists
-		item.CR = static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::cr]), -128, 127));
-		item.DR = static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::dr]), -128, 127));
-		item.FR = static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::fr]), -128, 127));
-		item.MR = static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::mr]), -128, 127));
-		item.PR = static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::pr]), -128, 127));
-		item.SVCorruption = static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::svcorruption]), -128, 127));
+		item.CR           = EQ::Clamp(e.cr, -128, 127);
+		item.DR           = EQ::Clamp(e.dr, -128, 127);
+		item.FR           = EQ::Clamp(e.fr, -128, 127);
+		item.MR           = EQ::Clamp(e.mr, -128, 127);
+		item.PR           = EQ::Clamp(e.pr, -128, 127);
+		item.SVCorruption = EQ::Clamp(e.svcorruption, -128, 127);
 
 		// Heroic Resists
-		item.HeroicCR = Strings::ToInt(row[ItemField::heroic_cr]);
-		item.HeroicDR = Strings::ToInt(row[ItemField::heroic_dr]);
-		item.HeroicFR = Strings::ToInt(row[ItemField::heroic_fr]);
-		item.HeroicMR = Strings::ToInt(row[ItemField::heroic_mr]);
-		item.HeroicPR = Strings::ToInt(row[ItemField::heroic_pr]);
-		item.HeroicSVCorrup = Strings::ToInt(row[ItemField::heroic_svcorrup]);
+		item.HeroicCR       = e.heroic_cr;
+		item.HeroicDR       = e.heroic_dr;
+		item.HeroicFR       = e.heroic_fr;
+		item.HeroicMR       = e.heroic_mr;
+		item.HeroicPR       = e.heroic_pr;
+		item.HeroicSVCorrup = e.heroic_svcorrup;
 
 		// Stats
-		item.AAgi = static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::aagi]), -128, 127));
-		item.ACha = static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::acha]), -128, 127));
-		item.ADex = static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::adex]), -128, 127));
-		item.AInt = static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::aint]), -128, 127));
-		item.ASta = static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::asta]), -128, 127));
-		item.AStr = static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::astr]), -128, 127));
-		item.AWis = static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::awis]), -128, 127));
+		item.AAgi = EQ::Clamp(e.aagi, -128, 127);
+		item.ACha = EQ::Clamp(e.acha, -128, 127);
+		item.ADex = EQ::Clamp(e.adex, -128, 127);
+		item.AInt = EQ::Clamp(e.aint, -128, 127);
+		item.ASta = EQ::Clamp(e.asta, -128, 127);
+		item.AStr = EQ::Clamp(e.astr, -128, 127);
+		item.AWis = EQ::Clamp(e.awis, -128, 127);
 
 		// Heroic Stats
-		item.HeroicAgi = Strings::ToInt(row[ItemField::heroic_agi]);
-		item.HeroicCha = Strings::ToInt(row[ItemField::heroic_cha]);
-		item.HeroicDex = Strings::ToInt(row[ItemField::heroic_dex]);
-		item.HeroicInt = Strings::ToInt(row[ItemField::heroic_int]);
-		item.HeroicSta = Strings::ToInt(row[ItemField::heroic_sta]);
-		item.HeroicStr = Strings::ToInt(row[ItemField::heroic_str]);
-		item.HeroicWis = Strings::ToInt(row[ItemField::heroic_wis]);
+		item.HeroicAgi = e.heroic_agi;
+		item.HeroicCha = e.heroic_cha;
+		item.HeroicDex = e.heroic_dex;
+		item.HeroicInt = e.heroic_int;
+		item.HeroicSta = e.heroic_sta;
+		item.HeroicStr = e.heroic_str;
+		item.HeroicWis = e.heroic_wis;
 
 		// Health, Mana, and Endurance
-		item.HP = Strings::ToInt(row[ItemField::hp]);
-		item.Regen = Strings::ToInt(row[ItemField::regen]);
-		item.Mana = Strings::ToInt(row[ItemField::mana]);
-		item.ManaRegen = Strings::ToInt(row[ItemField::manaregen]);
-		item.Endur = Strings::ToInt(row[ItemField::endur]);
-		item.EnduranceRegen = Strings::ToInt(row[ItemField::enduranceregen]);
+		item.HP             = e.hp;
+		item.Regen          = e.regen;
+		item.Mana           = e.mana;
+		item.ManaRegen      = e.manaregen;
+		item.Endur          = e.endur;
+		item.EnduranceRegen = e.enduranceregen;
 
 		// Bane Damage
-		item.BaneDmgAmt = Strings::ToInt(row[ItemField::banedmgamt]);
-		item.BaneDmgBody = Strings::ToUnsignedInt(row[ItemField::banedmgbody]);
-		item.BaneDmgRace = Strings::ToUnsignedInt(row[ItemField::banedmgrace]);
-		item.BaneDmgRaceAmt = Strings::ToUnsignedInt(row[ItemField::banedmgraceamt]);
+		item.BaneDmgAmt     = e.banedmgamt;
+		item.BaneDmgBody    = e.banedmgbody;
+		item.BaneDmgRace    = e.banedmgrace;
+		item.BaneDmgRaceAmt = e.banedmgraceamt;
 
 		// Elemental Damage
-		item.ElemDmgType = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::elemdmgtype]));
-		item.ElemDmgAmt = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::elemdmgamt]));
+		item.ElemDmgType = static_cast<uint8>(e.elemdmgtype);
+		item.ElemDmgAmt  = static_cast<uint8>(e.elemdmgamt);
 
 		// Combat
-		item.BackstabDmg = Strings::ToUnsignedInt(row[ItemField::backstabdmg]);
-		item.Damage = Strings::ToUnsignedInt(row[ItemField::damage]);
-		item.Delay = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::delay]));
-		item.Range = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::range]));
+		item.BackstabDmg = e.backstabdmg;
+		item.Damage      = e.damage;
+		item.Delay       = static_cast<uint8>(e.delay);
+		item.Range       = static_cast<uint8>(e.range_);
 
 		// Combat Stats
-		item.AC = Strings::ToInt(row[ItemField::ac]);
-		item.Accuracy = static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::accuracy]), -128, 127));
-		item.Attack = Strings::ToInt(row[ItemField::attack]);
-		item.Avoidance = static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::avoidance]), -128, 127));
-		item.Clairvoyance = Strings::ToUnsignedInt(row[ItemField::clairvoyance]);
-		item.CombatEffects = Strings::IsNumber(row[ItemField::combateffects]) ? static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::combateffects]), -128, 127)) : 0;
-		item.DamageShield = Strings::ToInt(row[ItemField::damageshield]);
-		item.DotShielding = Strings::ToInt(row[ItemField::dotshielding]);
-		item.DSMitigation = Strings::ToUnsignedInt(row[ItemField::dsmitigation]);
-		item.Haste = Strings::ToInt(row[ItemField::haste]);
-		item.HealAmt = Strings::ToInt(row[ItemField::healamt]);
-		item.Purity = Strings::ToUnsignedInt(row[ItemField::purity]);
-		item.Shielding = static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::shielding]), -128, 127));
-		item.SpellDmg = Strings::ToInt(row[ItemField::spelldmg]);
-		item.SpellShield = static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::spellshield]), -128, 127));
-		item.StrikeThrough = static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::strikethrough]), -128, 127));
-		item.StunResist = static_cast<int8>(EQ::Clamp(Strings::ToInt(row[ItemField::stunresist]), -128, 127));
+		item.AC           = e.ac;
+		item.Accuracy     = EQ::Clamp(e.accuracy, -128, 127);
+		item.Attack       = e.attack;
+		item.Avoidance    = EQ::Clamp(e.avoidance, -128, 127);
+		item.Clairvoyance = e.clairvoyance;
+		item.CombatEffects = Strings::IsNumber(e.combateffects) ? static_cast<int8>(EQ::Clamp(Strings::ToInt(e.combateffects), -128, 127)) : 0;
+		item.DamageShield  = e.damageshield;
+		item.DotShielding  = e.dotshielding;
+		item.DSMitigation  = e.dsmitigation;
+		item.Haste         = e.haste;
+		item.HealAmt       = e.healamt;
+		item.Purity        = e.purity;
+		item.Shielding     = EQ::Clamp(e.shielding, -128, 127);
+		item.SpellDmg      = e.spelldmg;
+		item.SpellShield   = EQ::Clamp(e.spellshield, -128, 127);
+		item.StrikeThrough = EQ::Clamp(e.strikethrough, -128, 127);
+		item.StunResist    = EQ::Clamp(e.stunresist, -128, 127);
 
 		// Restrictions
-		item.AugRestrict = Strings::ToUnsignedInt(row[ItemField::augrestrict]);
-		item.Classes = Strings::ToUnsignedInt(row[ItemField::classes]);
-		item.Deity = Strings::ToUnsignedInt(row[ItemField::deity]);
-		item.ItemClass = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::itemclass]));
-		item.Races = Strings::ToUnsignedInt(row[ItemField::races]);
-		item.RecLevel = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::reclevel]));
-		item.RecSkill = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::recskill]));
-		item.ReqLevel = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::reqlevel]));
-		item.Slots = Strings::ToUnsignedInt(row[ItemField::slots]);
+		item.AugRestrict = e.augrestrict;
+		item.Classes     = e.classes;
+		item.Deity       = e.deity;
+		item.ItemClass   = static_cast<uint8>(e.itemclass);
+		item.Races       = e.races;
+		item.RecLevel    = static_cast<uint8>(e.reclevel);
+		item.RecSkill    = static_cast<uint8>(e.recskill);
+		item.ReqLevel    = static_cast<uint8>(e.reqlevel);
+		item.Slots       = e.slots;
 
 		// Skill Modifier
-		item.SkillModValue = Strings::ToInt(row[ItemField::skillmodvalue]);
-		item.SkillModMax = Strings::ToInt(row[ItemField::skillmodmax]);
-		item.SkillModType = Strings::ToUnsignedInt(row[ItemField::skillmodtype]);
+		item.SkillModValue = e.skillmodvalue;
+		item.SkillModMax   = e.skillmodmax;
+		item.SkillModType  = e.skillmodtype;
 
 		// Extra Damage Skill
-		item.ExtraDmgSkill = Strings::ToInt(row[ItemField::extradmgskill]);
-		item.ExtraDmgAmt = Strings::ToInt(row[ItemField::extradmgamt]);
+		item.ExtraDmgSkill = e.extradmgskill;
+		item.ExtraDmgAmt   = e.extradmgamt;
 
 		// Bard
-		item.BardType = Strings::ToUnsignedInt(row[ItemField::bardtype]);
-		item.BardValue = Strings::ToInt(row[ItemField::bardvalue]);
+		item.BardType  = e.bardtype;
+		item.BardValue = e.bardvalue;
 
 		// Faction
-		item.FactionAmt1 = Strings::ToInt(row[ItemField::factionamt1]);
-		item.FactionMod1 = Strings::ToInt(row[ItemField::factionmod1]);
-		item.FactionAmt2 = Strings::ToInt(row[ItemField::factionamt2]);
-		item.FactionMod2 = Strings::ToInt(row[ItemField::factionmod2]);
-		item.FactionAmt3 = Strings::ToInt(row[ItemField::factionamt3]);
-		item.FactionMod3 = Strings::ToInt(row[ItemField::factionmod3]);
-		item.FactionAmt4 = Strings::ToInt(row[ItemField::factionamt4]);
-		item.FactionMod4 = Strings::ToInt(row[ItemField::factionmod4]);
+		item.FactionAmt1 = e.factionamt1;
+		item.FactionMod1 = e.factionmod1;
+		item.FactionAmt2 = e.factionamt2;
+		item.FactionMod2 = e.factionmod2;
+		item.FactionAmt3 = e.factionamt3;
+		item.FactionMod3 = e.factionmod3;
+		item.FactionAmt4 = e.factionamt4;
+		item.FactionMod4 = e.factionmod4;
 
-		// Augment
-		item.AugDistiller = Strings::ToUnsignedInt(row[ItemField::augdistiller]);
-		item.AugSlotType[0] = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::augslot1type]));
-		item.AugSlotVisible[0] = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::augslot1visible]));
-		item.AugSlotType[1] = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::augslot2type]));
-		item.AugSlotVisible[1] = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::augslot2visible]));
-		item.AugSlotType[2] = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::augslot3type]));
-		item.AugSlotVisible[2] = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::augslot3visible]));
-		item.AugSlotType[3] = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::augslot4type]));
-		item.AugSlotVisible[3] = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::augslot4visible]));
-		item.AugSlotType[4] = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::augslot5type]));
-		item.AugSlotVisible[4] = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::augslot5visible]));
-		item.AugSlotType[5] = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::augslot6type]));
-		item.AugSlotVisible[5] = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::augslot6visible]));
+		// Augment Distiller
+		item.AugDistiller = e.augdistiller;
+
+		// Augment Slots
+		item.AugSlotType[0]    = static_cast<uint8>(e.augslot1type);
+		item.AugSlotVisible[0] = static_cast<uint8>(e.augslot1visible);
+		item.AugSlotType[1]    = static_cast<uint8>(e.augslot2type);
+		item.AugSlotVisible[1] = static_cast<uint8>(e.augslot2visible);
+		item.AugSlotType[2]    = static_cast<uint8>(e.augslot3type);
+		item.AugSlotVisible[2] = static_cast<uint8>(e.augslot3visible);
+		item.AugSlotType[3]    = static_cast<uint8>(e.augslot4type);
+		item.AugSlotVisible[3] = static_cast<uint8>(e.augslot4visible);
+		item.AugSlotType[4]    = static_cast<uint8>(e.augslot5type);
+		item.AugSlotVisible[4] = static_cast<uint8>(e.augslot5visible);
+		item.AugSlotType[5]    = static_cast<uint8>(e.augslot6type);
+		item.AugSlotVisible[5] = static_cast<uint8>(e.augslot6visible);
 
 		// Augment Unknowns
 		for (uint8 i = EQ::invaug::SOCKET_BEGIN; i <= EQ::invaug::SOCKET_END; i++) {
@@ -1271,79 +1169,79 @@ void SharedDatabase::LoadItems(void *data, uint32 size, int32 items, uint32 max_
 		}
 
 		// LDoN
-		item.LDoNTheme = Strings::ToUnsignedInt(row[ItemField::ldontheme]);
-		item.LDoNPrice = Strings::ToUnsignedInt(row[ItemField::ldonprice]);
-		item.LDoNSellBackRate = Strings::ToUnsignedInt(row[ItemField::ldonsellbackrate]);
-		item.LDoNSold = Strings::ToUnsignedInt(row[ItemField::ldonsold]);
-		item.PointType = Strings::ToUnsignedInt(row[ItemField::pointtype]);
+		item.LDoNTheme        = e.ldontheme;
+		item.LDoNPrice        = e.ldonprice;
+		item.LDoNSellBackRate = e.ldonsellbackrate;
+		item.LDoNSold         = e.ldonsold;
+		item.PointType        = e.pointtype;
 
 		// Bag
-		item.BagSize = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::bagsize]));
-		item.BagSlots = static_cast<uint8>(EQ::Clamp(Strings::ToInt(row[ItemField::bagslots]), 0, 10)); // Will need to be changed from std::min to just use database value when bag slots are increased
-		item.BagType = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::bagtype]));
-		item.BagWR = static_cast<uint8>(EQ::Clamp(Strings::ToInt(row[ItemField::bagwr]), 0, 100));
+		item.BagSize  = static_cast<uint8>(e.bagsize);
+		item.BagSlots = EQ::Clamp(e.bagslots, 0, static_cast<int>(EQ::invbag::SLOT_COUNT));
+		item.BagType  = static_cast<uint8>(e.bagtype);
+		item.BagWR    = EQ::Clamp(e.bagwr, 0, 100);
 
 		// Bard Effect
-		item.Bard.Effect = disable_bard_focus_effects ? 0 : Strings::ToInt(row[ItemField::bardeffect]);
-		item.Bard.Type = disable_bard_focus_effects ? 0 : static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::bardtype]));
-		item.Bard.Level = disable_bard_focus_effects ? 0 : static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::bardlevel]));
-		item.Bard.Level2 = disable_bard_focus_effects ? 0 : static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::bardlevel2]));
+		item.Bard.Effect = disable_bard_focus_effects ? 0 : e.bardeffect;
+		item.Bard.Type   = disable_bard_focus_effects ? 0 : static_cast<uint8>(e.bardtype);
+		item.Bard.Level  = disable_bard_focus_effects ? 0 : static_cast<uint8>(e.bardlevel);
+		item.Bard.Level2 = disable_bard_focus_effects ? 0 : static_cast<uint8>(e.bardlevel2);
 
 		// Book
-		item.Book = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::book]));
-		item.BookType = Strings::ToUnsignedInt(row[ItemField::booktype]);
+		item.Book     = static_cast<uint8>(e.book);
+		item.BookType = e.booktype;
 
 		// Click Effect
-		item.CastTime = Strings::ToUnsignedInt(row[ItemField::casttime]);
-		item.CastTime_ = Strings::ToInt(row[ItemField::casttime_]);
-		item.Click.Effect = Strings::ToInt(row[ItemField::clickeffect]);
-		item.Click.Type = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::clicktype]));
-		item.Click.Level = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::clicklevel]));
-		item.Click.Level2 = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::clicklevel2]));
-		strn0cpy(item.ClickName, row[ItemField::clickname], sizeof(item.ClickName));
-		item.RecastDelay = Strings::ToUnsignedInt(row[ItemField::recastdelay]);
-		item.RecastType = Strings::ToInt(row[ItemField::recasttype]);
+		item.CastTime     = e.casttime;
+		item.CastTime_    = e.casttime_;
+		item.Click.Effect = e.clickeffect;
+		item.Click.Type   = static_cast<uint8>(e.clicktype);
+		item.Click.Level  = static_cast<uint8>(e.clicklevel);
+		item.Click.Level2 = static_cast<uint8>(e.clicklevel2);
+		strn0cpy(item.ClickName, e.clickname.c_str(), sizeof(item.ClickName));
+		item.RecastDelay = e.recastdelay;
+		item.RecastType  = e.recasttype;
 
 		// Focus Effect
-		item.Focus.Effect = disable_spell_focus_effects ? 0 : Strings::ToInt(row[ItemField::focuseffect]);
-		item.Focus.Type = disable_spell_focus_effects ? 0 : static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::focustype]));
-		item.Focus.Level = disable_spell_focus_effects ? 0 : static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::focuslevel]));
-		item.Focus.Level2 = disable_spell_focus_effects ? 0 : static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::focuslevel2]));
-		strn0cpy(item.FocusName, disable_spell_focus_effects ? "" : row[ItemField::focusname], sizeof(item.FocusName));
+		item.Focus.Effect = disable_spell_focus_effects ? 0 : e.focuseffect;
+		item.Focus.Type   = disable_spell_focus_effects ? 0 : static_cast<uint8>(e.focustype);
+		item.Focus.Level  = disable_spell_focus_effects ? 0 : static_cast<uint8>(e.focuslevel);
+		item.Focus.Level2 = disable_spell_focus_effects ? 0 : static_cast<uint8>(e.focuslevel2);
+		strn0cpy(item.FocusName, disable_spell_focus_effects ? "" : e.focusname.c_str(), sizeof(item.FocusName));
 
 		// Proc Effect
-		item.Proc.Effect = Strings::ToInt(row[ItemField::proceffect]);
-		item.Proc.Type = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::proctype]));
-		item.Proc.Level = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::proclevel]));
-		item.Proc.Level2 = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::proclevel2]));
-		strn0cpy(item.ProcName, row[ItemField::procname], sizeof(item.ProcName));
-		item.ProcRate = Strings::ToInt(row[ItemField::procrate]);
+		item.Proc.Effect = e.proceffect;
+		item.Proc.Type   = static_cast<uint8>(e.proctype);
+		item.Proc.Level  = static_cast<uint8>(e.proclevel);
+		item.Proc.Level2 = static_cast<uint8>(e.proclevel2);
+		strn0cpy(item.ProcName, e.procname.c_str(), sizeof(item.ProcName));
+		item.ProcRate = e.procrate;
 
 		// Scroll Effect
-		item.Scroll.Effect = Strings::ToInt(row[ItemField::scrolleffect]);
-		item.Scroll.Type = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::scrolltype]));
-		item.Scroll.Level = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::scrolllevel]));
-		item.Scroll.Level2 = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::scrolllevel2]));
-		strn0cpy(item.ScrollName, row[ItemField::scrollname], sizeof(item.ScrollName));
+		item.Scroll.Effect = e.scrolleffect;
+		item.Scroll.Type   = static_cast<uint8>(e.scrolltype);
+		item.Scroll.Level  = static_cast<uint8>(e.scrolllevel);
+		item.Scroll.Level2 = static_cast<uint8>(e.scrolllevel2);
+		strn0cpy(item.ScrollName, e.scrollname.c_str(), sizeof(item.ScrollName));
 
 		// Worn Effect
-		item.Worn.Effect = Strings::ToInt(row[ItemField::worneffect]);
-		item.Worn.Type = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::worntype]));
-		item.Worn.Level = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::wornlevel]));
-		item.Worn.Level2 = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::wornlevel2]));
-		strn0cpy(item.WornName, row[ItemField::wornname], sizeof(item.WornName));
+		item.Worn.Effect = e.worneffect;
+		item.Worn.Type   = static_cast<uint8>(e.worntype);
+		item.Worn.Level  = static_cast<uint8>(e.wornlevel);
+		item.Worn.Level2 = static_cast<uint8>(e.wornlevel2);
+		strn0cpy(item.WornName, e.wornname.c_str(), sizeof(item.WornName));
 
 		// Evolving Item
-		item.EvolvingID = Strings::ToUnsignedInt(row[ItemField::evoid]);
-		item.EvolvingItem = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::evoitem]));
-		item.EvolvingLevel = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::evolvinglevel]));
-		item.EvolvingMax = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::evomax]));
+		item.EvolvingID    = e.evoid;
+		item.EvolvingItem  = static_cast<uint8>(e.evoitem);
+		item.EvolvingLevel = static_cast<uint8>(e.evolvinglevel);
+		item.EvolvingMax   = static_cast<uint8>(e.evomax);
 
 		// Scripting
-		item.CharmFileID = Strings::IsNumber(row[ItemField::charmfileid]) ? Strings::ToUnsignedInt(row[ItemField::charmfileid]) : 0;
-		strn0cpy(item.CharmFile, row[ItemField::charmfile], sizeof(item.CharmFile));
-		strn0cpy(item.Filename, row[ItemField::filename], sizeof(item.Filename));
-		item.ScriptFileID = Strings::ToUnsignedInt(row[ItemField::scriptfileid]);
+		item.CharmFileID = Strings::IsNumber(e.charmfileid) ? Strings::ToUnsignedInt(e.charmfileid) : 0;
+		strn0cpy(item.CharmFile, e.charmfile.c_str(), sizeof(item.CharmFile));
+		strn0cpy(item.Filename, e.filename.c_str(), sizeof(item.Filename));
+		item.ScriptFileID = e.scriptfileid;
 
 		try {
 			hash.insert(item.ID, item);
@@ -1576,12 +1474,60 @@ bool SharedDatabase::GetCommandSettings(std::map<std::string, std::pair<uint8, s
 	return true;
 }
 
+template<typename T1, typename T2>
+inline std::vector<std::string> join_pair(
+	const std::string &glue,
+	const std::pair<char, char> &encapsulation,
+	const std::vector<std::pair<T1, T2>> &src
+)
+{
+	if (src.empty()) {
+		return {};
+	}
+
+	std::vector<std::string> output;
+
+	for (const std::pair<T1, T2> &src_iter: src) {
+		output.emplace_back(
+
+			fmt::format(
+				"{}{}{}{}{}{}{}",
+				encapsulation.first,
+				src_iter.first,
+				encapsulation.second,
+				glue,
+				encapsulation.first,
+				src_iter.second,
+				encapsulation.second
+			)
+		);
+	}
+
+	return output;
+}
+
+template<typename T>
+inline std::string
+ImplodePair(const std::string &glue, const std::pair<char, char> &encapsulation, const std::vector<T> &src)
+{
+	if (src.empty()) {
+		return {};
+	}
+	std::ostringstream oss;
+	for (const T &src_iter: src) {
+		oss << encapsulation.first << src_iter << encapsulation.second << glue;
+	}
+	std::string output(oss.str());
+	output.resize(output.size() - glue.size());
+	return output;
+}
+
 bool SharedDatabase::UpdateInjectedCommandSettings(const std::vector<std::pair<std::string, uint8>> &injected)
 {
 	if (injected.size()) {
 		const std::string query = fmt::format(
 			"REPLACE INTO `command_settings`(`command`, `access`) VALUES {}",
-			Strings::ImplodePair(
+			ImplodePair(
 				",",
 				std::pair<char, char>('(', ')'),
 				join_pair(",", std::pair<char, char>('\'', '\''), injected)
@@ -1608,7 +1554,7 @@ bool SharedDatabase::UpdateOrphanedCommandSettings(const std::vector<std::string
 	if (orphaned.size()) {
 		std::string query = fmt::format(
 			"DELETE FROM `command_settings` WHERE `command` IN ({})",
-			Strings::ImplodePair(",", std::pair<char, char>('\'', '\''), orphaned)
+			ImplodePair(",", std::pair<char, char>('\'', '\''), orphaned)
 		);
 
 		auto results = QueryDatabase(query);
@@ -1618,7 +1564,7 @@ bool SharedDatabase::UpdateOrphanedCommandSettings(const std::vector<std::string
 
 		query = fmt::format(
 			"DELETE FROM `command_subsettings` WHERE `parent_command` IN ({})",
-			Strings::ImplodePair(",", std::pair<char, char>('\'', '\''), orphaned)
+			ImplodePair(",", std::pair<char, char>('\'', '\''), orphaned)
 		);
 
 		auto results_two = QueryDatabase(query);
@@ -1657,20 +1603,17 @@ bool SharedDatabase::GetCommandSubSettings(std::vector<CommandSubsettingsReposit
 	return true;
 }
 
-void SharedDatabase::LoadDamageShieldTypes(SPDat_Spell_Struct* sp, int32 iMaxSpellID) {
-	const std::string query = StringFormat("SELECT `spellid`, `type` FROM `damageshieldtypes` WHERE `spellid` > 0 "
-	                                       "AND `spellid` <= %i", iMaxSpellID);
-    auto results = QueryDatabase(query);
-    if (!results.Success()) {
-        return;
-    }
+void SharedDatabase::LoadDamageShieldTypes(SPDat_Spell_Struct* s)
+{
+	const auto& l = DamageshieldtypesRepository::All(*this);
 
-    for(auto& row = results.begin(); row != results.end(); ++row) {
-	    const int spellID = Strings::ToInt(row[0]);
-        if((spellID > 0) && (spellID <= iMaxSpellID))
-            sp[spellID].damage_shield_type = Strings::ToUnsignedInt(row[1]);
-    }
+	if (l.empty()) {
+		return;
+	}
 
+	for (const auto& e : l) {
+		s[e.spellid].damage_shield_type = e.type;
+	}
 }
 
 const EvolveInfo* SharedDatabase::GetEvolveInfo(uint32 loregroup) {
@@ -1697,7 +1640,7 @@ bool SharedDatabase::LoadSpells(const std::string &prefix, int32 *records, const
 		EQ::IPCMutex mutex("spells");
 		mutex.Lock();
 
-		std::string file_name = fmt::format("{}/{}{}", path.GetSharedMemoryPath(), prefix, std::string("spells"));
+		std::string file_name = fmt::format("{}/{}{}", PathManager::Instance()->GetSharedMemoryPath(), prefix, std::string("spells"));
 		spells_mmf = std::make_unique<EQ::MemoryMappedFile>(file_name);
 		LogInfo("Loading [{}]", file_name);
 		*records = *static_cast<uint32*>(spells_mmf->Get());
@@ -1887,21 +1830,32 @@ void SharedDatabase::LoadSpells(void *data, int max_spells) {
 		sp[tempid].damage_shield_type = 0;
 	}
 
-	LoadDamageShieldTypes(sp, max_spells);
+	LoadDamageShieldTypes(sp);
 }
 
-void SharedDatabase::LoadCharacterInspectMessage(uint32 character_id, InspectMessage_Struct* message) {
-	const std::string query = StringFormat("SELECT `inspect_message` FROM `character_inspect_messages` WHERE `id` = %u LIMIT 1", character_id);
-	auto results = QueryDatabase(query);
-	memset(message, '\0', sizeof(InspectMessage_Struct));
-	for (auto& row = results.begin(); row != results.end(); ++row) {
-		memcpy(message, row[0], sizeof(InspectMessage_Struct));
+void SharedDatabase::LoadCharacterInspectMessage(uint32 character_id, InspectMessage_Struct* s)
+{
+	const auto& e = CharacterInspectMessagesRepository::FindOne(*this, character_id);
+
+	memset(s, '\0', sizeof(InspectMessage_Struct));
+
+	if (!e.id) {
+		return;
 	}
+
+	memcpy(s, e.inspect_message.c_str(), sizeof(InspectMessage_Struct));
 }
 
-void SharedDatabase::SaveCharacterInspectMessage(uint32 character_id, const InspectMessage_Struct* message) {
-	const std::string query = StringFormat("REPLACE INTO `character_inspect_messages` (id, inspect_message) VALUES (%u, '%s')", character_id, Strings::Escape(message->text).c_str());
-	auto results = QueryDatabase(query);
+void SharedDatabase::SaveCharacterInspectMessage(uint32 character_id, const InspectMessage_Struct* s)
+{
+	auto e = CharacterInspectMessagesRepository::NewEntity();
+
+	e.id              = character_id;
+	e.inspect_message = s->text;
+
+	if (!CharacterInspectMessagesRepository::ReplaceOne(*this, e)) {
+		LogError("Failed to save character inspect message of [{}] for character_id [{}]", s->text, character_id);
+	}
 }
 
 uint32 SharedDatabase::GetSpellsCount()
@@ -1922,18 +1876,7 @@ uint32 SharedDatabase::GetSpellsCount()
 
 uint32 SharedDatabase::GetItemsCount()
 {
-	auto results = QueryDatabase("SELECT count(*) FROM items");
-	if (!results.Success() || !results.RowCount()) {
-		return 0;
-	}
-
-	auto& row = results.begin();
-
-	if (row[0]) {
-		return Strings::ToUnsignedInt(row[0]);
-	}
-
-	return 0;
+	return ItemsRepository::Count(*this);
 }
 
 void SharedDatabase::SetSharedItemsCount(uint32 shared_items_count)

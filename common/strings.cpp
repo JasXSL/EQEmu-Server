@@ -34,20 +34,18 @@
 */
 
 #include "strings.h"
-#include <fmt/format.h>
+
+#include "cereal/external/rapidjson/document.h"
+#include "fmt/format.h"
 #include <algorithm>
 #include <cctype>
-
-#include <stdlib.h>
-#include <stdio.h>
+#include <cstdio>
+#include <cstdlib>
+#include <functional>
 #include <iostream>
-
 #include <random>
+#include <sstream>
 #include <string>
-
-//Const char based
-#include "strings_legacy.cpp" // legacy c functions
-#include "strings_misc.cpp" // anything non "Strings" scoped
 
 std::string Strings::Random(size_t length)
 {
@@ -304,6 +302,12 @@ std::string Strings::Commify(const std::string &number)
 	std::string temp_string;
 
 	auto string_length = static_cast<int>(number.length());
+
+	if (string_length == 3) {
+		return number;
+	} else if (string_length == 4 && number.starts_with("-")) {
+		return number;
+	}
 
 	int i = 0;
 	for (i = string_length - 3; i >= 0; i -= 3) {
@@ -701,6 +705,18 @@ std::string &Strings::Trim(std::string &str, const std::string &chars)
 	return LTrim(RTrim(str, chars), chars);
 }
 
+const std::string NUM_TO_ENGLISH_X[] = {
+	"", "One ", "Two ", "Three ", "Four ",
+	"Five ", "Six ", "Seven ", "Eight ", "Nine ", "Ten ", "Eleven ",
+	"Twelve ", "Thirteen ", "Fourteen ", "Fifteen ",
+	"Sixteen ", "Seventeen ", "Eighteen ", "Nineteen "
+};
+
+const std::string NUM_TO_ENGLISH_Y[] = {
+	"", "", "Twenty ", "Thirty ", "Forty ",
+	"Fifty ", "Sixty ", "Seventy ", "Eighty ", "Ninety "
+};
+
 // Function to convert single digit or two digit number into words
 std::string Strings::ConvertToDigit(int n, const std::string& suffix)
 {
@@ -911,4 +927,36 @@ std::string Strings::ZoneTime(const uint8 hours, const uint8 minutes)
 		minutes,
 		hours >= 13 ? "PM" : "AM"
 	);
+}
+
+std::string Strings::Slugify(const std::string& input, const std::string& separator) {
+	std::string slug;
+	bool last_was_hyphen = false;
+
+	for (char c : input) {
+		if (std::isalnum(c)) {
+			slug += std::tolower(c);
+			last_was_hyphen = false;
+		} else if (c == ' ' || c == '_' || c == '-') {
+			if (!last_was_hyphen && !slug.empty()) {
+				slug += separator;
+				last_was_hyphen = true;
+			}
+		}
+	}
+
+	// Remove trailing hyphen if present
+	if (!slug.empty() && slug.back() == '-') {
+		slug.pop_back();
+	}
+
+	return slug;
+}
+
+bool Strings::IsValidJson(const std::string &json)
+{
+	rapidjson::Document    doc;
+	rapidjson::ParseResult result = doc.Parse(json.c_str());
+
+	return result;
 }

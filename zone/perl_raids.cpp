@@ -1,12 +1,11 @@
-#include "../common/features.h"
+#include "common/features.h"
 
 #ifdef EMBPERL_XS_CLASSES
 
-#include "../common/data_verification.h"
-#include "../common/global_define.h"
-#include "embperl.h"
-#include "raids.h"
-#include "client.h"
+#include "common/data_verification.h"
+#include "zone/client.h"
+#include "zone/embperl.h"
+#include "zone/raids.h"
 
 bool Perl_Raid_IsRaidMember(Raid* self, const char* name) // @categories Raid
 {
@@ -139,12 +138,12 @@ Client* Perl_Raid_GetMember(Raid* self, int member_index) // @categories Raid
 
 bool Perl_Raid_DoesAnyMemberHaveExpeditionLockout(Raid* self, std::string expedition_name, std::string event_name)
 {
-	return self->DoesAnyMemberHaveExpeditionLockout(expedition_name, event_name);
+	return self->AnyMemberHasDzLockout(expedition_name, event_name);
 }
 
 bool Perl_Raid_DoesAnyMemberHaveExpeditionLockout(Raid* self, std::string expedition_name, std::string event_name, int max_check_count)
 {
-	return self->DoesAnyMemberHaveExpeditionLockout(expedition_name, event_name, max_check_count);
+	return self->AnyMemberHasDzLockout(expedition_name, event_name); // max_check_count deprecated
 }
 
 int Perl_Raid_GetGroupNumber(Raid* self, int member_index) {

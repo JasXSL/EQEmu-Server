@@ -5,19 +5,16 @@ wraps a perl interpreter for use in eqemu
 Eglin
 */
 
-#ifndef EMBPERL_CPP
-#define EMBPERL_CPP
-
 #ifdef EMBPERL
 
-#include "../common/global_define.h"
-#include "../common/eqemu_logsys.h"
+#include "common/eqemu_logsys.h"
+#include "common/features.h"
+#include "common/file.h"
+#include "common/process/process.h"
+#include "common/timer.h"
+#include "zone/embperl.h"
+
 #include <vector>
-#include "embperl.h"
-#include "../common/features.h"
-#include "../common/process/process.h"
-#include "../common/file.h"
-#include "../common/timer.h"
 
 #ifndef GvCV_set
 #define GvCV_set(gv,cv)   (GvCV(gv) = (cv))
@@ -75,15 +72,15 @@ void Embperl::DoInit()
 		throw "Failed to init Perl (perl_alloc)";
 	}
 	PERL_SET_CONTEXT(my_perl);
-	PERL_SET_INTERP(my_perl);
+	PL_curinterp = (PerlInterpreter*)(my_perl);
 	PL_perl_destruct_level = 1;
 	perl_construct(my_perl);
 	perl_parse(my_perl, xs_init, argc, argv, nullptr);
 	perl_run(my_perl);
-
+	
 	//a little routine we use a lot.
 	eval_pv("sub my_eval { eval $_[0];}", TRUE);    //dies on error
-
+	
 	//ruin the perl exit and command:
 	eval_pv("sub my_exit {}", TRUE);
 	eval_pv("sub my_sleep {}", TRUE);
@@ -95,7 +92,7 @@ void Embperl::DoInit()
 		GvCV_set(sleepgp, perl_get_cv("my_sleep", TRUE));    //dies on error
 		GvIMPORTED_CV_on(sleepgp);
 	}
-
+	
 	//declare our file eval routine.
 	try {
 		init_eval_file();
@@ -137,25 +134,28 @@ void Embperl::DoInit()
 	catch (std::string& e) {
 		LogQuests("Warning [{}]: [{}]", Config->PluginPlFile, e);
 	}
-	try {
-		//should probably read the directory in c, instead, so that
-		//I can echo filenames as I do it, but c'mon... I'm lazy and this 1 line reads in all the plugins
-		const std::string& perl_command = (
-			"if(opendir(D,'" +
-			path.GetPluginsPath() +
-			"')) { "
-			"	my @d = readdir(D);"
-			"	closedir(D);"
-			"	foreach(@d){ "
-			"		main::eval_file('plugin','" +
-			path.GetPluginsPath() +
-			"/'.$_)if/\\.pl$/;"
-			"	}"
-		"}");
-		eval_pv(perl_command.c_str(), FALSE);
-	}
-	catch (std::string& e) {
-		LogQuests("Warning [{}]", e);
+
+	for (auto & dir : PathManager::Instance()->GetPluginPaths()) {
+		try {
+			//should probably read the directory in c, instead, so that
+			//I can echo filenames as I do it, but c'mon... I'm lazy and this 1 line reads in all the plugins
+			const std::string& perl_command = (
+				"if(opendir(D,'" +
+				dir +
+				"')) { "
+				"	my @d = readdir(D);"
+				"	closedir(D);"
+				"	foreach(@d){ "
+				"		main::eval_file('plugin','" +
+				dir +
+				"/'.$_)if/\\.pl$/;"
+				"	}"
+			"}");
+			eval_pv(perl_command.c_str(), FALSE);
+		}
+		catch (std::string& e) {
+			LogQuests("Warning [{}]", e);
+		}
 	}
 #endif //EMBPERL_PLUGIN
 }
@@ -178,7 +178,7 @@ Embperl::~Embperl()
 void Embperl::Reinit()
 {
 	PERL_SET_CONTEXT(my_perl);
-	PERL_SET_INTERP(my_perl);
+	PL_curinterp = (PerlInterpreter*)(my_perl);
 	PL_perl_destruct_level = 1;
 	perl_destruct(my_perl);
 	perl_free(my_perl);
@@ -351,8 +351,5 @@ XS(XS_EQEmuIO_PRINT)
 	XSRETURN_EMPTY;
 }
 
-#endif //EMBPERL_IO_CAPTURE
-
-#endif //EMBPERL
-
-#endif //EMBPERL_CPP
+#endif // EMBPERL_IO_CAPTURE
+#endif // EMBPERL

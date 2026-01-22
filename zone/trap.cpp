@@ -16,15 +16,15 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-#include "../common/spdat.h"
-#include "../common/strings.h"
-
-#include "client.h"
-#include "entity.h"
-#include "mob.h"
 #include "trap.h"
-#include "../common/repositories/criteria/content_filter_criteria.h"
-#include "../common/repositories/traps_repository.h"
+
+#include "common/repositories/criteria/content_filter_criteria.h"
+#include "common/repositories/traps_repository.h"
+#include "common/spdat.h"
+#include "common/strings.h"
+#include "zone/client.h"
+#include "zone/entity.h"
+#include "zone/mob.h"
 
 /*
 
@@ -461,10 +461,6 @@ bool ZoneDatabase::LoadTraps(const std::string& zone_short_name, int16 instance_
 			ContentFilterCriteria::apply()
 		)
 	);
-
-	if (l.empty()) {
-		return false;
-	}
 
 	for (const auto& e : l) {
 		if (e.group_) {

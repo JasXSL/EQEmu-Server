@@ -1,11 +1,10 @@
-#ifndef ADVENTURE_MANAGER_H
-#define ADVENTURE_MANAGER_H
+#pragma once
 
-#include "../common/global_define.h"
-#include "../common/types.h"
-#include "../common/timer.h"
-#include "adventure.h"
-#include "adventure_template.h"
+#include "common/timer.h"
+#include "common/types.h"
+#include "world/adventure_template.h"
+#include "world/adventure.h"
+
 #include <map>
 #include <list>
 
@@ -40,6 +39,12 @@ public:
 	AdventureTemplate *GetAdventureTemplate(int theme, int id);
 	AdventureTemplate *GetAdventureTemplate(int id);
 	void GetZoneData(uint16 instance_id);
+
+	static AdventureManager* Instance()
+	{
+		static AdventureManager instance;
+		return &instance;
+	}
 protected:
 	bool IsInExcludedZoneList(std::list<AdventureZones> excluded_zones, std::string zone_name, int version);
 	bool IsInExcludedZoneInList(std::list<AdventureZoneIn> excluded_zone_ins, int zone_id, int door_object);
@@ -88,5 +93,3 @@ protected:
 	Timer *save_timer;
 	Timer *leaderboard_info_timer;
 };
-
-#endif

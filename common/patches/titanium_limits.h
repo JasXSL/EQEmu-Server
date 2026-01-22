@@ -17,12 +17,11 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-#ifndef COMMON_TITANIUM_LIMITS_H
-#define COMMON_TITANIUM_LIMITS_H
+#pragma once
 
-#include "../types.h"
-#include "../emu_versions.h"
-#include "../skills.h"
+#include "common/emu_versions.h"
+#include "common/skills.h"
+#include "common/types.h"
 
 
 namespace Titanium
@@ -286,8 +285,8 @@ namespace Titanium
 
 		const size_t CHARACTER_CREATION_LIMIT = 8; // Hard-coded in client - DO NOT ALTER
 
-		const size_t SAY_LINK_BODY_SIZE = 45;
-		const uint32 MAX_GUILD_ID       = 1500;
+		const size_t SAY_LINK_BODY_SIZE       = 45;
+		const uint32 MAX_GUILD_ID             = 1500;
 
 	} /*constants*/
 
@@ -340,6 +339,4 @@ namespace Titanium
 
 	} /*spells*/
 
-}; /*Titanium*/
-
-#endif /*COMMON_TITANIUM_LIMITS_H*/
+} /*Titanium*/

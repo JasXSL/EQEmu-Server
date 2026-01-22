@@ -1,31 +1,29 @@
-#include "global_define.h"
-#include "eqemu_logsys.h"
 #include "crash.h"
-#include "strings.h"
-#include "process/process.h"
-#include "http/httplib.h"
-#include "http/uri.h"
-#include "json/json.h"
-#include "version.h"
-#include "eqemu_config.h"
-#include "serverinfo.h"
-#include "rulesys.h"
-#include "platform.h"
+
+#include "common/eqemu_config.h"
+#include "common/eqemu_logsys.h"
+#include "common/http/httplib.h"
+#include "common/http/uri.h"
+#include "common/json/json.h"
+#include "common/platform.h"
+#include "common/process/process.h"
+#include "common/rulesys.h"
+#include "common/serverinfo.h"
+#include "common/strings.h"
+#include "common/version.h"
 
 #include <cstdio>
 #include <vector>
-
-#ifdef _WINDOWS
-#define popen _popen
-#endif
 
 void SendCrashReport(const std::string &crash_report)
 {
 	// can configure multiple endpoints if need be
 	std::vector<std::string> endpoints = {
-		"https://spire.akkadius.com/api/v1/analytics/server-crash-report",
+		"https://spire.eqemu.dev/api/v1/analytics/server-crash-report",
 //		"http://localhost:3010/api/v1/analytics/server-crash-report", // development
 	};
+
+	EQEmuLogSys* log = EQEmuLogSys::Instance();
 
 	auto      config = EQEmuConfig::get();
 	for (auto &e: endpoints) {
@@ -68,12 +66,12 @@ void SendCrashReport(const std::string &crash_report)
 		p["cpus"]              = cpus.size();
 		p["origination_info"]  = "";
 
-		if (!LogSys.origination_info.zone_short_name.empty()) {
+		if (!log->origination_info.zone_short_name.empty()) {
 			p["origination_info"] = fmt::format(
 				"{} ({}) instance_id [{}]",
-				LogSys.origination_info.zone_short_name,
-				LogSys.origination_info.zone_long_name,
-				LogSys.origination_info.instance_id
+				log->origination_info.zone_short_name,
+				log->origination_info.zone_long_name,
+				log->origination_info.instance_id
 			);
 		}
 
@@ -222,8 +220,8 @@ void set_exception_handler() {
 }
 #else
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <sys/fcntl.h>
@@ -293,6 +291,8 @@ void print_trace()
 	if (RuleB(Analytics, CrashReporting)) {
 		SendCrashReport(crash_report);
 	}
+
+	EQEmuLogSys::Instance()->CloseFileLogs();
 
 	exit(1);
 }

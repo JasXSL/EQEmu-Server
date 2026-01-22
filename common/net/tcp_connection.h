@@ -1,9 +1,11 @@
 #pragma once
 
+#include "common/net/tcp_connection_pooling.h"
+
+#include "uv.h"
 #include <functional>
-#include <string>
 #include <memory>
-#include <uv.h>
+#include <string>
 
 namespace EQ
 {
@@ -16,7 +18,7 @@ namespace EQ
 			~TCPConnection();
 
 			static void Connect(const std::string &addr, int port, bool ipv6, std::function<void(std::shared_ptr<TCPConnection>)> cb);
-			
+
 			void Start();
 			void OnRead(std::function<void(TCPConnection*, const unsigned char *, size_t)> cb);
 			void OnDisconnect(std::function<void(TCPConnection*)> cb);

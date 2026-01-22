@@ -1,29 +1,30 @@
-#include "../common/global_define.h"
-#include "../common/misc_functions.h"
-#include "../common/rulesys.h"
-#include "../common/strings.h"
-#include "client.h"
-#include "queryserv.h"
-#include "quest_parser_collection.h"
-#include "string_ids.h"
 #include "tasks.h"
-#include "zonedb.h"
-#include "../common/repositories/character_task_timers_repository.h"
+
+#include "common/misc_functions.h"
+#include "common/repositories/character_task_timers_repository.h"
+#include "common/rulesys.h"
+#include "common/strings.h"
+#include "zone/client.h"
+#include "zone/queryserv.h"
+#include "zone/quest_parser_collection.h"
+#include "zone/string_ids.h"
+#include "zone/zonedb.h"
 
 extern QueryServ *QServ;
 
 void Client::LoadClientTaskState()
 {
-	if (RuleB(TaskSystem, EnableTaskSystem) && task_manager) {
-		safe_delete(task_state);
+	if (RuleB(TaskSystem, EnableTaskSystem)) {
+		LoadClientSharedCompletedTasks();
 
+		safe_delete(task_state);
 		task_state = new ClientTaskState();
-		if (!task_manager->LoadClientState(this, task_state)) {
+		if (!TaskManager::Instance()->LoadClientState(this, task_state)) {
 			safe_delete(task_state);
 		}
 		else {
-			task_manager->SendActiveTasksToClient(this);
-			task_manager->SendCompletedTasksToClient(this, task_state);
+			TaskManager::Instance()->SendActiveTasksToClient(this);
+			TaskManager::Instance()->SendCompletedTasksToClient(this, task_state);
 		}
 	}
 }

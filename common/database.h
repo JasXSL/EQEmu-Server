@@ -15,25 +15,22 @@
 	along with this program; if not, write to the Free Software
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
-#ifndef EQEMU_DATABASE_H
-#define EQEMU_DATABASE_H
 
-#define AUTHENTICATION_TIMEOUT    60
-#define INVALID_ID                0xFFFFFFFF
+#pragma once
 
-#include "global_define.h"
-#include "eqemu_logsys.h"
-
-#include "types.h"
-#include "dbcore.h"
-#include "linked_list.h"
-#include "eq_packet_structs.h"
+#include "common/dbcore.h"
+#include "common/eq_packet_structs.h"
+#include "common/eqemu_logsys.h"
+#include "common/linked_list.h"
+#include "common/types.h"
 
 #include <cmath>
 #include <string>
 #include <vector>
 #include <map>
 
+#define AUTHENTICATION_TIMEOUT    60
+#define INVALID_ID                0xFFFFFFFF
 
 class MySQLRequestResult;
 class Client;
@@ -62,17 +59,6 @@ struct VarCache_Struct {
 };
 
 class PTimerList;
-
-#ifdef _WINDOWS
-#if _MSC_VER > 1700 // greater than 2012 (2013+)
-#	define _ISNAN_(a) std::isnan(a)
-#else
-#	include <float.h>
-#	define _ISNAN_(a) _isnan(a)
-#endif
-#else
-#	define _ISNAN_(a) std::isnan(a)
-#endif
 
 #define SQL(...) #__VA_ARGS__
 
@@ -103,6 +89,7 @@ public:
 	bool ReserveName(uint32 account_id, const std::string& name);
 	bool SaveCharacterCreate(uint32 character_id, uint32 account_id, PlayerProfile_Struct* pp);
 	bool UpdateName(const std::string& old_name, const std::string& new_name);
+	bool UpdateNameByID(const int character_id, const std::string& new_name);
 	bool CopyCharacter(
 		const std::string& source_character_name,
 		const std::string& destination_character_name,
@@ -116,6 +103,7 @@ public:
 	bool CheckGMIPs(const std::string& login_ip, uint32 account_id);
 	bool CheckNameFilter(const std::string& name, bool surname = false);
 	bool IsNameUsed(const std::string& name);
+	bool IsPetNameUsed(const std::string& name);
 
 	uint32 GetAccountIDByChar(const std::string& name, uint32* character_id = 0);
 	uint32 GetAccountIDByChar(uint32 character_id);
@@ -139,6 +127,7 @@ public:
 	bool CheckInstanceExpired(uint16 instance_id);
 	bool CreateInstance(uint16 instance_id, uint32 zone_id, uint32 version, uint32 duration);
 	bool GetUnusedInstanceID(uint16& instance_id);
+	bool TryGetUnusedInstanceID(uint16& instance_id);
 	bool IsGlobalInstance(uint16 instance_id);
 	bool RemoveClientFromInstance(uint16 instance_id, uint32 char_id);
 	bool RemoveClientsFromInstance(uint16 instance_id);
@@ -260,7 +249,7 @@ public:
 	bool SaveTime(int8 minute, int8 hour, int8 day, int8 month, int16 year);
 	void ClearMerchantTemp();
 	void ClearPTimers(uint32 character_id);
-	void SetFirstLogon(uint32 character_id, uint8 first_logon);
+	void SetIngame(uint32 character_id, uint8 ingame);
 	void SetLFG(uint32 character_id, bool is_lfg);
 	void SetLFP(uint32 character_id, bool is_lfp);
 	void SetLoginFlags(uint32 character_id, bool is_lfp, bool is_lfg, uint8 first_logon);
@@ -273,6 +262,8 @@ public:
 	void PurgeCharacterParcels();
 	void Encode(std::string &in);
 	void Decode(std::string &in);
+
+	uint64_t GetNextTableId(const std::string& table_name);
 
 private:
 	Mutex           Mvarcache;
@@ -287,5 +278,3 @@ private:
 	void ClearAllRaidDetails();
 	void ClearAllRaidLeaders();
 };
-
-#endif

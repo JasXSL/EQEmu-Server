@@ -18,9 +18,9 @@
 */
 
 #include "item_data.h"
-#include "classes.h"
-#include "races.h"
-//#include "deity.h"
+
+#include "common/classes.h"
+#include "common/races.h"
 
 
 uint32 EQ::item::ConvertAugTypeToAugTypeBit(uint8 aug_type)
@@ -218,6 +218,34 @@ bool EQ::ItemData::IsClassBook() const
 bool EQ::ItemData::IsType1HWeapon() const
 {
 	return ((ItemType == item::ItemType1HBlunt) || (ItemType == item::ItemType1HSlash) || (ItemType == item::ItemType1HPiercing) || (ItemType == item::ItemTypeMartial));
+}
+
+bool EQ::ItemData::IsPetUsable() const
+{
+	if (ItemClass == item::ItemClassBag) {
+		return true;
+	}
+
+	// if it's a misc item and has slots, it's wearable
+	// this item type is conflated with many other item types
+	if (ItemClass == item::ItemTypeMisc && Slots != 0) {
+		return true;
+	}
+
+	switch (ItemType) {
+		case item::ItemType1HBlunt:
+		case item::ItemType1HSlash:
+		case item::ItemType1HPiercing:
+		case item::ItemType2HBlunt:
+		case item::ItemType2HSlash:
+		case item::ItemTypeMartial:
+		case item::ItemTypeShield:
+		case item::ItemTypeArmor:
+		case item::ItemTypeJewelry:
+			return true;
+		default:
+			return false;
+	}
 }
 
 bool EQ::ItemData::IsType2HWeapon() const

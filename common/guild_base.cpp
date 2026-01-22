@@ -17,23 +17,21 @@
 */
 
 #include "guild_base.h"
-#include "database.h"
-#include "../common/rulesys.h"
-#include "../common/repositories/guilds_repository.h"
-#include "../common/repositories/guild_ranks_repository.h"
-#include "../common/repositories/guild_permissions_repository.h"
-#include "../common/repositories/guild_members_repository.h"
-#include "../common/repositories/guild_bank_repository.h"
-#include "../common/repositories/guild_tributes_repository.h"
 
+#include "common/database.h"
+#include "common/eq_packet_structs.h"
+#include "common/repositories/guild_bank_repository.h"
+#include "common/repositories/guild_members_repository.h"
+#include "common/repositories/guild_permissions_repository.h"
+#include "common/repositories/guild_ranks_repository.h"
+#include "common/repositories/guild_tributes_repository.h"
+#include "common/repositories/guilds_repository.h"
+#include "common/rulesys.h"
+#include "common/strings.h"
 
-//#include "misc_functions.h"
-#include "strings.h"
 #include <cstdlib>
 #include <cstring>
 
-//until we move MAX_NUMBER_GUILDS
-#include "eq_packet_structs.h"
 
 std::vector<DefaultPermissionStruct> default_permissions = {
 	{GUILD_ACTION_BANK_CHANGE_ITEM_PERMISSIONS,         128},
@@ -547,60 +545,62 @@ uint32 BaseGuildManager::UpdateDbCreateGuild(std::string name, uint32 leader)
 
 bool BaseGuildManager::UpdateDbDeleteGuild(uint32 guild_id, bool local_delete, bool db_delete)
 {
+	auto const where_filter = fmt::format("guild_id = {}", guild_id);
+	auto const bank_items   = GuildBankRepository::GetWhere(*m_db, where_filter);
+
 	if (local_delete) {
-		auto where_filter = fmt::format("guildid = {}", guild_id);
-		auto bank_items   = GuildBankRepository::GetWhere(*m_db, where_filter);
 		if (!bank_items.empty()) {
 			LogError(
-				"Attempt to delete guild id [{}] that still has [{}] items in the bank. Please remove them and try again.",
+				"Attempt to delete guild id [{}] that still has [{}] items in the bank. Please remove them and try "
+				"again.",
 				guild_id,
 				bank_items.size()
 			);
 			LogGuilds(
-				"Attempt to delete guild id [{}] that still has [{}] items in the bank. Please remove them and try again.",
+				"Attempt to delete guild id [{}] that still has [{}] items in the bank. Please remove them and try "
+				"again.",
 				guild_id,
 				bank_items.size()
 			);
+
 			return false;
 		}
-		else {
-			std::map<uint32, GuildInfo *>::iterator res;
-			res = m_guilds.find(guild_id);
-			if (res != m_guilds.end()) {
-				delete res->second;
-				m_guilds.erase(res);
-				LogGuilds("Deleted guild [{}] from memory", guild_id);
-				//Does this need to be sent to world?
-			}
+
+		auto res = m_guilds.find(guild_id);
+		if (res != m_guilds.end()) {
+			safe_delete(res->second);
+			m_guilds.erase(res);
+			LogGuilds("Deleted guild [{}] from memory", guild_id);
+			// Does this need to be sent to world?
 		}
 	}
 
 	if (db_delete) {
-		auto where_filter = fmt::format("guildid = {}", guild_id);
-		auto bank_items   = GuildBankRepository::GetWhere(*m_db, where_filter);
 		if (!bank_items.empty()) {
 			LogError(
-				"Attempt to delete guild id [{}] that still has [{}] items in the bank. Please remove them and try again.",
+				"Attempt to delete guild id [{}] that still has [{}] items in the bank. Please remove them and try "
+				"again.",
 				guild_id,
 				bank_items.size()
 			);
 			LogGuilds(
-				"Attempt to delete guild id [{}] that still has [{}] items in the bank. Please remove them and try again.",
+				"Attempt to delete guild id [{}] that still has [{}] items in the bank. Please remove them and try "
+				"again.",
 				guild_id,
 				bank_items.size()
 			);
+
 			return false;
 		}
-		else {
-			auto where_filter = fmt::format("guild_id = {}", guild_id);
-			GuildTributesRepository::DeleteOne(*m_db, guild_id);
-			GuildsRepository::DeleteOne(*m_db, guild_id);
-			GuildRanksRepository::DeleteWhere(*m_db, where_filter);
-			GuildPermissionsRepository::DeleteWhere(*m_db, where_filter);
-			GuildMembersRepository::DeleteWhere(*m_db, where_filter);
-			LogGuilds("Deleted guild [{}] from the database", guild_id);
-		}
+
+		GuildTributesRepository::DeleteOne(*m_db, guild_id);
+		GuildsRepository::DeleteOne(*m_db, guild_id);
+		GuildRanksRepository::DeleteWhere(*m_db, where_filter);
+		GuildPermissionsRepository::DeleteWhere(*m_db, where_filter);
+		GuildMembersRepository::DeleteWhere(*m_db, where_filter);
+		LogGuilds("Deleted guild [{}] from the database", guild_id);
 	}
+
 	return true;
 }
 

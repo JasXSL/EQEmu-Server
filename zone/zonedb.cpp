@@ -1,62 +1,60 @@
-
-#include "../common/eqemu_logsys.h"
-#include "../common/extprofile.h"
-#include "../common/rulesys.h"
-#include "../common/strings.h"
-
-#include "client.h"
-#include "corpse.h"
-#include "groups.h"
-#include "merc.h"
-#include "zone.h"
 #include "zonedb.h"
-#include "aura.h"
-#include "../common/repositories/blocked_spells_repository.h"
-#include "../common/repositories/character_tribute_repository.h"
-#include "../common/repositories/character_data_repository.h"
-#include "../common/repositories/character_disciplines_repository.h"
-#include "../common/repositories/npc_types_repository.h"
-#include "../common/repositories/character_bind_repository.h"
-#include "../common/repositories/character_pet_buffs_repository.h"
-#include "../common/repositories/character_pet_inventory_repository.h"
-#include "../common/repositories/character_pet_info_repository.h"
-#include "../common/repositories/character_buffs_repository.h"
-#include "../common/repositories/character_languages_repository.h"
-#include "../common/repositories/criteria/content_filter_criteria.h"
-#include "../common/repositories/spawn2_disabled_repository.h"
-#include "../common/repositories/character_leadership_abilities_repository.h"
-#include "../common/repositories/character_material_repository.h"
-#include "../common/repositories/character_memmed_spells_repository.h"
-#include "../common/repositories/character_spells_repository.h"
-#include "../common/repositories/character_skills_repository.h"
-#include "../common/repositories/character_potionbelt_repository.h"
-#include "../common/repositories/character_bandolier_repository.h"
-#include "../common/repositories/character_currency_repository.h"
-#include "../common/repositories/character_alternate_abilities_repository.h"
-#include "../common/repositories/character_auras_repository.h"
-#include "../common/repositories/character_alt_currency_repository.h"
-#include "../common/repositories/character_item_recast_repository.h"
-#include "../common/repositories/account_repository.h"
-#include "../common/repositories/respawn_times_repository.h"
-#include "../common/repositories/object_contents_repository.h"
-#include "../common/repositories/mercs_repository.h"
-#include "../common/repositories/merc_buffs_repository.h"
-#include "../common/repositories/merc_inventory_repository.h"
-#include "../common/repositories/merc_subtypes_repository.h"
-#include "../common/repositories/npc_types_tint_repository.h"
-#include "../common/repositories/merchantlist_temp_repository.h"
-#include "../common/repositories/character_exp_modifiers_repository.h"
-#include "../common/repositories/character_data_repository.h"
-#include "../common/repositories/character_corpses_repository.h"
-#include "../common/repositories/character_corpse_items_repository.h"
-#include "../common/repositories/zone_repository.h"
 
-#include "../common/repositories/trader_repository.h"
+#include "common/eqemu_logsys.h"
+#include "common/extprofile.h"
+#include "common/repositories/account_repository.h"
+#include "common/repositories/blocked_spells_repository.h"
+#include "common/repositories/character_alt_currency_repository.h"
+#include "common/repositories/character_alternate_abilities_repository.h"
+#include "common/repositories/character_auras_repository.h"
+#include "common/repositories/character_bandolier_repository.h"
+#include "common/repositories/character_bind_repository.h"
+#include "common/repositories/character_buffs_repository.h"
+#include "common/repositories/character_corpse_items_repository.h"
+#include "common/repositories/character_corpses_repository.h"
+#include "common/repositories/character_currency_repository.h"
+#include "common/repositories/character_data_repository.h"
+#include "common/repositories/character_data_repository.h"
+#include "common/repositories/character_disciplines_repository.h"
+#include "common/repositories/character_evolving_items_repository.h"
+#include "common/repositories/character_exp_modifiers_repository.h"
+#include "common/repositories/character_item_recast_repository.h"
+#include "common/repositories/character_languages_repository.h"
+#include "common/repositories/character_leadership_abilities_repository.h"
+#include "common/repositories/character_material_repository.h"
+#include "common/repositories/character_memmed_spells_repository.h"
+#include "common/repositories/character_pet_buffs_repository.h"
+#include "common/repositories/character_pet_info_repository.h"
+#include "common/repositories/character_pet_inventory_repository.h"
+#include "common/repositories/character_potionbelt_repository.h"
+#include "common/repositories/character_skills_repository.h"
+#include "common/repositories/character_spells_repository.h"
+#include "common/repositories/character_tribute_repository.h"
+#include "common/repositories/criteria/content_filter_criteria.h"
+#include "common/repositories/merc_buffs_repository.h"
+#include "common/repositories/merc_inventory_repository.h"
+#include "common/repositories/merc_subtypes_repository.h"
+#include "common/repositories/merchantlist_temp_repository.h"
+#include "common/repositories/mercs_repository.h"
+#include "common/repositories/npc_types_repository.h"
+#include "common/repositories/npc_types_tint_repository.h"
+#include "common/repositories/object_contents_repository.h"
+#include "common/repositories/respawn_times_repository.h"
+#include "common/repositories/spawn2_disabled_repository.h"
+#include "common/repositories/trader_repository.h"
+#include "common/repositories/zone_repository.h"
+#include "common/rulesys.h"
+#include "common/strings.h"
+#include "zone/aura.h"
+#include "zone/client.h"
+#include "zone/corpse.h"
+#include "zone/groups.h"
+#include "zone/merc.h"
+#include "zone/zone.h"
 
-
+#include "fmt/format.h"
 #include <ctime>
 #include <iostream>
-#include <fmt/format.h>
 
 extern Zone* zone;
 
@@ -164,6 +162,7 @@ void ZoneDatabase::UpdateRespawnTime(uint32 spawn2_id, uint16 instance_id, uint3
 			.id = static_cast<int32_t>(spawn2_id),
 			.start = static_cast<int32_t>(current_time),
 			.duration = static_cast<int32_t>(time_left),
+			.expire_at = current_time + time_left,
 			.instance_id = static_cast<int16_t>(instance_id)
 		}
 	);
@@ -1158,6 +1157,7 @@ bool ZoneDatabase::SaveCharacterData(
 	e.e_expended_aa_spent     = m_epp->expended_aa;
 	e.e_last_invsnapshot      = m_epp->last_invsnapshot_time;
 	e.mailkey                 = c->GetMailKeyFull();
+	e.illusion_block          = c->GetIllusionBlock();
 
 	const int replaced = CharacterDataRepository::ReplaceOne(database, e);
 
@@ -1338,27 +1338,27 @@ bool ZoneDatabase::SaveCharacterInvSnapshot(uint32 character_id) {
 		") "
 		"SELECT"
 		" %u,"
-		" `charid`,"
-		" `slotid`,"
-		" `itemid`,"
+		" `character_id`,"
+		" `slot_id`,"
+		" `item_id`,"
 		" `charges`,"
 		" `color`,"
-		" `augslot1`,"
-		" `augslot2`,"
-		" `augslot3`,"
-		" `augslot4`,"
-		" `augslot5`,"
-		" `augslot6`,"
+		" `augment_one`,"
+		" `augment_two`,"
+		" `augment_three`,"
+		" `augment_four`,"
+		" `augment_five`,"
+		" `augment_six`,"
 		" `instnodrop`,"
 		" `custom_data`,"
-		" `ornamenticon`,"
-		" `ornamentidfile`,"
+		" `ornament_icon`,"
+		" `ornament_idfile`,"
 		" `ornament_hero_model`,"
 		" `guid` "
 		"FROM"
 		" `inventory` "
 		"WHERE"
-		" `charid` = %u",
+		" `character_id` = %u",
 		time_index,
 		character_id
 	);
@@ -1512,13 +1512,13 @@ void ZoneDatabase::DivergeCharacterInvSnapshotFromInventory(uint32 character_id,
 		"JOIN"
 		" `inventory` b "
 		"USING"
-		" (`slotid`, `itemid`) "
+		" (`slot_id`, `item_id`) "
 		"WHERE"
 		" a.`time_index` = %u "
 		"AND"
 		" a.`charid` = %u "
 		"AND"
-		" b.`charid` = %u"
+		" b.`character_id` = %u"
 		")",
 		timestamp,
 		character_id,
@@ -1543,7 +1543,7 @@ void ZoneDatabase::DivergeCharacterInventoryFromInvSnapshot(uint32 character_id,
 		"FROM"
 		" `inventory` "
 		"WHERE"
-		" `charid` = %u "
+		" `character_id` = %u "
 		"AND"
 		" `slotid` NOT IN "
 		"("
@@ -1560,7 +1560,7 @@ void ZoneDatabase::DivergeCharacterInventoryFromInvSnapshot(uint32 character_id,
 		"AND"
 		" b.`charid` = %u "
 		"AND"
-		" a.`charid` = %u"
+		" a.`character_id` = %u"
 		")",
 		character_id,
 		timestamp,
@@ -1589,7 +1589,7 @@ bool ZoneDatabase::RestoreCharacterInvSnapshot(uint32 character_id, uint32 times
 		"FROM"
 		" `inventory` "
 		"WHERE"
-		" `charid` = %u",
+		" `character_id` = %u",
 		character_id
 	);
 	auto results = database.QueryDatabase(query);
@@ -1600,23 +1600,23 @@ bool ZoneDatabase::RestoreCharacterInvSnapshot(uint32 character_id, uint32 times
 		"INSERT "
 		"INTO"
 		" `inventory` "
-		"(`charid`,"
-		" `slotid`,"
-		" `itemid`,"
+		"(`character_id`,"
+		" `slot_id`,"
+		" `item_id`,"
 		" `charges`,"
 		" `color`,"
-		" `augslot1`,"
-		" `augslot2`,"
-		" `augslot3`,"
-		" `augslot4`,"
-		" `augslot5`,"
-		" `augslot6`,"
+		" `augment_one`,"
+		" `augment_two`,"
+		" `augment_three`,"
+		" `augment_four`,"
+		" `augment_five`,"
+		" `augment_six`,"
 		" `instnodrop`,"
 		" `custom_data`,"
-		" `ornamenticon`,"
-		" `ornamentidfile`,"
+		" `ornament_icon`,"
+		" `ornament_idfile`,"
 		" `ornament_hero_model`,"
-		" `guid`"
+		" `guid` "
 		") "
 		"SELECT"
 		" `charid`,"
@@ -1730,6 +1730,7 @@ const NPCType *ZoneDatabase::LoadNPCTypesData(uint32 npc_type_id, bool bulk_load
 		t->attack_count       = n.attack_count;
 		t->is_parcel_merchant = n.is_parcel_merchant ? true : false;
 		t->greed              = n.greed;
+		t->m_npc_tint_id      = n.npc_tint_id;
 
 		if (!n.special_abilities.empty()) {
 			strn0cpy(t->special_abilities, n.special_abilities.c_str(), 512);
@@ -1905,6 +1906,7 @@ const NPCType *ZoneDatabase::LoadNPCTypesData(uint32 npc_type_id, bool bulk_load
 		t->heroic_strikethrough   = n.heroic_strikethrough;
 		t->faction_amount         = n.faction_amount;
 		t->keeps_sold_items       = n.keeps_sold_items;
+		t->multiquest_enabled     = n.multiquest_enabled != 0;
 
 		// If NPC with duplicate NPC id already in table,
 		// free item we attempted to add.
@@ -1922,8 +1924,6 @@ const NPCType *ZoneDatabase::LoadNPCTypesData(uint32 npc_type_id, bool bulk_load
 			npc_ids.emplace_back(t->npc_id);
 		}
 	}
-
-	DataBucket::BulkLoadEntities(DataBucketLoadType::NPC, npc_ids);
 
 	if (!npc_faction_ids.empty()) {
 		zone->LoadNPCFactions(npc_faction_ids);
@@ -2637,7 +2637,7 @@ int64 ZoneDatabase::GetBlockedSpellsCount(uint32 zone_id)
 
 bool ZoneDatabase::LoadBlockedSpells(int64 blocked_spells_count, ZoneSpellsBlocked* into, uint32 zone_id)
 {
-	LogInfo("Loading Blocked Spells from database for {} ({}).", zone_store.GetZoneName(zone_id, true), zone_id);
+	LogInfo("Loading Blocked Spells from database for {} ({}).", ZoneStore::Instance()->GetZoneName(zone_id, true), zone_id);
 
 	const auto& l = BlockedSpellsRepository::GetWhere(
 		*this,
@@ -2659,7 +2659,7 @@ bool ZoneDatabase::LoadBlockedSpells(int64 blocked_spells_count, ZoneSpellsBlock
 			LogError(
 				"Blocked spells count of {} exceeded for {} ({}).",
 				blocked_spells_count,
-				zone_store.GetZoneName(zone_id, true),
+				ZoneStore::Instance()->GetZoneName(zone_id, true),
 				zone_id
 			);
 			break;
@@ -3007,12 +3007,12 @@ void ZoneDatabase::LoadBuffs(Client *client)
 			continue;
 		}
 
-		if (IsEffectInSpell(buffs[slot_id].spellid, SE_Charm)) {
+		if (IsEffectInSpell(buffs[slot_id].spellid, SpellEffect::Charm)) {
 			buffs[slot_id].spellid = SPELL_UNKNOWN;
 			break;
 		}
 
-		if (IsEffectInSpell(buffs[slot_id].spellid, SE_Illusion)) {
+		if (IsEffectInSpell(buffs[slot_id].spellid, SpellEffect::Illusion)) {
 			if (buffs[slot_id].persistant_buff) {
 				break;
 			}
@@ -4269,4 +4269,29 @@ void ZoneDatabase::SaveCharacterEXPModifier(Client* c)
 			.exp_modifier = m.exp_modifier
 		}
 	);
+}
+
+void ZoneDatabase::LoadCharacterTitleSets(Client* c)
+{
+	if (!zone || !c) {
+		return;
+	}
+
+	const auto& l = PlayerTitlesetsRepository::GetWhere(
+		*this,
+		fmt::format(
+			"`char_id` = {}",
+			c->CharacterID()
+		)
+	);
+
+	if (l.empty()) {
+		return;
+	}
+
+	const uint32 character_id = c->CharacterID();
+
+	for (const auto& e : l) {
+		c->EnableTitle(e.title_set, false);
+	}
 }

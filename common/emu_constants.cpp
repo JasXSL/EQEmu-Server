@@ -17,12 +17,12 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-#include "emu_constants.h"
-#include "bodytypes.h"
-#include "data_verification.h"
-#include "eqemu_logsys.h"
-#include "eqemu_logsys_log_aliases.h"
-#include "rulesys.h"
+#include "common/bodytypes.h"
+#include "common/data_verification.h"
+#include "common/emu_constants.h"
+#include "common/eqemu_logsys_log_aliases.h"
+#include "common/eqemu_logsys.h"
+#include "common/rulesys.h"
 
 int16 EQ::invtype::GetInvTypeSize(int16 inv_type) {
 	static const int16 local_array[] = {
@@ -138,29 +138,6 @@ std::string EQ::constants::GetLanguageName(uint8 language_id)
 	}
 
 	return EQ::constants::GetLanguageMap().find(language_id)->second;
-}
-
-const std::map<uint32, std::string>& EQ::constants::GetLDoNThemeMap()
-{
-	static const std::map<uint32, std::string> ldon_theme_map = {
-		{ LDoNThemes::Unused, "Unused" },
-		{ LDoNThemes::GUK, "Deepest Guk" },
-		{ LDoNThemes::MIR, "Miragul's Menagerie" },
-		{ LDoNThemes::MMC, "Mistmoore Catacombs" },
-		{ LDoNThemes::RUJ, "Rujarkian Hills" },
-		{ LDoNThemes::TAK, "Takish-Hiz" },
-	};
-
-	return ldon_theme_map;
-}
-
-std::string EQ::constants::GetLDoNThemeName(uint32 theme_id)
-{
-	if (!EQ::ValueWithin(theme_id, LDoNThemes::Unused, LDoNThemes::TAK)) {
-		return std::string();
-	}
-
-	return EQ::constants::GetLDoNThemeMap().find(theme_id)->second;
 }
 
 const std::map<int8, std::string>& EQ::constants::GetFlyModeMap()
@@ -458,4 +435,39 @@ std::string ComparisonType::GetName(uint8 type)
 bool ComparisonType::IsValid(uint8 type)
 {
 	return comparison_types.find(type) != comparison_types.end();
+}
+
+uint32 LDoNTheme::GetBitmask(uint32 theme_id)
+{
+	return IsValid(theme_id) ? ldon_theme_names[theme_id].second : LDoNTheme::UnusedBit;
+}
+
+std::string LDoNTheme::GetName(uint32 theme_id)
+{
+	return IsValid(theme_id) ? ldon_theme_names[theme_id].first : "UNKNOWN LDON THEME";
+}
+
+bool LDoNTheme::IsValid(uint32 theme_id)
+{
+	return ldon_theme_names.find(theme_id) != ldon_theme_names.end();
+}
+
+std::string PetCommand::GetName(uint8 pet_command)
+{
+	return IsValid(pet_command) ? pet_commands[pet_command] : "UNKNOWN PET COMMAND";
+}
+
+bool PetCommand::IsValid(uint8 pet_command)
+{
+	return pet_commands.find(pet_command) != pet_commands.end();
+}
+
+std::string PetType::GetName(uint8 pet_type)
+{
+	return IsValid(pet_type) ? pet_types[pet_type] : "UNKNOWN PET TYPE";
+}
+
+bool PetType::IsValid(uint8 pet_type)
+{
+	return pet_types.find(pet_type) != pet_types.end();
 }

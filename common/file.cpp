@@ -18,27 +18,17 @@
  *
 */
 
-#include <fstream>
 #include "file.h"
 
-#ifdef _WINDOWS
-#include <direct.h>
-#include <conio.h>
-#include <iostream>
-#include <dos.h>
-#include <windows.h>
-#include <process.h>
-#else
+#include "common/platform/platform.h"
+#include "fmt/format.h"
 
-#include <unistd.h>
-#include <sys/stat.h>
-
-#endif
-
-#include <fmt/format.h>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <sys/stat.h>
+#include <vector>
+
 
 namespace fs = std::filesystem;
 
@@ -90,23 +80,21 @@ std::string File::GetCwd()
 
 FileContentsResult File::GetContents(const std::string &file_name)
 {
-	std::string   error;
-	std::ifstream f;
-	f.open(file_name);
-	std::string line;
-	std::string lines;
-	if (f.is_open()) {
-		while (f) {
-			std::getline(f, line);
-			lines += line + "\n";
-		}
+	std::ifstream f(file_name, std::ios::in | std::ios::binary);
+	if (!f) {
+		return { .error = fmt::format("Couldn't open file [{}]", file_name) };
 	}
-	else {
-		error = fmt::format("Couldn't open file [{}]", file_name);
+
+	constexpr size_t CHUNK_SIZE = 4096;  // Read 4KB chunks
+	std::string lines;
+	std::vector<char> buffer(CHUNK_SIZE);
+
+	while (f.read(buffer.data(), CHUNK_SIZE) || f.gcount() > 0) {
+		lines.append(buffer.data(), f.gcount());
 	}
 
 	return FileContentsResult{
 		.contents = lines,
-		.error = error,
+		.error = {}
 	};
 }

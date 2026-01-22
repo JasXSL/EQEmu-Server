@@ -1,11 +1,12 @@
-#ifndef EQEMU_WORLD_CONTENT_SERVICE_H
-#define EQEMU_WORLD_CONTENT_SERVICE_H
+
+#pragma once
+
+#include "common/repositories/content_flags_repository.h"
+#include "common/repositories/instance_list_repository.h"
+#include "common/repositories/zone_repository.h"
 
 #include <string>
 #include <vector>
-#include "../repositories/content_flags_repository.h"
-#include "../repositories/zone_repository.h"
-#include "../repositories/instance_list_repository.h"
 
 class Database;
 
@@ -181,6 +182,12 @@ public:
 	FindZoneResult FindZone(uint32 zone_id, uint32 instance_id);
 	bool IsInPublicStaticInstance(uint32 instance_id);
 
+	static WorldContentService* Instance()
+	{
+		static WorldContentService instance;
+		return &instance;
+	}
+
 private:
 	int current_expansion{};
 	std::vector<ContentFlagsRepository::ContentFlags> content_flags;
@@ -193,7 +200,3 @@ private:
 	WorldContentService *LoadStaticGlobalZoneInstances();
 	std::vector<InstanceListRepository::InstanceList> m_zone_static_instances;
 };
-
-extern WorldContentService content_service;
-
-#endif //EQEMU_WORLD_CONTENT_SERVICE_H

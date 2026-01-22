@@ -1,8 +1,8 @@
-#ifndef EQEMU_LUA_GROUP_H
-#define EQEMU_LUA_GROUP_H
+#pragma once
+
 #ifdef LUA_EQEMU
 
-#include "lua_ptr.h"
+#include "zone/lua_ptr.h"
 
 class Group;
 class Lua_Mob;
@@ -49,9 +49,10 @@ public:
 	void TeleportGroup(Lua_Mob sender, uint32 zone_id, uint32 instance_id, float x, float y, float z, float h);
 	int GetID();
 	Lua_Mob GetMember(int member_index);
+	uint8 GetMemberRole(Lua_Mob member);
+	uint8 GetMemberRole(const char* name);
 	bool DoesAnyMemberHaveExpeditionLockout(std::string expedition_name, std::string event_name);
 	bool DoesAnyMemberHaveExpeditionLockout(std::string expedition_name, std::string event_name, int max_check_count);
 };
 
-#endif
-#endif
+#endif // LUA_EQEMU

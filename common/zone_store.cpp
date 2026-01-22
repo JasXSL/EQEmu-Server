@@ -17,6 +17,12 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
  */
+ 
+#include "zone_store.h"
+
+#include "common/content/world_content_service.h"
+#include "common/stacktrace/backward.hpp"
+
 
 #define DEFAULT_MINIMUM_CLIP 50.0f
 #define DEFAULT_MAXIMUM_CLIP 175.0f
@@ -40,10 +46,6 @@
 #define SNOW_SLOT_TWO 2
 #define SNOW_SLOT_THREE 3
 #define SNOW_SLOT_FOUR 4
-
-#include "zone_store.h"
-#include "../common/content/world_content_service.h"
-#include "stacktrace/backward.hpp"
 
 ZoneStore::ZoneStore() = default;
 ZoneStore::~ZoneStore() = default;
@@ -674,12 +676,6 @@ int ZoneStore::GetZoneNPCMaximumAggroDistance(uint32 zone_id, int version)
 {
 	const auto& z = GetZoneVersionWithFallback(zone_id, version);
 	return z ? z->npc_max_aggro_dist : DEFAULT_ZONE_MAX_AGGRO_DISTANCE;
-}
-
-uint32 ZoneStore::GetZoneMaximumMovementUpdateRange(uint32 zone_id, int version)
-{
-	const auto& z = GetZoneVersionWithFallback(zone_id, version);
-	return z ? z->max_movement_update_range : DEFAULT_ZONE_MAX_MOVEMENT_UPDATE_RANGE;
 }
 
 int8 ZoneStore::GetZoneMinimumExpansion(uint32 zone_id, int version)

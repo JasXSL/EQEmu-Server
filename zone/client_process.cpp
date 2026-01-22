@@ -19,45 +19,34 @@
 	Handles client login sequence and packets sent from client to zone
 */
 
-#include "../common/eqemu_logsys.h"
-#include "../common/global_define.h"
+#include "client.h"
+
+#include "common/data_verification.h"
+#include "common/eqemu_logsys.h"
+#include "common/events/player_event_logs.h"
+#include "common/rulesys.h"
+#include "common/skills.h"
+#include "common/spdat.h"
+#include "common/strings.h"
+#include "zone/dynamic_zone.h"
+#include "zone/event_codes.h"
+#include "zone/guild_mgr.h"
+#include "zone/map.h"
+#include "zone/petitions.h"
+#include "zone/queryserv.h"
+#include "zone/quest_parser_collection.h"
+#include "zone/string_ids.h"
+#include "zone/water_map.h"
+#include "zone/worldserver.h"
+#include "zone/zone.h"
+#include "zone/zonedb.h"
+
 #include <iostream>
-
-#ifdef _WINDOWS
-	#define snprintf	_snprintf
-	#define strncasecmp	_strnicmp
-	#define strcasecmp	_stricmp
-#else
-	#include <pthread.h>
-	#include <sys/socket.h>
-	#include <netinet/in.h>
-	#include <unistd.h>
-#endif
-
-#include "../common/data_verification.h"
-#include "../common/rulesys.h"
-#include "../common/skills.h"
-#include "../common/spdat.h"
-#include "../common/strings.h"
-#include "event_codes.h"
-#include "expedition.h"
-#include "guild_mgr.h"
-#include "map.h"
-#include "petitions.h"
-#include "queryserv.h"
-#include "quest_parser_collection.h"
-#include "string_ids.h"
-#include "worldserver.h"
-#include "zone.h"
-#include "zonedb.h"
-#include "../common/events/player_event_logs.h"
-#include "water_map.h"
 
 extern QueryServ* QServ;
 extern Zone* zone;
 extern volatile bool is_zone_loaded;
 extern WorldServer worldserver;
-extern PetitionList petition_list;
 extern EntityList entity_list;
 
 bool Client::Process() {
@@ -122,7 +111,7 @@ bool Client::Process() {
 
 		/* I haven't naturally updated my position in 10 seconds, updating manually */
 		if (!IsMoving() && m_position_update_timer.Check()) {
-			SentPositionPacket(0.0f, 0.0f, 0.0f, 0.0f, 0);
+			BroadcastPositionUpdate();
 		}
 
 		if (mana_timer.Check())
@@ -179,7 +168,7 @@ bool Client::Process() {
 			}
 			if (IsInAGuild()) {
 				guild_mgr.UpdateDbMemberOnline(CharacterID(), false);
-				guild_mgr.SendToWorldSendGuildMembersList(GuildID());
+				guild_mgr.SendGuildMemberUpdateToWorld(GetName(), GuildID(), 0, time(nullptr));
 			}
 
 			SetDynamicZoneMemberStatus(DynamicZoneMemberStatus::Offline);
@@ -193,6 +182,12 @@ bool Client::Process() {
 			return false; //delete client
 		}
 
+		if (RuleB(Bots, Enabled)) {
+			if (bot_camp_timer.Check()) {
+				CampAllBots();
+			}
+		}
+
 		if (camp_timer.Check()) {
 			Raid *myraid = entity_list.GetRaidByClient(this);
 			if (myraid) {
@@ -202,7 +197,7 @@ bool Client::Process() {
 			Save();
 			if (IsInAGuild()) {
 				guild_mgr.UpdateDbMemberOnline(CharacterID(), false);
-				guild_mgr.SendToWorldSendGuildMembersList(GuildID());
+				guild_mgr.SendGuildMemberUpdateToWorld(GetName(), GuildID(), 0, time(nullptr));
 			}
 
 			if (GetMerc())
@@ -211,6 +206,8 @@ bool Client::Process() {
 				GetMerc()->Depop();
 			}
 			instalog = true;
+
+			camp_timer.Disable();
 		}
 
 		if (IsStunned() && stunned_timer.Check())
@@ -294,24 +291,30 @@ bool Client::Process() {
 				}
 			}
 
-			if (m_lazy_load_bank && m_lazy_load_sent_bank_slots <= EQ::invslot::SHARED_BANK_END) {
-				const EQ::ItemInstance *inst = nullptr;
+			int lazy_load_bank_slots = 0;
+			for (int i = 0; i < 5000; i++) {
+				if (m_lazy_load_bank && m_lazy_load_sent_bank_slots <= EQ::invslot::SHARED_BANK_END) {
+					const EQ::ItemInstance *inst = nullptr;
 
-				// Jump the gaps
-				if (m_lazy_load_sent_bank_slots < EQ::invslot::BANK_BEGIN) {
-					m_lazy_load_sent_bank_slots = EQ::invslot::BANK_BEGIN;
-				}
-				else if (m_lazy_load_sent_bank_slots > EQ::invslot::BANK_END &&
-						 m_lazy_load_sent_bank_slots < EQ::invslot::SHARED_BANK_BEGIN) {
-					m_lazy_load_sent_bank_slots = EQ::invslot::SHARED_BANK_BEGIN;
-				}
-				else {
-					m_lazy_load_sent_bank_slots++;
-				}
+					// Jump the gaps
+					if (m_lazy_load_sent_bank_slots < EQ::invslot::BANK_BEGIN) {
+						m_lazy_load_sent_bank_slots = EQ::invslot::BANK_BEGIN;
+					}
+					else if (m_lazy_load_sent_bank_slots > EQ::invslot::BANK_END &&
+							 m_lazy_load_sent_bank_slots < EQ::invslot::SHARED_BANK_BEGIN) {
+						m_lazy_load_sent_bank_slots = EQ::invslot::SHARED_BANK_BEGIN;
+					}
+					else {
+						m_lazy_load_sent_bank_slots++;
+					}
 
-				inst = m_inv[m_lazy_load_sent_bank_slots];
-				if (inst) {
-					SendItemPacket(m_lazy_load_sent_bank_slots, inst, ItemPacketType::ItemPacketTrade);
+					inst = m_inv[m_lazy_load_sent_bank_slots];
+					if (inst) {
+						SendItemPacket(m_lazy_load_sent_bank_slots, inst, ItemPacketType::ItemPacketTrade);
+						lazy_load_bank_slots++;
+					}
+				} else {
+					break;
 				}
 			}
 		}
@@ -522,6 +525,10 @@ bool Client::Process() {
 			DoEnduranceRegen();
 			BuffProcess();
 
+			if (auto_attack) {
+				ResetAFKTimer();
+			}
+
 			if (tribute_timer.Check()) {
 				ToggleTribute(true);	//re-activate the tribute.
 			}
@@ -543,6 +550,10 @@ bool Client::Process() {
 			if (ItemQuestTimer.Check())
 			{
 				ItemTimerCheck();
+			}
+
+			if (m_clear_wearchange_cache_timer.Check()) {
+				m_last_seen_wearchange.clear();
 			}
 		}
 	}
@@ -578,7 +589,7 @@ bool Client::Process() {
 			}
 			if (IsInAGuild()) {
 				guild_mgr.UpdateDbMemberOnline(CharacterID(), false);
-				guild_mgr.SendToWorldSendGuildMembersList(GuildID());
+				guild_mgr.SendGuildMemberUpdateToWorld(GetName(), GuildID(), 0, time(nullptr));
 			}
 
 			return false;
@@ -691,12 +702,6 @@ void Client::OnDisconnect(bool hard_disconnect) {
 		if (r) {
 			r->MemberZoned(this);
 		}
-
-		/* QS: PlayerLogConnectDisconnect */
-		if (RuleB(QueryServ, PlayerLogConnectDisconnect)) {
-			std::string event_desc = StringFormat("Disconnect :: in zoneid:%i instid:%i", GetZoneID(), GetInstanceID());
-			QServ->PlayerLogEvent(Player_Log_Connect_State, CharacterID(), event_desc);
-		}
 	}
 
 	if (!bZoning) {
@@ -719,7 +724,7 @@ void Client::OnDisconnect(bool hard_disconnect) {
 		o->trade->Reset();
 	}
 
-	database.SetFirstLogon(CharacterID(), 0); //We change firstlogon status regardless of if a player logs out to zone or not, because we only want to trigger it on their first login from world.
+	database.SetIngame(CharacterID(), 0); //We change ingame status regardless of if a player logs out to zone or not, because we only want to trigger it on their first login from world.
 
 	/* Remove from all proximities */
 	ClearAllProximities();
@@ -764,7 +769,7 @@ void Client::BulkSendInventoryItems()
 		RemoveNoRent(false);
 	}
 
-	RemoveDuplicateLore(false);
+	RemoveDuplicateLore();
 	MoveSlotNotAllowed(false);
 
 	EQ::OutBuffer ob;
@@ -773,62 +778,64 @@ void Client::BulkSendInventoryItems()
 	// Possessions items
 	for (int16 slot_id = EQ::invslot::POSSESSIONS_BEGIN; slot_id <= EQ::invslot::POSSESSIONS_END; slot_id++) {
 		const EQ::ItemInstance* inst = m_inv[slot_id];
-		if (!inst)
+		if (!inst) {
 			continue;
+		}
 
 		inst->Serialize(ob, slot_id);
 
-		if (ob.tellp() == last_pos)
+		if (ob.tellp() == last_pos) {
 			LogInventory("Serialization failed on item slot [{}] during BulkSendInventoryItems. Item skipped", slot_id);
+		}
 
 		last_pos = ob.tellp();
 	}
 
-    if (!RuleB(Inventory, LazyLoadBank)) {
-        // Bank items
-        for (int16 slot_id = EQ::invslot::BANK_BEGIN; slot_id <= EQ::invslot::BANK_END; slot_id++) {
-            const EQ::ItemInstance* inst = m_inv[slot_id];
-            if (!inst)
-                continue;
+	if (!RuleB(Inventory, LazyLoadBank)) {
+		// Bank items
+		for (int16 slot_id = EQ::invslot::BANK_BEGIN; slot_id <= EQ::invslot::BANK_END; slot_id++) {
+			const EQ::ItemInstance* inst = m_inv[slot_id];
+			if (!inst) {
+				continue;
+			}
 
-            inst->Serialize(ob, slot_id);
+			inst->Serialize(ob, slot_id);
 
-            if (ob.tellp() == last_pos)
-                LogInventory("Serialization failed on item slot [{}] during BulkSendInventoryItems. Item skipped", slot_id);
+			if (ob.tellp() == last_pos) {
+				LogInventory("Serialization failed on item slot [{}] during BulkSendInventoryItems. Item skipped", slot_id);
+			}
 
-            last_pos = ob.tellp();
-        }
+			last_pos = ob.tellp();
+		}
 
-        // SharedBank items
-        for (int16 slot_id = EQ::invslot::SHARED_BANK_BEGIN; slot_id <= EQ::invslot::SHARED_BANK_END; slot_id++) {
-            const EQ::ItemInstance* inst = m_inv[slot_id];
-            if (!inst)
-                continue;
+		// SharedBank items
+		for (int16 slot_id = EQ::invslot::SHARED_BANK_BEGIN; slot_id <= EQ::invslot::SHARED_BANK_END; slot_id++) {
+			const EQ::ItemInstance* inst = m_inv[slot_id];
+			if (!inst) {
+				continue;
+			}
 
-            inst->Serialize(ob, slot_id);
+			inst->Serialize(ob, slot_id);
 
-            if (ob.tellp() == last_pos)
-                LogInventory("Serialization failed on item slot [{}] during BulkSendInventoryItems. Item skipped", slot_id);
+			if (ob.tellp() == last_pos) {
+				LogInventory("Serialization failed on item slot [{}] during BulkSendInventoryItems. Item skipped", slot_id);
+			}
 
-            last_pos = ob.tellp();
-        }
-    }
+			last_pos = ob.tellp();
+		}
+	}
 
-    auto outapp = new EQApplicationPacket(OP_CharInventory);
-    outapp->size = ob.size();
-    outapp->pBuffer = ob.detach();
-    QueuePacket(outapp);
-    safe_delete(outapp);
+	auto outapp = new EQApplicationPacket(OP_CharInventory);
+
+	outapp->size    = ob.size();
+	outapp->pBuffer = ob.detach();
+
+	QueuePacket(outapp);
+	safe_delete(outapp);
 }
 
 void Client::BulkSendMerchantInventory(int merchant_id, int npcid) {
 	const EQ::ItemData* handy_item = nullptr;
-
-	uint32 merchant_slots = 80; //The max number of items passed in the transaction.
-	if (m_ClientVersionBit & EQ::versions::maskRoFAndLater) { // RoF+ can send 200 items
-		merchant_slots = 200;
-	}
-
 	const EQ::ItemData *item = nullptr;
 	auto merchant_list = zone->merchanttable[merchant_id];
 	auto npc = entity_list.GetMobByNpcTypeID(npcid);
@@ -839,6 +846,8 @@ void Client::BulkSendMerchantInventory(int merchant_id, int npcid) {
 			return;
 		}
 	}
+
+	const int16 merchant_slots = (m_ClientVersionBit & EQ::versions::maskRoFAndLater) ? EQ::invtype::MERCHANT_SIZE : 80;
 
 	auto temporary_merchant_list = zone->tmpmerchanttable[npcid];
 	uint32 slot_id = 1;
@@ -855,7 +864,7 @@ void Client::BulkSendMerchantInventory(int merchant_id, int npcid) {
 			DataBucketKey k = GetScopedBucketKeys();
 			k.key = bucket_name;
 
-			auto b = DataBucket::GetData(k);
+			auto b = DataBucket::GetData(&database, k);
 			if (b.value.empty()) {
 				continue;
 			}
@@ -1552,7 +1561,7 @@ void Client::OPMoveCoin(const EQApplicationPacket* app)
 				if (from_bucket == &m_pp.platinum_shared)
 					amount_to_add = 0 - amount_to_take;
 
-				database.SetSharedPlatinum(AccountID(),amount_to_add);
+				database.AddSharedPlatinum(AccountID(),amount_to_add);
 			}
 		}
 		else{
@@ -1629,7 +1638,7 @@ void Client::OPGMTraining(const EQApplicationPacket *app)
 //#pragma GCC push_options
 //#pragma GCC optimize ("O0")
 	for (int sk = EQ::skills::Skill1HBlunt; sk <= EQ::skills::HIGHEST_SKILL; ++sk) {
-		if (sk == EQ::skills::SkillTinkering && GetRace() != GNOME) {
+		if (sk == EQ::skills::SkillTinkering && GetRace() != Race::Gnome) {
 			gmtrain->skills[sk] = 0; //Non gnomes can't tinker!
 		} else {
 			gmtrain->skills[sk] = GetMaxSkillAfterSpecializationRules((EQ::skills::SkillType)sk, MaxSkill((EQ::skills::SkillType)sk, GetClass(), RuleI(Character, MaxLevel)));

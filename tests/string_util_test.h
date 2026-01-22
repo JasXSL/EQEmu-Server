@@ -16,11 +16,10 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-#ifndef __EQEMU_TESTS_STRING_UTIL_H
-#define __EQEMU_TESTS_STRING_UTIL_H
+#pragma once
 
+#include "common/strings.h"
 #include "cppunit/cpptest.h"
-#include "../common/strings.h"
 
 class StringUtilTest : public Test::Suite {
 	typedef void(StringUtilTest::*TestFunction)(void);
@@ -30,7 +29,6 @@ public:
 		TEST_ADD(StringUtilTest::EscapeStringTest);
 		TEST_ADD(StringUtilTest::SearchDeliminatedStringTest);
 		TEST_ADD(StringUtilTest::SplitStringTest);
-		TEST_ADD(StringUtilTest::FromCharsTest);
 		TEST_ADD(StringUtilTest::TestIsFloat);
 		TEST_ADD(StringUtilTest::TestIsNumber);
 	}
@@ -108,21 +106,6 @@ public:
 		TEST_ASSERT(v[2] == "789");
 	}
 
-	void FromCharsTest() {
-		char int_chars[] = "123";
-		int int_value = 0;
-
-		char float_chars[] = "3.14";
-		float float_value = 0.0f;
-
-		Strings::from_chars(int_chars, int_value);
-		TEST_ASSERT(int_value == 123);
-
-		Strings::from_chars(float_chars, float_value);
-		TEST_ASSERT(float_value == 3.14f);
-
-	}
-
 	void TestIsFloat() {
 		TEST_ASSERT_EQUALS(Strings::IsFloat("0.23424523"), true);
 		TEST_ASSERT_EQUALS(Strings::IsFloat("12312312313.23424523"), true);
@@ -151,5 +134,3 @@ public:
 		TEST_ASSERT_EQUALS(Strings::IsNumber("18446744073709551616.0f"), false); // 64
 	}
 };
-
-#endif

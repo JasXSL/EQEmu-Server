@@ -17,13 +17,15 @@
 
 */
 
-#include "../common/eqemu_logsys.h"
-#include "../common/strings.h"
 #include "chatchannel.h"
-#include "clientlist.h"
-#include "database.h"
-#include <cstdlib>
+
+#include "common/eqemu_logsys.h"
+#include "common/strings.h"
+#include "ucs/clientlist.h"
+#include "ucs/database.h"
+
 #include <algorithm>
+#include <cstdlib>
 
 extern UCSDatabase database;
 extern uint32 ChatMessagesSent;
@@ -177,7 +179,7 @@ void ChatChannelList::SendAllChannels(Client *c) {
 
 	std::string Message;
 
-	char CountString[10];
+	char CountString[13];
 
 	while(iterator.MoreElements()) {
 
@@ -408,7 +410,7 @@ void ChatChannel::SendChannelMembers(Client *c) {
 
 	if(!c) return;
 
-	char CountString[10];
+	char CountString[13];
 
 	sprintf(CountString, "(%i)", MemberCount(c->GetAccountStatus()));
 

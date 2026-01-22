@@ -16,12 +16,13 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-#include "../common/database.h"
-#include "../common/guilds.h"
-#include "../common/strings.h"
+#include "client.h"
 
-#include "guild_mgr.h"
-#include "worldserver.h"
+#include "common/database.h"
+#include "common/guilds.h"
+#include "common/strings.h"
+#include "zone/guild_mgr.h"
+#include "zone/worldserver.h"
 
 extern WorldServer worldserver;
 
@@ -195,7 +196,7 @@ void Client::SendGuildList()
 
 	std::stringstream           ss;
 	cereal::BinaryOutputArchive ar(ss);
-	ar(guilds_list);
+	{ ar(guilds_list); }
 
 	uint32 packet_size = ss.str().length();
 

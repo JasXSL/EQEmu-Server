@@ -15,17 +15,18 @@
 	along with this program; if not, write to the Free Software
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
-#ifndef TIMER_H
-#define TIMER_H
 
-#include "types.h"
-#include <chrono>
+#pragma once
+
+#include "common/types.h"
 
 // Disgrace: for windows compile
 #ifdef _WINDOWS
-	#include "global_define.h"
-	int gettimeofday (timeval *tp, ...);
+struct timeval;
+int gettimeofday (timeval *tp, ...);
 #endif
+
+#include <chrono>
 
 class Timer
 {
@@ -51,6 +52,7 @@ public:
 	inline uint32 GetDuration() { return(timer_time); }
 
 	static const uint32 SetCurrentTime();
+	static const uint32 RollForward(uint32 seconds);
 	static const uint32 GetCurrentTime();
 	static const uint32 GetTimeSeconds();
 
@@ -86,8 +88,9 @@ struct BenchTimer
 	void reset() { start_time = clock::now(); }
 	// this is seconds
 	double elapsed() { return std::chrono::duration<double> (clock::now() - start_time).count(); }
+	std::chrono::milliseconds::rep elapsedMilliseconds() { return std::chrono::duration_cast<std::chrono::milliseconds>(clock::now() - start_time).count(); }
+	std::chrono::microseconds::rep elapsedMicroseconds() { return std::chrono::duration_cast<std::chrono::microseconds>(clock::now() - start_time).count(); }
+	std::chrono::nanoseconds::rep elapsedNanoseconds() { return std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now() - start_time).count(); }
 private:
 	std::chrono::time_point<std::chrono::high_resolution_clock> start_time;
 };
-
-#endif

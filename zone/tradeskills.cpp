@@ -16,27 +16,23 @@
 	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-#include "../common/global_define.h"
-#include "../common/events/player_event_logs.h"
+#include "client.h"
 
+#include "common/events/player_event_logs.h"
+#include "common/repositories/char_recipe_list_repository.h"
+#include "common/repositories/criteria/content_filter_criteria.h"
+#include "common/repositories/tradeskill_recipe_entries_repository.h"
+#include "common/repositories/tradeskill_recipe_repository.h"
+#include "common/rulesys.h"
+#include "zone/queryserv.h"
+#include "zone/quest_parser_collection.h"
+#include "zone/string_ids.h"
+#include "zone/titles.h"
+#include "zone/worldserver.h"
+#include "zone/zonedb.h"
+
+#include <algorithm>
 #include <list>
-
-#ifndef WIN32
-#include <netinet/in.h>	//for htonl
-#endif
-
-#include "../common/rulesys.h"
-
-#include "queryserv.h"
-#include "quest_parser_collection.h"
-#include "string_ids.h"
-#include "titles.h"
-#include "zonedb.h"
-#include "worldserver.h"
-#include "../common/repositories/char_recipe_list_repository.h"
-#include "../common/repositories/criteria/content_filter_criteria.h"
-#include "../common/repositories/tradeskill_recipe_repository.h"
-#include "../common/repositories/tradeskill_recipe_entries_repository.h"
 
 extern QueryServ* QServ;
 extern WorldServer worldserver;
@@ -465,7 +461,7 @@ void Object::HandleCombine(Client* user, const NewCombine_Struct* in_combine, Ob
 		}
 	}
 	else if (spec.tradeskill == EQ::skills::SkillTinkering) {
-		if (user_pp.race != GNOME) {
+		if (user_pp.race != Race::Gnome) {
 			user->Message(Chat::Red, "Only gnomes can tinker.");
 			auto outapp = new EQApplicationPacket(OP_TradeSkillCombine, 0);
 			user->QueuePacket(outapp);
@@ -554,7 +550,7 @@ void Object::HandleCombine(Client* user, const NewCombine_Struct* in_combine, Ob
 	}
 
 	if (success) {
-		if (player_event_logs.IsEventEnabled(PlayerEvent::COMBINE_SUCCESS)) {
+		if (PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::COMBINE_SUCCESS)) {
 			auto e = PlayerEvent::CombineEvent{
 				.recipe_id = spec.recipe_id,
 				.recipe_name = spec.name,
@@ -569,7 +565,7 @@ void Object::HandleCombine(Client* user, const NewCombine_Struct* in_combine, Ob
 		}
 	}
 	else {
-		if (player_event_logs.IsEventEnabled(PlayerEvent::COMBINE_FAILURE)) {
+		if (PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::COMBINE_FAILURE)) {
 			auto e = PlayerEvent::CombineEvent{
 				.recipe_id = spec.recipe_id,
 				.recipe_name = spec.name,
@@ -642,7 +638,7 @@ void Object::HandleAutoCombine(Client* user, const RecipeAutoCombine_Struct* rac
 		}
 	}
 	else if (spec.tradeskill == EQ::skills::SkillTinkering) {
-		if (user->GetRace() != GNOME) {
+		if (user->GetRace() != Race::Gnome) {
 			user->Message(Chat::Red, "Only gnomes can tinker.");
 			auto outapp = new EQApplicationPacket(OP_TradeSkillCombine, 0);
 			user->QueuePacket(outapp);
@@ -1131,7 +1127,7 @@ bool Client::TradeskillExecute(DBTradeskillRecipe_Struct *spec) {
 		zone->random.Roll(aa_chance)
 	) {
 		if (GetGM()) {
-			Message(Chat::White, "Your GM flag gives you a 100% chance to succeed in combining this tradeskill.");
+			Message(Chat::White, "Your GM flag gives you a 100%% chance to succeed in combining this tradeskill.");
 		}
 
 		success_modifier = 1;
@@ -1149,6 +1145,7 @@ bool Client::TradeskillExecute(DBTradeskillRecipe_Struct *spec) {
 
 			item = database.GetItem(itr->first);
 			if (item) {
+				CheckItemDiscoverability(itr->first);
 				SummonItem(itr->first, itr->second);
 				if (GetGroup()) {
 					entity_list.MessageGroup(this, true, Chat::Skills, "%s has successfully fashioned %s!", GetName(), item->Name);
@@ -1170,13 +1167,6 @@ bool Client::TradeskillExecute(DBTradeskillRecipe_Struct *spec) {
 						GetInstanceID()
 					).c_str()
 				);
-			}
-
-			/* QS: Player_Log_Trade_Skill_Events */
-			if (RuleB(QueryServ, PlayerLogTradeSkillEvents)) {
-
-				std::string event_desc = StringFormat("Success :: fashioned recipe_id:%i tskillid:%i trivial:%i chance:%4.2f  in zoneid:%i instid:%i", spec->recipe_id, spec->tradeskill, spec->trivial, chance, GetZoneID(), GetInstanceID());
-				QServ->PlayerLogEvent(Player_Log_Trade_Skill_Events, CharacterID(), event_desc);
 			}
 
 			if (RuleB(TaskSystem, EnableTaskSystem)) {
@@ -1201,12 +1191,6 @@ bool Client::TradeskillExecute(DBTradeskillRecipe_Struct *spec) {
 		{
 			entity_list.MessageGroup(this, true, Chat::Skills,"%s was unsuccessful in %s tradeskill attempt.",GetName(),GetGender() == Gender::Male ? "his" : GetGender() == Gender::Female ? "her" : "its");
 
-		}
-
-		/* QS: Player_Log_Trade_Skill_Events */
-		if (RuleB(QueryServ, PlayerLogTradeSkillEvents)){
-			std::string event_desc = StringFormat("Failed :: recipe_id:%i tskillid:%i trivial:%i chance:%4.2f  in zoneid:%i instid:%i", spec->recipe_id, spec->tradeskill, spec->trivial, chance, GetZoneID(), GetInstanceID());
-			QServ->PlayerLogEvent(Player_Log_Trade_Skill_Events, CharacterID(), event_desc);
 		}
 
 		itr = spec->onfail.begin();
@@ -1246,15 +1230,18 @@ void Client::CheckIncreaseTradeskill(int16 bonusstat, int16 stat_modifier, float
 		return;	//not allowed to go higher.
 	uint16 maxskill = MaxSkill(tradeskill);
 
+	float min_skill_up_chance = RuleR(Character, TradeskillUpMinChance);
+	min_skill_up_chance = std::max(min_skill_up_chance, 2.5f);
+
 	float chance_stage2 = 0;
 
 	//A successfull combine doubles the stage1 chance for an skillup
 	//Some tradeskill are harder than others. See above for more.
 	float chance_stage1 = (bonusstat - stat_modifier) / (skillup_modifier * success_modifier);
+	chance_stage1 = std::max(min_skill_up_chance, chance_stage1);
 
-	//In stage2 the only thing that matters is your current unmodified skill.
-	//If you want to customize here you probbably need to implement your own
-	//formula instead of tweaking the below one.
+	//In stage2 the only thing that matters is your current unmodified skill
+	//and the Character:TradeskillUpMinChance rule.
 	if (chance_stage1 > zone->random.Real(0, 99)) {
 		if (current_raw_skill < 15) {
 			//Always succeed
@@ -1266,6 +1253,7 @@ void Client::CheckIncreaseTradeskill(int16 bonusstat, int16 stat_modifier, float
 			//At skill 175, your chance of success falls linearly from 12.5% to 2.5% at skill 300.
 			chance_stage2 = 12.5 - (.08 * (current_raw_skill - 175));
 		}
+		chance_stage2 = std::max(min_skill_up_chance, chance_stage2);
 	}
 
 	if (chance_stage2 > zone->random.Real(0, 99)) {

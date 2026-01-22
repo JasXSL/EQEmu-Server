@@ -1,6 +1,27 @@
-#ifndef _EQE_LUA_PARSER_EVENTS_H
-#define _EQE_LUA_PARSER_EVENTS_H
+#pragma once
+
 #ifdef LUA_EQEMU
+
+#include "common/types.h"
+
+#include <any>
+#include <string>
+#include <vector>
+
+class Bot;
+class Client;
+class Encounter;
+class Merc;
+class Mob;
+class NPC;
+class QuestInterface;
+class Zone;
+struct lua_State;
+
+namespace EQ
+{
+	class ItemInstance;
+}
 
 typedef void(*NPCArgumentHandler)(QuestInterface*, lua_State*, NPC*, Mob*, std::string, uint32, std::vector<std::any>*);
 typedef void(*PlayerArgumentHandler)(QuestInterface*, lua_State*, Client*, std::string, uint32, std::vector<std::any>*);
@@ -9,6 +30,7 @@ typedef void(*SpellArgumentHandler)(QuestInterface*, lua_State*, Mob*, Client*, 
 typedef void(*EncounterArgumentHandler)(QuestInterface*, lua_State*, Encounter* encounter, std::string, uint32, std::vector<std::any>*);
 typedef void(*BotArgumentHandler)(QuestInterface*, lua_State*, Bot*, Mob*, std::string, uint32, std::vector<std::any>*);
 typedef void(*MercArgumentHandler)(QuestInterface*, lua_State*, Merc*, Mob*, std::string, uint32, std::vector<std::any>*);
+typedef void(*ZoneArgumentHandler)(QuestInterface*, lua_State*, Zone*, std::string, uint32, std::vector<std::any>*);
 
 // NPC
 void handle_npc_event_say(
@@ -252,6 +274,16 @@ void handle_npc_entity_variable(
 );
 
 void handle_npc_spell_blocked(
+	QuestInterface *parse,
+	lua_State* L,
+	NPC* npc,
+	Mob *init,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
+void handle_npc_pet_command(
 	QuestInterface *parse,
 	lua_State* L,
 	NPC* npc,
@@ -865,6 +897,24 @@ void handle_player_read_item(
 	std::vector<std::any> *extra_pointers
 );
 
+void handle_player_connect(
+	QuestInterface *parse,
+	lua_State* L,
+	Client* client,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
+void handle_player_pet_command(
+	QuestInterface *parse,
+	lua_State* L,
+	Client* client,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
 // Item
 void handle_item_click(
 	QuestInterface *parse,
@@ -1269,5 +1319,140 @@ void handle_bot_spell_blocked(
 	std::vector<std::any> *extra_pointers
 );
 
-#endif
-#endif
+// Zone
+void handle_zone_null(
+	QuestInterface *parse,
+	lua_State* L,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
+void handle_zone_click_door(
+	QuestInterface *parse,
+	lua_State* L,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
+void handle_zone_click_object(
+	QuestInterface *parse,
+	lua_State* L,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
+void handle_zone_death(
+	QuestInterface *parse,
+	lua_State* L,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
+void handle_zone_despawn(
+	QuestInterface *parse,
+	lua_State* L,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
+void handle_zone_enter(
+	QuestInterface *parse,
+	lua_State* L,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
+void handle_zone_loot(
+	QuestInterface *parse,
+	lua_State* L,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
+void handle_zone_payload(
+	QuestInterface *parse,
+	lua_State* L,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
+void handle_zone_pickup(
+	QuestInterface *parse,
+	lua_State* L,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
+void handle_zone_popup(
+	QuestInterface *parse,
+	lua_State* L,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
+void handle_zone_signal(
+	QuestInterface *parse,
+	lua_State* L,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
+void handle_zone_spawn(
+	QuestInterface *parse,
+	lua_State* L,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
+void handle_zone_timer(
+	QuestInterface *parse,
+	lua_State* L,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
+void handle_zone_timer_pause_resume_start(
+	QuestInterface *parse,
+	lua_State* L,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
+void handle_zone_timer_stop(
+	QuestInterface *parse,
+	lua_State* L,
+	Zone* zone,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+);
+
+#endif // LUA_EQEMU
