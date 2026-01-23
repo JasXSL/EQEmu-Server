@@ -3723,7 +3723,7 @@ bool Bot::Spawn(Client* botCharacterOwner) {
 			// Safety Check to confirm we have a valid group
 			auto owner = GetBotOwner();
 			if (owner && !group->IsGroupMember(owner->GetCleanName())) {
-				RemoveBotFromGroup(this, group);
+				Bot::RemoveBotFromGroup(this, group);
 			} else {
 				SetGrouped(true);
 				group->LearnMembers();
@@ -4058,8 +4058,7 @@ void Bot::BotAddEquipItem(uint16 slot_id, uint32 item_id) {
 	// ..causing packets to be sent out to zone with an id of '0'
 	if (item_id) {
 
-		uint8 material_from_slot = EQ::InventoryProfile::CalcMaterialFromSlot(slot_id);
-		if (material_from_slot != EQ::textures::materialInvalid) {
+		if (uint8 material_from_slot = EQ::InventoryProfile::CalcMaterialFromSlot(slot_id); material_from_slot != EQ::textures::materialInvalid) {
 			equipment[slot_id] = item_id; // npc has more than just material slots. Valid material should mean valid inventory index
 			if (GetID()) { // temp hack fix
 				SendWearChange(material_from_slot);
@@ -4123,7 +4122,6 @@ void Bot::AddBotItem(
 	uint32 augment_five,
 	uint32 augment_six
 ) {
-
 	auto inst = database.CreateItem(
 		item_id,
 		charges,
@@ -4160,7 +4158,6 @@ void Bot::AddBotItem(
 
 	m_inv.PutItem(slot_id, *inst);
 	safe_delete(inst);
-
 
 	BotAddEquipItem(slot_id, item_id);
 }
@@ -7005,8 +7002,7 @@ void Bot::Zone() {
 		RemoveBotFromGroup(this, GetGroup());
 	}
 
-	else if (auto raid = entity_list.GetRaidByBotName(GetName())) {
-	if (auto raid = entity_list.GetRaidByBot(this)) {
+	else if (auto raid = entity_list.GetRaidByBot(this)) {
 		raid->MemberZoned(CastToClient());
 	}
 	else if (HasGroup()) {
@@ -7038,7 +7034,7 @@ bool Bot::IsAtRange(Mob *target) {
 
 void Bot::UpdateGroupCastingRoles(const Group* group, bool disband)
 {
-	if (!group) // Temp bots cause a crash otherwise. I don't know why.
+	if (!group)
 		return;
 
 	for (auto iter : group->members) {
@@ -9536,6 +9532,8 @@ uint32 Bot::GetNextTmpBotId(){
 	_tmp_bot_id++;
 	LogInfo("Tmp bot id is now {}, returning {}", _tmp_bot_id, (uint32)0xFFFFFFFF-_tmp_bot_id);
 	return (uint32)0xFFFFFFFF-_tmp_bot_id;
+}
+
 bool Bot::PrecastChecks(Mob* tar, uint16 spell_type) {
 	if (!TargetValidation(tar)) {
 		LogBotSpellChecksDetail("{} says, 'Cancelling cast due to PrecastChecks !tar.'", GetCleanName());

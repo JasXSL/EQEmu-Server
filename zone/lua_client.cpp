@@ -147,7 +147,7 @@ uint32 Lua_Client::CreateBot(const char *name, const char *lastname, uint8 level
 
 	std::string test_name = name;
 	bool available_flag = false;
-	if (!temp && !database.botdb.QueryNameAvailablity(test_name, available_flag)) {
+	if (!temp && !database.botdb.QueryNameAvailability(test_name, available_flag)) {
 		self->Message(
 			Chat::White,
 			fmt::format(

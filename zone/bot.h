@@ -482,8 +482,6 @@ public:
 	void SetPauseAI(bool pause_flag) { _pauseAI = pause_flag; }
 	bool GetRecklessAI() const { return _recklessAI; };
 	void SetRecklessAI(bool reckless_flag) { _recklessAI = reckless_flag; }
-	uint8 GetStopMeleeLevel() const { return _stopMeleeLevel; }
-	void SetStopMeleeLevel(uint8 level);
 	bool IsCommandedSpell() const { return _commandedSpell; }
 	void SetCommandedSpell(bool value) { _commandedSpell = value;  }
 	bool IsPullingSpell() const { return _pullingSpell; }
@@ -661,10 +659,10 @@ public:
 	void SetBehindMob(bool value) { _behindMobStatus = value; }
 	bool GetMaxMeleeRange() const { return _maxMeleeRangeStatus; }
 	void SetMaxMeleeRange(bool value) { _maxMeleeRangeStatus = value; }	
-	uint8 GetStopMeleeLevel() const { return _stopMeleeLevel; }
+	uint8 GetStopMeleeLevel() const { return _stopMeleeLevel; } 
 	void SetStopMeleeLevel(uint8 level) { _stopMeleeLevel = level; }
 	uint32 GetBotDistanceRanged() const { return _distanceRanged; }
-	void SetBotDistanceRanged(uint32 distance) { _distanceRanged = distance; }
+	void SetBotDistanceRanged(uint32 distance) { _distanceRanged = distance; } 
 	bool GetMedInCombat() const { return _medInCombat; }
 	void SetMedInCombat(bool value) { _medInCombat = value; }
 	uint8 GetSitHPPct() const { return _SitHPPct; }
