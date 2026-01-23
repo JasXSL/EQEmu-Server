@@ -8536,7 +8536,7 @@ void Client::SendFactionMessage(int32 tmpvalue, int32 faction_id, int32 faction_
 void Client::LoadAccountFlags()
 {
 	accountflags.clear();
-
+	
 	const auto& l = AccountFlagsRepository::GetWhere(database, fmt::format("p_accid = {}", account_id));
 	if (l.empty()) {
 		return;

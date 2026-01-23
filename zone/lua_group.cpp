@@ -17,6 +17,7 @@ void Lua_Group::DisbandGroup() {
 	self->DisbandGroup();
 }
 
+
 bool Lua_Group::IsGroupMember(const char* name) {
 	Lua_Safe_Call_Bool();
 	return self->IsGroupMember(name);

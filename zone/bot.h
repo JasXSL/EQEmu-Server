@@ -417,7 +417,8 @@ public:
 	int 	GroupLeadershipAAHealthRegeneration();
 	int		GroupLeadershipAAOffenseEnhancement();
 	void CalcRestState();
-
+	inline bool IsTemp(){ return _temp; };
+	void SetTemp(bool temp);
 	int64 CalcMaxEndurance();
 	int64 CalcBaseEndurance();
 	int64 CalcEnduranceRegen();
@@ -479,12 +480,15 @@ public:
 	bool AIHealRotation(Mob* tar, bool useFastHeals);
 	bool GetPauseAI() const { return _pauseAI; }
 	void SetPauseAI(bool pause_flag) { _pauseAI = pause_flag; }
+	bool GetRecklessAI() const { return _recklessAI; };
+	void SetRecklessAI(bool reckless_flag) { _recklessAI = reckless_flag; }
 	bool IsCommandedSpell() const { return _commandedSpell; }
 	void SetCommandedSpell(bool value) { _commandedSpell = value;  }
 	bool IsPullingSpell() const { return _pullingSpell; }
 	void SetPullingSpell(bool value) { _pullingSpell = value; }
 	
 	void SetGuardMode();
+	void SetGuardPos(float x, float y, float z, float h);
 	void SetHoldMode();
 
 	bool IsValidSpellRange(uint16 spell_id, Mob* tar);
@@ -655,10 +659,10 @@ public:
 	void SetBehindMob(bool value) { _behindMobStatus = value; }
 	bool GetMaxMeleeRange() const { return _maxMeleeRangeStatus; }
 	void SetMaxMeleeRange(bool value) { _maxMeleeRangeStatus = value; }	
-	uint8 GetStopMeleeLevel() const { return _stopMeleeLevel; }
+	uint8 GetStopMeleeLevel() const { return _stopMeleeLevel; } 
 	void SetStopMeleeLevel(uint8 level) { _stopMeleeLevel = level; }
 	uint32 GetBotDistanceRanged() const { return _distanceRanged; }
-	void SetBotDistanceRanged(uint32 distance) { _distanceRanged = distance; }
+	void SetBotDistanceRanged(uint32 distance) { _distanceRanged = distance; } 
 	bool GetMedInCombat() const { return _medInCombat; }
 	void SetMedInCombat(bool value) { _medInCombat = value; }
 	uint8 GetSitHPPct() const { return _SitHPPct; }
@@ -1112,6 +1116,8 @@ public:
 	static bool CheckCreateLimit(Client* c, uint32 bot_count, uint8 bot_class = Class::None);
 	static bool CheckSpawnLimit(Client* c, uint8 bot_class = Class::None);
 
+	static uint32_t GetNextTmpBotId();
+
 protected:
 	void BotMeditate(bool is_sitting);
 	bool CheckBotDoubleAttack(bool triple_attack = false);
@@ -1134,6 +1140,7 @@ protected:
 	std::vector<BotBlockedBuffs> bot_blocked_buffs;
 
 private:
+	inline static uint32 _tmp_bot_id = 0; // temp bot IDs start from the back
 	// Class Members
 	uint32 _botID;
 	uint32 _botOwnerCharacterID;
@@ -1163,6 +1170,7 @@ private:
 	int32	cur_end;
 	int32	max_end;
 	int32	end_regen;
+	bool _temp;
 
 	Timer m_rogue_evade_timer; // Rogue evade timer
 	Timer m_monk_evade_timer; // Monk evade FD timer
@@ -1196,6 +1204,9 @@ private:
 	bool _showHelm;
 	bool _botRangedSetting;
 	uint8 _stopMeleeLevel;
+	int m_expansion_bitmask;
+	bool m_enforce_spell_settings;
+	bool _recklessAI;
 	uint32 _distanceRanged;
 	bool _behindMobStatus;
 	bool _maxMeleeRangeStatus;
@@ -1233,6 +1244,7 @@ private:
 	int32 _baseATK;
 	uint16 _baseRace;	// Necessary to preserve the race otherwise bots get their race updated in the db when they get an illusion.
 	uint8 _baseGender;	// Bots gender. Necessary to preserve the original value otherwise it can be changed by illusions.
+	
 
 	// Class Methods
 	void LoadAAs();

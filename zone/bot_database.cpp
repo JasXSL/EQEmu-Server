@@ -237,6 +237,12 @@ bool BotDatabase::QueryNameAvailability(const std::string& bot_name, bool& avail
 		!database.CheckNameFilter(bot_name) ||
 		database.IsNameUsed(bot_name)
 	) {
+		LogError(
+			"Name too long, empty, or used [{}], empty {}, size {}",
+			bot_name,
+			bot_name.empty(),
+			bot_name.size()
+		);
 		return false;
 	}
 

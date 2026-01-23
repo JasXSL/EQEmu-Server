@@ -497,6 +497,8 @@ public:
 	int GetAAEXPPercentage();
 	int GetEXPPercentage();
 	bool IsInAGuild();
+	bool InviteBot(Lua_Bot invitee);
+	uint32 CreateBot(const char *name, const char *lastname, uint8 level, uint16 race, uint8 botclass, uint8 gender, bool temp);
 	luabind::object GetRaidOrGroupOrSelf(lua_State* L);
 	luabind::object GetRaidOrGroupOrSelf(lua_State* L, bool clients_only);
 	std::string GetAutoLoginCharacterName();

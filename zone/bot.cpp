@@ -73,6 +73,7 @@ Bot::Bot(NPCType *npcTypeData, Client* botOwner) : NPC(npcTypeData, nullptr, glm
 	_baseATK = npcTypeData->ATK;
 	_baseRace = npcTypeData->race;
 	_baseGender = npcTypeData->gender;
+	_temp = false;
 	RestRegenHP = 0;
 	RestRegenMana = 0;
 	RestRegenEndurance = 0;
@@ -85,6 +86,7 @@ Bot::Bot(NPCType *npcTypeData, Client* botOwner) : NPC(npcTypeData, nullptr, glm
 	SetTaunting((GetClass() == Class::Warrior || GetClass() == Class::Paladin || GetClass() == Class::ShadowKnight) && (GetBotStance() == Stance::Aggressive));
 
 	SetPauseAI(false);
+	SetRecklessAI(false);
 
 	m_combat_jitter_timer.Disable();
 	m_auto_save_timer.Disable();
@@ -181,6 +183,7 @@ Bot::Bot(
 	_baseATK = npcTypeData->ATK;
 	_baseRace = npcTypeData->race;
 	_baseGender = npcTypeData->gender;
+	_temp = false;
 	current_hp = npcTypeData->current_hp;
 	current_mana = npcTypeData->Mana;
 	RestRegenHP = 0;
@@ -622,6 +625,13 @@ uint32 Bot::GetBotRangedValue() {
 	}
 
 	return 0;
+}
+
+void Bot::SetTemp(bool temp) {
+	if (temp && !_temp) {
+		SetBotID(Bot::GetNextTmpBotId());
+	}
+	_temp = temp;
 }
 
 void Bot::ChangeBotRangedWeapons(bool isRanged) {
@@ -1403,6 +1413,9 @@ bool Bot::Save()
 	if (!bot_owner)
 		return false;
 
+	if( IsTemp() )
+		return false;
+
 	if (!GetBotID()) { // New bot record
 		uint32 bot_id = 0;
 		if (!database.botdb.SaveNewBot(this, bot_id) || !bot_id) {
@@ -2103,6 +2116,13 @@ void Bot::SetGuardMode() {
 	StopMoving();
 	m_GuardPoint = GetPosition();
 	SetGuardFlag();
+}
+
+void Bot::SetGuardPos(float x, float y, float z, float h) {
+	m_GuardPoint.x = x;
+	m_GuardPoint.y = y;
+	m_GuardPoint.z = z;
+	m_GuardPoint.w = h;
 }
 
 void Bot::SetHoldMode() {
@@ -3611,22 +3631,24 @@ bool Bot::Spawn(Client* botCharacterOwner) {
 		helmtexture = 0; //0xFF;
 		texture = 0; //0xFF;
 
-		if (Save()) {
-			GetBotOwner()->CastToClient()->Message(
-				Chat::White,
-				fmt::format(
-					"{} saved.",
-					GetCleanName()
-				).c_str()
-			);
-		} else {
-			GetBotOwner()->CastToClient()->Message(
-				Chat::White,
-				fmt::format(
-					"{} save failed!",
-					GetCleanName()
-				).c_str()
-			);
+		if (!IsTemp()) {
+			if (Save()) {
+				GetBotOwner()->CastToClient()->Message(
+					Chat::White,
+					fmt::format(
+						"{} saved.",
+						GetCleanName()
+					).c_str()
+				);
+			} else {
+				GetBotOwner()->CastToClient()->Message(
+					Chat::White,
+					fmt::format(
+						"{} save failed!",
+						GetCleanName()
+					).c_str()
+				);
+			}
 		}
 
 		// Spawn the bot at the bot owner's loc
@@ -4128,7 +4150,7 @@ void Bot::AddBotItem(
 		return;
 	}
 
-	if (!database.botdb.SaveItemBySlot(this, slot_id, inst)) {
+	if (!IsTemp() && !database.botdb.SaveItemBySlot(this, slot_id, inst)) {
 		LogError("Failed to save item by slot to slot [{}] for [{}].", slot_id, GetCleanName());
 		safe_delete(inst);
 		return;
@@ -4310,6 +4332,12 @@ void Bot::PerformTradeWithClient(int16 begin_slot_id, int16 end_slot_id, Client*
 
 	if (!client) {
 		Emote("NO CLIENT");
+		return;
+	}
+
+	if (IsTemp()) {
+		client->Message(Chat::White, "Cannot trade with temp bots.");
+		client->ResetTrade();
 		return;
 	}
 
@@ -6969,7 +6997,12 @@ void Bot::Camp(bool save_to_database) {
 }
 
 void Bot::Zone() {
-	if (auto raid = entity_list.GetRaidByBot(this)) {
+
+	if (IsTemp() && HasGroup()) {
+		RemoveBotFromGroup(this, GetGroup());
+	}
+
+	else if (auto raid = entity_list.GetRaidByBot(this)) {
 		raid->MemberZoned(CastToClient());
 	}
 	else if (HasGroup()) {
@@ -8816,7 +8849,7 @@ bool Bot::CheckSpawnLimit(Client* c, uint8 bot_class) {
 
 void Bot::AddBotStartingItems(uint16 race_id, uint8 class_id)
 {
-	if (!IsPlayerRace(race_id) || !IsPlayerClass(class_id)) {
+	if (!IsPlayerRace(race_id) || !IsPlayerClass(class_id) || IsTemp()) {
 		return;
 	}
 
@@ -9494,6 +9527,12 @@ void Bot::DoItemClick(const EQ::ItemData *item, uint16 slot_id)
 }
 
 uint8 Bot::spell_casting_chances[SPELL_TYPE_COUNT][Class::PLAYER_CLASS_COUNT][Stance::AEBurn][cntHSND] = { 0 };
+
+uint32 Bot::GetNextTmpBotId(){
+	_tmp_bot_id++;
+	LogInfo("Tmp bot id is now {}, returning {}", _tmp_bot_id, (uint32)0xFFFFFFFF-_tmp_bot_id);
+	return (uint32)0xFFFFFFFF-_tmp_bot_id;
+}
 
 bool Bot::PrecastChecks(Mob* tar, uint16 spell_type) {
 	if (!TargetValidation(tar)) {

@@ -37,6 +37,9 @@ endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+# Jas: Fixes linking error on linux causing various external libraries to not work
+set(CMAKE_EXE_LINKER_FLAGS
+    "${CMAKE_EXE_LINKER_FLAGS} -Wl,-E")
 
 option(EQEMU_BUILD_PCH "Build with precompiled headers (Windows)" ON)
 
