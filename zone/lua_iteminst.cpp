@@ -1,3 +1,20 @@
+/*	EQEmu: EQEmulator
+
+	Copyright (C) 2001-2026 EQEmu Development Team
+
+	This program is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 3 of the License, or
+	(at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
 #ifdef LUA_EQEMU
 
 #include "lua_iteminst.h"
@@ -139,6 +156,11 @@ uint32 Lua_ItemInst::GetID() {
 uint32 Lua_ItemInst::GetItemScriptID() {
 	Lua_Safe_Call_Int();
 	return self->GetItemScriptID();
+}
+
+uint8 Lua_ItemInst::GetItemType() {
+	Lua_Safe_Call_Int();
+	return self->GetItemType();
 }
 
 int Lua_ItemInst::GetCharges() {
@@ -480,6 +502,7 @@ luabind::scope lua_register_iteminst() {
 	.def("GetItemID", (uint32(Lua_ItemInst::*)(int))&Lua_ItemInst::GetItemID)
 	.def("GetItemLink", (std::string(Lua_ItemInst::*)(void))&Lua_ItemInst::GetItemLink)
 	.def("GetItemScriptID", (uint32(Lua_ItemInst::*)(void))&Lua_ItemInst::GetItemScriptID)
+	.def("GetItemType", (uint8(Lua_ItemInst::*)(void)) & Lua_ItemInst::GetItemType)
 	.def("GetMaxEvolveLvl", (int(Lua_ItemInst::*)(void))&Lua_ItemInst::GetMaxEvolveLvl)
 	.def("GetName", (std::string(Lua_ItemInst::*)(void))&Lua_ItemInst::GetName)
 	.def("GetSerialNumber", (int(Lua_ItemInst::*)(void))&Lua_ItemInst::GetSerialNumber)

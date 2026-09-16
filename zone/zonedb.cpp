@@ -1,3 +1,20 @@
+/*	EQEmu: EQEmulator
+
+	Copyright (C) 2001-2026 EQEmu Development Team
+
+	This program is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 3 of the License, or
+	(at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
 #include "zonedb.h"
 
 #include "common/eqemu_logsys.h"
@@ -2208,7 +2225,7 @@ bool ZoneDatabase::LoadCurrentMercenary(Client* c)
 {
 	const uint8 mercenary_slot = c->GetMercSlot();
 
-	if (mercenary_slot > MAXMERCS) {
+	if (mercenary_slot >= MAXMERCS) {
 		return false;
 	}
 
@@ -2260,7 +2277,7 @@ bool ZoneDatabase::SaveMercenary(Merc* m)
 		auto e = MercsRepository::NewEntity();
 
 		e.OwnerCharacterID = m->GetMercenaryCharacterID();
-		e.Slot             = (c->GetNumberOfMercenaries() - 1);
+		e.Slot             = c->GetMercSlot();
 		e.Name             = m->GetCleanName();
 		e.TemplateID       = m->GetMercenaryTemplateID();
 		e.SuspendedTime    = c->GetMercInfo().SuspendedTime;
@@ -2301,7 +2318,7 @@ bool ZoneDatabase::SaveMercenary(Merc* m)
 	auto e = MercsRepository::FindOne(*this, m->GetMercenaryID());
 
 	e.OwnerCharacterID = m->GetMercenaryCharacterID();
-	e.Slot             = (c->GetNumberOfMercenaries() - 1);
+	e.Slot             = c->GetMercSlot();
 	e.Name             = m->GetCleanName();
 	e.TemplateID       = m->GetMercenaryTemplateID();
 	e.SuspendedTime    = c->GetMercInfo().SuspendedTime;

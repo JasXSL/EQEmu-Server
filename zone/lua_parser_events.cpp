@@ -1,3 +1,20 @@
+/*	EQEmu: EQEmulator
+
+	Copyright (C) 2001-2026 EQEmu Development Team
+
+	This program is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 3 of the License, or
+	(at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
 #ifdef LUA_EQEMU
 
 #include "lua_parser_events.h"
@@ -2340,6 +2357,53 @@ void handle_player_merchant(
 
 	lua_pushinteger(L, Strings::ToInt(sep.arg[4]));
 	lua_setfield(L, -2, "item_cost");
+}
+
+void handle_player_merchant_open(
+	QuestInterface* parse,
+	lua_State* L,
+	Client* client,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any>* extra_pointers
+) {
+	if (!extra_pointers || extra_pointers->size() < 1) return;
+
+	auto mob_ptr = std::any_cast<Mob*>(extra_pointers->at(0));
+	if (!mob_ptr) return;
+
+	Lua_Mob l_mob(mob_ptr);
+	luabind::adl::object l_mob_o = luabind::adl::object(L, l_mob);
+	l_mob_o.push(L);
+	lua_setfield(L, -2, "other");
+}
+
+void handle_player_merchant_presell(
+	QuestInterface* parse,
+	lua_State* L,
+	Client* client,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any>* extra_pointers
+) {
+	Seperator sep(data.c_str());
+	lua_pushinteger(L, Strings::ToInt(sep.arg[0])); lua_setfield(L, -2, "slot_id");
+	lua_pushinteger(L, Strings::ToInt(sep.arg[1])); lua_setfield(L, -2, "item_id");
+	lua_pushinteger(L, Strings::ToInt(sep.arg[2])); lua_setfield(L, -2, "item_type");
+
+	if (!extra_pointers || extra_pointers->size() < 2) return;
+
+	auto mob_ptr = std::any_cast<Mob*>(extra_pointers->at(0));
+	auto inst_ptr = std::any_cast<EQ::ItemInstance*>(extra_pointers->at(1));
+	if (!mob_ptr || !inst_ptr) return;
+
+	Lua_Mob l_mob(mob_ptr);
+	luabind::adl::object(L, l_mob).push(L);
+	lua_setfield(L, -2, "other");
+
+	Lua_ItemInst l_iteminst(inst_ptr);
+	luabind::adl::object(L, l_iteminst).push(L);
+	lua_setfield(L, -2, "item");
 }
 
 void handle_player_augment_insert(

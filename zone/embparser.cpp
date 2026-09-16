@@ -1,28 +1,29 @@
-/*  EQEMu:  Everquest Server Emulator
-	Copyright (C) 2001-2016 EQEMu Development Team (http://eqemulator.net)
+/*	EQEmu: EQEmulator
+
+	Copyright (C) 2001-2026 EQEmu Development Team
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation; version 2 of the License.
+	the Free Software Foundation; either version 3 of the License, or
+	(at your option) any later version.
 
 	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY except by those people which sell it, which
-	are required to give you total support for your newly bought product;
-	without even the implied warranty of MERCHANTABILITY or FITNESS FOR
-	A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
 
 	You should have received a copy of the GNU General Public License
-	along with this program; if not, write to the Free Software
-	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307  USA
+	along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
-
 #ifdef EMBPERL
 
+#include "zone/embparser.h"
+
+#include "common/compiler_macros.h"
 #include "common/features.h"
 #include "common/misc_functions.h"
 #include "common/seperator.h"
 #include "common/strings.h"
-#include "zone/embparser.h"
 #include "zone/masterentity.h"
 #include "zone/qglobals.h"
 #include "zone/questmgr.h"
@@ -162,8 +163,10 @@ const char* QuestEventSubroutines[_LargestEventID] = {
 	"EVENT_LANGUAGE_SKILL_UP",
 	"EVENT_ALT_CURRENCY_MERCHANT_BUY",
 	"EVENT_ALT_CURRENCY_MERCHANT_SELL",
+	"EVENT_MERCHANT_OPEN",
 	"EVENT_MERCHANT_BUY",
 	"EVENT_MERCHANT_SELL",
+	"EVENT_MERCHANT_PRESELL",
 	"EVENT_INSPECT",
 	"EVENT_TASK_BEFORE_UPDATE",
 	"EVENT_AA_BUY",
@@ -399,6 +402,8 @@ int PerlembParser::EventCommon(
 			zone
 		);
 	}
+
+	return 0;
 }
 
 int PerlembParser::EventNPC(
@@ -1212,31 +1217,33 @@ QuestType PerlembParser::GetQuestTypes(
 		event_id == EVENT_SPELL_EFFECT_TRANSLOCATE_COMPLETE
 	) {
 		return is_global ? QuestType::SpellGlobal : QuestType::Spell;
-	} else {
-		if (npc_mob) {
-			if (!inst) {
-				if (npc_mob->IsBot()) {
-					return is_global ? QuestType::BotGlobal : QuestType::Bot;
-				} else if (npc_mob->IsMerc()) {
-					return is_global ? QuestType::MercGlobal : QuestType::Merc;
-				} else if (npc_mob->IsNPC()) {
-					return is_global ? QuestType::NPCGlobal : QuestType::NPC;
-				}
-			} else {
-				return is_global ? QuestType::ItemGlobal : QuestType::Item;
-			}
-		} else if (!npc_mob && mob) {
-			if (!inst) {
-				if (mob->IsClient()) {
-					return is_global ? QuestType::PlayerGlobal : QuestType::Player;
-				}
-			} else {
-				return is_global ? QuestType::ItemGlobal : QuestType::Item;
-			}
-		} else if (zone) {
-			return is_global ? QuestType::ZoneGlobal : QuestType::Zone;
-		}
 	}
+
+	if (npc_mob) {
+		if (!inst) {
+			if (npc_mob->IsBot()) {
+				return is_global ? QuestType::BotGlobal : QuestType::Bot;
+			} else if (npc_mob->IsMerc()) {
+				return is_global ? QuestType::MercGlobal : QuestType::Merc;
+			} else if (npc_mob->IsNPC()) {
+				return is_global ? QuestType::NPCGlobal : QuestType::NPC;
+			}
+		} else {
+			return is_global ? QuestType::ItemGlobal : QuestType::Item;
+		}
+	} else if (mob) {
+		if (!inst) {
+			if (mob->IsClient()) {
+				return is_global ? QuestType::PlayerGlobal : QuestType::Player;
+			}
+		} else {
+			return is_global ? QuestType::ItemGlobal : QuestType::Item;
+		}
+	} else if (zone) {
+		return is_global ? QuestType::ZoneGlobal : QuestType::Zone;
+	}
+
+	UNREACHABLE();
 }
 
 std::string PerlembParser::GetQuestPackageName(
@@ -2281,6 +2288,33 @@ void PerlembParser::ExportEventVariables(
 			ExportVar(package_name.c_str(), "item_id", sep.arg[2]);
 			ExportVar(package_name.c_str(), "item_quantity", sep.arg[3]);
 			ExportVar(package_name.c_str(), "item_cost", sep.arg[4]);
+			break;
+		}
+
+		case EVENT_MERCHANT_OPEN: {
+			if (!extra_pointers || extra_pointers->size() < 1) break;
+
+			auto mob_ptr = std::any_cast<Mob*>(extra_pointers->at(0));
+			if (!mob_ptr) break;
+
+			ExportVar(package_name.c_str(), "other", "Mob", mob_ptr);
+			break;
+		}
+
+		case EVENT_MERCHANT_PRESELL: {
+			Seperator sep(data);
+			ExportVar(package_name.c_str(), "slot_id", sep.arg[0]);
+			ExportVar(package_name.c_str(), "item_id", sep.arg[1]);
+			ExportVar(package_name.c_str(), "item_type", sep.arg[2]);
+
+			if (!extra_pointers || extra_pointers->size() < 2) break;
+
+			auto mob_ptr = std::any_cast<Mob*>(extra_pointers->at(0));
+			auto inst_ptr = std::any_cast<EQ::ItemInstance*>(extra_pointers->at(1));
+			if (!mob_ptr || !inst_ptr) break;
+
+			ExportVar(package_name.c_str(), "other", "Mob", mob_ptr);
+			ExportVar(package_name.c_str(), "item", "ItemInstance", inst_ptr);
 			break;
 		}
 

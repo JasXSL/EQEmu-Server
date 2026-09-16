@@ -1,3 +1,20 @@
+/*	EQEmu: EQEmulator
+
+	Copyright (C) 2001-2026 EQEmu Development Team
+
+	This program is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 3 of the License, or
+	(at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
 #include "common/crash.h"
 #include "common/database.h"
 #include "common/eqemu_logsys.h"
@@ -9,6 +26,7 @@
 #include "common/platform.h"
 #include "common/timer.h"
 #include "common/types.h"
+#include "loginserver/encryption.h"
 #include "loginserver/login_server.h"
 #include "loginserver/loginserver_command_handler.h"
 #include "loginserver/loginserver_webserver.h"
@@ -141,12 +159,12 @@ void start_web_server()
 int main(int argc, char **argv)
 {
 	RegisterExecutablePlatform(ExePlatformLogin);
+	EQEmuLogSys::Instance()->LoadLogSettingsDefaults();
 	set_exception_handler();
 
-	LogInfo("Logging System Init");
-
-	if (argc == 1) {
-		EQEmuLogSys::Instance()->LoadLogSettingsDefaults();
+	if (!eqcrypt_init()) {
+		LogError("Failed to initialize crypto providers");
+		return 1;
 	}
 
 	PathManager::Instance()->Init();
@@ -262,6 +280,8 @@ int main(int argc, char **argv)
 
 	LogInfo("Server Manager Shutdown");
 	delete server.server_manager;
+
+	eqcrypt_shutdown();
 
 	return 0;
 }

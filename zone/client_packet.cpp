@@ -1,20 +1,20 @@
-/*	EQEMu: Everquest Server Emulator
-Copyright (C) 2001-2016 EQEMu Development Team (http://eqemulator.net)
+/*	EQEmu: EQEmulator
 
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; version 2 of the License.
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY except by those people which sell it, which
-are required to give you total support for your newly bought product;
-without even the implied warranty of MERCHANTABILITY or FITNESS FOR
-A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+	Copyright (C) 2001-2026 EQEmu Development Team
 
-You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+	This program is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 3 of the License, or
+	(at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
-
 #include "client.h"
 
 #include "common/data_bucket.h"
@@ -305,6 +305,7 @@ void MapOpcodes()
 	ConnectedOpcodes[OP_MercenaryDismiss] = &Client::Handle_OP_MercenaryDismiss;
 	ConnectedOpcodes[OP_MercenaryHire] = &Client::Handle_OP_MercenaryHire;
 	ConnectedOpcodes[OP_MercenarySuspendRequest] = &Client::Handle_OP_MercenarySuspendRequest;
+	ConnectedOpcodes[OP_MercenarySwitch] = &Client::Handle_OP_MercenarySwitch;
 	ConnectedOpcodes[OP_MercenaryTimerRequest] = &Client::Handle_OP_MercenaryTimerRequest;
 	ConnectedOpcodes[OP_MoveCoin] = &Client::Handle_OP_MoveCoin;
 	ConnectedOpcodes[OP_MoveItem] = &Client::Handle_OP_MoveItem;
@@ -3239,10 +3240,10 @@ void Client::Handle_OP_AugmentItem(const EQApplicationPacket *app)
 					}
 
 					if (
-						((tobe_auged->IsAugmentSlotAvailable(new_aug->GetAugmentType(), in_augment->augment_index)) != -1) &&
+						tobe_auged->IsAugmentSlotAvailable(new_aug->GetAugmentType(), static_cast<uint8>(in_augment->augment_index)) &&
 						tobe_auged->AvailableWearSlot(new_aug->GetItem()->Slots)
 					) {
-						old_aug = tobe_auged->RemoveAugment(in_augment->augment_index);
+						old_aug = tobe_auged->RemoveAugment(static_cast<uint8>(in_augment->augment_index));
 						if (old_aug) { // An old augment was removed in order to be replaced with the new one (augment_action 2)
 							CalcBonuses();
 
@@ -10430,7 +10431,7 @@ void Client::Handle_OP_MercenaryCommand(const EQApplicationPacket *app)
 	}
 
 	MercenaryCommand_Struct* mc = (MercenaryCommand_Struct*)app->pBuffer;
-	uint32 merc_command = mc->MercCommand;	// Seen 0 (zone in with no merc or suspended), 1 (dismiss merc), 5 (normal state), 20 (unknown), 36 (zone in with merc)
+	uint32 merc_command = mc->MercCommand;	// Seen 0 (zone in with no merc or suspended), 1 (stance/state update), 5 (normal state), 20 (unknown), 36 (zone in with merc)
 	int32 option = mc->Option;	// Seen -1 (zone in with no merc), 0 (setting to passive stance), 1 (normal or setting to balanced stance)
 
 	Log(Logs::General, Logs::Mercenaries, "Command %i, Option %i received from %s.", merc_command, option, GetName());
@@ -10438,9 +10439,6 @@ void Client::Handle_OP_MercenaryCommand(const EQApplicationPacket *app)
 	if (!RuleB(Mercs, AllowMercs))
 		return;
 
-	// Handle the Command here...
-	// Will need a list of what every type of command is supposed to do
-	// Unsure if there is a server response to this packet
 	if (option >= 0)
 	{
 		Merc* merc = GetMerc();
@@ -10496,14 +10494,14 @@ void Client::Handle_OP_MercenaryDataRequest(const EQApplicationPacket *app)
 	if (merchant_id == 0) {
 
 		//send info about your current merc(s)
-		if (GetMercInfo().mercid)
+		if (GetNumberOfMercenaries() > 0)
 		{
 			Log(Logs::General, Logs::Mercenaries, "SendMercPersonalInfo Request for %s.", GetName());
 			SendMercPersonalInfo();
 		}
 		else
 		{
-			Log(Logs::General, Logs::Mercenaries, "SendMercPersonalInfo Not Sent - MercID (%i) for %s.", GetMercInfo().mercid, GetName());
+			Log(Logs::General, Logs::Mercenaries, "SendMercPersonalInfo Not Sent - no mercs owned for %s.", GetName());
 		}
 	}
 
@@ -10687,6 +10685,22 @@ void Client::Handle_OP_MercenaryHire(const EQApplicationPacket *app)
 			return;
 		}
 
+		// Suspend active merc if one exists before hiring into a new slot
+		Merc* current_merc = GetMerc();
+		if (current_merc) {
+			current_merc->Suspend();
+			current_merc->SetOwnerID(0);
+			SetMercID(0);
+		}
+
+		// Select a free slot for the new hire
+		int free_slot = GetFirstFreeMercSlot();
+		if (free_slot < 0) {
+			SendMercResponsePackets(6);
+			return;
+		}
+		SetMercSlot(static_cast<uint8>(free_slot));
+
 		// Set time remaining to max on Hire
 		GetMercInfo().MercTimerRemaining = RuleI(Mercs, UpkeepIntervalMS);
 
@@ -10706,6 +10720,10 @@ void Client::Handle_OP_MercenaryHire(const EQApplicationPacket *app)
 
 			// approved hire request
 			SendMercMerchantResponsePacket(0);
+
+			// Update the client's Manage tab with the newly hired merc info
+			SendMercPersonalInfo();
+			SendMercTimer(merc);
 		}
 		else
 		{
@@ -10739,6 +10757,88 @@ void Client::Handle_OP_MercenarySuspendRequest(const EQApplicationPacket *app)
 		return;
 
 	// Check if the merc is suspended and if so, unsuspend, otherwise suspend it
+	SuspendMercCommand();
+}
+
+void Client::Handle_OP_MercenarySwitch(const EQApplicationPacket *app)
+{
+	if (app->size != sizeof(SwitchMercenary_Struct)) {
+		LogDebug("Size mismatch in OP_MercenarySwitch expected [{}] got [{}]", sizeof(SwitchMercenary_Struct), app->size);
+		DumpPacket(app);
+		return;
+	}
+
+	if (!RuleB(Mercs, AllowMercs))
+		return;
+
+	SwitchMercenary_Struct* sm = (SwitchMercenary_Struct*)app->pBuffer;
+	uint32 merc_ui_index = sm->MercIndex;
+
+	Log(Logs::General, Logs::Mercenaries, "Switch request to UI index %u received from %s.", merc_ui_index, GetName());
+
+	// The client sends a dense UI index (0, 1, 2...) that corresponds to the Nth
+	// owned merc in the list, matching the order sent by SendMercPersonalInfo().
+	// SendMercPersonalInfo emits the active slot first, then remaining slots in order.
+	// We must replicate that same ordering to map UI index -> internal slot.
+	int target_slot = -1;
+	int max_slots = std::min(RuleI(Mercs, MaxMercSlots), MAXMERCS);
+	uint32 ui_pos = 0;
+
+	// First: the active merc slot (emitted first in the packet)
+	if (GetMercSlot() < max_slots && m_mercinfo[GetMercSlot()].mercid != 0) {
+		if (ui_pos == merc_ui_index) {
+			target_slot = GetMercSlot();
+		}
+		ui_pos++;
+	}
+
+	// Then: remaining slots in order (skipping active slot)
+	if (target_slot < 0) {
+		for (int slot = 0; slot < max_slots; slot++) {
+			if (slot == GetMercSlot()) {
+				continue;
+			}
+			if (m_mercinfo[slot].mercid != 0) {
+				if (ui_pos == merc_ui_index) {
+					target_slot = slot;
+					break;
+				}
+				ui_pos++;
+			}
+		}
+	}
+
+	if (target_slot < 0) {
+		Log(Logs::General, Logs::Mercenaries, "Switch request denied — UI index %u has no corresponding merc for %s.", merc_ui_index, GetName());
+		SendMercResponsePackets(0);
+		return;
+	}
+
+	if (target_slot == GetMercSlot()) {
+		Log(Logs::General, Logs::Mercenaries, "Switch request ignored — already on slot %i for %s.", target_slot, GetName());
+		return;
+	}
+
+	// Suspend the currently active merc if one is spawned
+	Merc* current_merc = GetMerc();
+	if (current_merc) {
+		current_merc->Suspend();
+		// Clear merc pointer without wiping slot data (SetMerc(nullptr) would zero the slot)
+		current_merc->SetOwnerID(0);
+		SetMercID(0);
+	}
+
+	// Clear the suspend timer so the target merc can be unsuspended immediately.
+	// The cooldown is meant for rapid suspend/unsuspend of the same merc, not for switching.
+	if (!GetPTimers().Expired(&database, pTimerMercSuspend, false)) {
+		GetPTimers().Clear(&database, pTimerMercSuspend);
+	}
+
+	SetMercSlot(static_cast<uint8>(target_slot));
+
+	Log(Logs::General, Logs::Mercenaries, "Switched active merc slot to %i (UI index %u) for %s.", target_slot, merc_ui_index, GetName());
+
+	// Unsuspend the target merc
 	SuspendMercCommand();
 }
 
@@ -14278,9 +14378,8 @@ void Client::Handle_OP_ShopPlayerSell(const EQApplicationPacket *app)
 			sizeof(Merchant_Purchase_Struct), app->size);
 		return;
 	}
-	RDTSC_Timer t1(true);
+	
 	Merchant_Purchase_Struct* mp = (Merchant_Purchase_Struct*)app->pBuffer;
-
 	Mob* vendor = entity_list.GetMob(mp->npcid);
 
 	if (vendor == 0 || !vendor->IsNPC() || vendor->GetClass() != Class::Merchant)
@@ -14290,35 +14389,51 @@ void Client::Handle_OP_ShopPlayerSell(const EQApplicationPacket *app)
 	if (DistanceSquared(m_Position, vendor->GetPosition()) > USE_NPC_RANGE2)
 		return;
 
-	uint32 price = 0;
 	uint32 itemid = GetItemIDAt(mp->itemslot);
 	if (itemid == 0)
 		return;
+
 	const EQ::ItemData* item = database.GetItem(itemid);
 	EQ::ItemInstance* inst = GetInv().GetItem(mp->itemslot);
 	if (!item || !inst) {
-		Message(Chat::Red, "You seemed to have misplaced that item..");
+		Message(Chat::Red, "You seem to have misplaced that item..");
 		return;
 	}
-	if (mp->quantity > 1)
-	{
+
+	if (!item->NoDrop) {
+		return;
+	}
+
+	if (mp->quantity > 1) {
 		if ((inst->GetCharges() < 0) || (mp->quantity > (uint32)inst->GetCharges()))
 			return;
 	}
 
-	if (!item->NoDrop) {
-		//Message(Chat::Red,"%s tells you, 'LOL NOPE'", vendor->GetName());
-		return;
+	// Check for veto from script
+	if (parse->PlayerHasQuestSub(EVENT_MERCHANT_PRESELL)) {
+		std::string export_string = fmt::format("{} {} {}", mp->itemslot, itemid, inst->GetItemType());
+		std::vector<std::any> extra_pointers = { vendor, inst };
+
+		int result = parse->EventPlayer(EVENT_MERCHANT_PRESELL, this, export_string, 0, &extra_pointers);
+		// CANCEL: If a script returns -1 for this event, the sale wil be cancelled.  Sends a dummy packet sent to satisfy the client
+		if (result == -1) {
+			auto outapp = new EQApplicationPacket(OP_ShopPlayerSell, sizeof(Merchant_Purchase_Struct));
+			Merchant_Purchase_Struct* mco = (Merchant_Purchase_Struct*)outapp->pBuffer;
+			mco->npcid = vendor->GetID();
+			mco->itemslot = -1; // Critical or the client will remove the item visually
+			mco->quantity = 0;
+			mco->price = 0;
+			QueuePacket(outapp);
+			safe_delete(outapp);
+			return;
+		}
 	}
 
-	uint32 cost_quantity = mp->quantity;
-	if (inst->IsCharged())
-		uint32 cost_quantity = 1;
-
-	uint32 i;
+	uint32 cost_quantity = inst->IsCharged() ? 1 : mp->quantity;
+	uint32 price = 0;
 
 	if (RuleB(Merchant, UsePriceMod)) {
-		for (i = 1; i <= cost_quantity; i++) {
+		for (uint32 i = 1; i <= cost_quantity; i++) {
 			price = (uint32)(item->Price * i) * Client::CalcPriceMod(vendor, true);
 
 			// Don't use SellCostMod if using UseClassicPriceMod
@@ -14336,7 +14451,7 @@ void Client::Handle_OP_ShopPlayerSell(const EQApplicationPacket *app)
 		}
 	}
 	else {
-		for (i = 1; i <= cost_quantity; i++) {
+		for (uint32 i = 1; i <= cost_quantity; i++) {
 			price = (uint32)((item->Price * i)*(RuleR(Merchant, BuyCostMod)) + 0.5); // need to round up, because client does it automatically when displaying price
 			if (price > 4000000000) {
 				cost_quantity = i;
@@ -14348,6 +14463,7 @@ void Client::Handle_OP_ShopPlayerSell(const EQApplicationPacket *app)
 
 	AddMoneyToPP(price);
 
+	// Update merchant stock and refresh client
 	if (inst->IsStackable() || inst->IsCharged())
 	{
 		unsigned int i_quan = inst->GetCharges();
@@ -14461,6 +14577,8 @@ void Client::Handle_OP_ShopPlayerSell(const EQApplicationPacket *app)
 	QueuePacket(outapp);
 	safe_delete(outapp);
 	SendMoneyUpdate();
+
+	RDTSC_Timer t1(true);
 	t1.start();
 	Save(1);
 	t1.stop();
@@ -14578,6 +14696,11 @@ void Client::Handle_OP_ShopRequest(const EQApplicationPacket *app)
 
 		if ((tabs_to_display & Parcel) == Parcel) {
 			SendBulkParcels();
+		}
+
+		if (parse->PlayerHasQuestSub(EVENT_MERCHANT_OPEN)) {
+			std::vector<std::any> extra_pointers = { tmp };
+			parse->EventPlayer(EVENT_MERCHANT_OPEN, this, "", 0, &extra_pointers);
 		}
 	}
 

@@ -1,21 +1,20 @@
-/* EQEMu: Everquest Server Emulator
-	Copyright (C) 2001-2003 EQEMu Development Team (http://eqemulator.org)
+/*	EQEmu: EQEmulator
+
+	Copyright (C) 2001-2026 EQEmu Development Team
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation; version 2 of the License.
+	the Free Software Foundation; either version 3 of the License, or
+	(at your option) any later version.
 
 	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY except by those people which sell it, which
-	are required to give you total support for your newly bought product;
-	without even the implied warranty of MERCHANTABILITY or FITNESS FOR
-	A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
 
 	You should have received a copy of the GNU General Public License
-	along with this program; if not, write to the Free Software
-	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+	along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
-
 #pragma once
 
 class Client;
@@ -107,7 +106,7 @@ enum { //scribing argument to MemorizeSpell
 };
 
 //Modes for the zoning state of the client.
-typedef enum {
+enum ZoneMode {
 	ZoneToSafeCoords,	// Always send ZonePlayerToBind_Struct to client: Succor/Evac
 	GMSummon,			// Always send ZonePlayerToBind_Struct to client: Only a GM Summon
 	GMHiddenSummon,		// Always send ZonePlayerToBind_Struct to client silently: Only a GM Summon
@@ -118,7 +117,7 @@ typedef enum {
 	SummonPC,			// In-zone GMMove() always: Call of the Hero spell or some other type of in zone only summons
 	Rewind,				// Summon to /rewind location.
 	EvacToSafeCoords
-} ZoneMode;
+};
 
 // translate above enum to a string
 std::string GetZoneModeString(ZoneMode mode);
@@ -131,13 +130,13 @@ enum {
 	HideCorpseNPC = 5
 };
 
-typedef enum
+enum ShowSpellType
 {
 	Disciplines,
 	Spells
-} ShowSpellType;
+};
 
-typedef enum
+enum XTargetType
 {
 	Empty = 0,
 	Auto = 1,
@@ -166,8 +165,7 @@ typedef enum
 	MyPetTarget = 24,
 	MyMercenary = 25,
 	MyMercenaryTarget = 26
-
-} XTargetType;
+};
 
 struct XTarget_Struct
 {
@@ -1775,6 +1773,7 @@ public:
 	MercInfo& GetMercInfo(uint8 slot) { return m_mercinfo[slot]; }
 	MercInfo& GetMercInfo() { return m_mercinfo[mercSlot]; }
 	uint8 GetNumberOfMercenaries();
+	int GetFirstFreeMercSlot();
 	void SetMerc(Merc* newmerc);
 	void SendMercResponsePackets(uint32 ResponseType);
 	void SendMercMerchantResponsePacket(int32 response_type);

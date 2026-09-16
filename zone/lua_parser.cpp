@@ -1,3 +1,20 @@
+/*	EQEmu: EQEmulator
+
+	Copyright (C) 2001-2026 EQEmu Development Team
+
+	This program is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 3 of the License, or
+	(at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
 #ifdef LUA_EQEMU
 
 #include "lua_parser.h"
@@ -143,8 +160,10 @@ const char *LuaEvents[_LargestEventID] = {
 	"event_language_skill_up",
 	"event_alt_currency_merchant_buy",
 	"event_alt_currency_merchant_sell",
+	"event_merchant_open",
 	"event_merchant_buy",
 	"event_merchant_sell",
+	"event_merchant_presell",
 	"event_inspect",
 	"event_task_before_update",
 	"event_aa_buy",
@@ -318,8 +337,10 @@ LuaParser::LuaParser() {
 	PlayerArgumentDispatch[EVENT_LANGUAGE_SKILL_UP]          = handle_player_language_skill_up;
 	PlayerArgumentDispatch[EVENT_ALT_CURRENCY_MERCHANT_BUY]  = handle_player_alt_currency_merchant;
 	PlayerArgumentDispatch[EVENT_ALT_CURRENCY_MERCHANT_SELL] = handle_player_alt_currency_merchant;
+	PlayerArgumentDispatch[EVENT_MERCHANT_OPEN]              = handle_player_merchant_open;
 	PlayerArgumentDispatch[EVENT_MERCHANT_BUY]               = handle_player_merchant;
 	PlayerArgumentDispatch[EVENT_MERCHANT_SELL]              = handle_player_merchant;
+	PlayerArgumentDispatch[EVENT_MERCHANT_PRESELL]           = handle_player_merchant_presell;
 	PlayerArgumentDispatch[EVENT_INSPECT]                    = handle_player_inspect;
 	PlayerArgumentDispatch[EVENT_AA_BUY]                     = handle_player_aa_buy;
 	PlayerArgumentDispatch[EVENT_AA_GAIN]                    = handle_player_aa_gain;
