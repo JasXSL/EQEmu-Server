@@ -163,23 +163,11 @@ uint32 Lua_Client::CreateBot(const char *name, const char *lastname, uint8 level
 	}
 
 	std::string test_name = name;
-	bool available_flag = false;
-	if (!temp && !database.botdb.QueryNameAvailability(test_name, available_flag)) {
+	if (!temp && !database.botdb.QueryNameAvailability(test_name)) {
 		self->Message(
 			Chat::White,
 			fmt::format(
-				"Failed to query name availability for '{}'.",
-				test_name
-			).c_str()
-		);
-		return 0;
-	}
-
-	if (!temp && !available_flag) {
-		self->Message(
-			Chat::White,
-			fmt::format(
-				"The name {} is already being used or is invalid. Please choose a different name.",
+				"Failed to query name availability for '{}', or name already taken.",
 				test_name
 			).c_str()
 		);
