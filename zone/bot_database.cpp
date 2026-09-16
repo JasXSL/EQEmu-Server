@@ -1,21 +1,20 @@
-/*	EQEMu: Everquest Server Emulator
-	Copyright (C) 2001-2016 EQEMu Development Team (http://eqemulator.org)
+/*	EQEmu: EQEmulator
+
+	Copyright (C) 2001-2026 EQEmu Development Team
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation; version 2 of the License.
+	the Free Software Foundation; either version 3 of the License, or
+	(at your option) any later version.
 
 	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY except by those people which sell it, which
-	are required to give you total support for your newly bought product;
-	without even the implied warranty of MERCHANTABILITY or FITNESS FOR
-	A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
 
 	You should have received a copy of the GNU General Public License
-	along with this program; if not, write to the Free Software
-	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+	along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
-
 #include "bot_database.h"
 
 #include "common/data_verification.h"
@@ -229,7 +228,7 @@ bool BotDatabase::LoadBotSpellCastingChances()
 	return true;
 }
 
-bool BotDatabase::QueryNameAvailability(const std::string& bot_name, bool& available_flag)
+bool BotDatabase::QueryNameAvailability(const std::string& bot_name)
 {
 	if (
 		bot_name.empty() ||
@@ -245,8 +244,6 @@ bool BotDatabase::QueryNameAvailability(const std::string& bot_name, bool& avail
 		);
 		return false;
 	}
-
-	available_flag = true;
 
 	return true;
 }
@@ -466,6 +463,7 @@ bool BotDatabase::LoadBot(const uint32 bot_id, Bot*& loaded_bot)
 		loaded_bot->SetSurname(e.last_name);
 		loaded_bot->SetTitle(e.title);
 		loaded_bot->SetSuffix(e.suffix);
+		loaded_bot->SetExpansionBitmask(e.expansion_bitmask);
 	}
 
 	return true;
@@ -520,6 +518,7 @@ bool BotDatabase::SaveNewBot(Bot* b, uint32& bot_id)
 	e.poison                 = b->GetBasePR();
 	e.disease                = b->GetBaseDR();
 	e.corruption             = b->GetBaseCorrup();
+	e.expansion_bitmask      = RuleI(Bots, BotExpansionSettings);
 
 	e = BotDataRepository::InsertOne(database, e);
 
@@ -584,6 +583,7 @@ bool BotDatabase::SaveBot(Bot* b)
 	e.poison                 = b->GetBasePR();
 	e.disease                = b->GetBaseDR();
 	e.corruption             = b->GetBaseCorrup();
+	e.expansion_bitmask      = b->GetExpansionBitmask();
 
 	return BotDataRepository::UpdateOne(database, e);
 }
@@ -2357,7 +2357,7 @@ bool BotDatabase::SaveBotSettings(Mob* m)
 	if (m->IsBot()) {
 		uint8 bot_stance = m->CastToBot()->GetBotStance();
 
-		for (uint16 i = BotBaseSettings::START_ALL; i <= BotBaseSettings::END; ++i) {
+		for (uint16 i = BotBaseSettings::START; i <= BotBaseSettings::END; ++i) {
 			if (m->CastToBot()->GetBotBaseSetting(i) != m->CastToBot()->GetDefaultBotBaseSetting(i, bot_stance)) {
 				auto e = BotSettingsRepository::BotSettings{
 					.character_id				= character_id,

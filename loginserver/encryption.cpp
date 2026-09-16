@@ -1,9 +1,27 @@
+/*	EQEmu: EQEmulator
+
+	Copyright (C) 2001-2026 EQEmu Development Team
+
+	This program is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 3 of the License, or
+	(at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
 #include "encryption.h"
+#include "common/compiler_macros.h"
 
 #ifdef EQEMU_USE_OPENSSL
-#include <openssl/des.h>
-#include <openssl/sha.h>
-#include <openssl/md5.h>
+#include <openssl/err.h>
+#include <openssl/evp.h>
+#include <openssl/provider.h>
 #endif
 #ifdef EQEMU_USE_MBEDTLS
 #include <mbedtls/des.h>
@@ -14,6 +32,8 @@
 
 #include <cstring>
 #include <string>
+
+#include <memory>
 
 #ifdef ENABLE_SECURITY
 
@@ -110,19 +130,102 @@ const char *eqcrypt_block(const char *buffer_in, size_t buffer_in_sz, char *buff
 #endif
 
 #ifdef EQEMU_USE_OPENSSL
-	DES_key_schedule k;
-	DES_cblock v;
-
-	memset(&k, 0, sizeof(DES_key_schedule));
-	memset(&v, 0, sizeof(DES_cblock));
-
+	// Decrypt requires block-aligned input; encrypt zero-pads a trailing
+	// partial block to match the legacy DES_ncbc_encrypt semantics the
+	// game protocol expects.
 	if (!enc && buffer_in_sz && buffer_in_sz % 8 != 0) {
 		return nullptr;
 	}
 
-	DES_ncbc_encrypt((const unsigned char*)buffer_in, (unsigned char*)buffer_out, (long)buffer_in_sz, &k, &v, enc);
+	unsigned char key[8] = {0};
+	unsigned char iv[8]  = {0};
+
+	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+	if (!ctx) {
+		return nullptr;
+	}
+
+	bool result = EVP_CipherInit_ex2(ctx, EVP_des_cbc(), key, iv, enc, nullptr) == 1;
+	if (result) {
+		EVP_CIPHER_CTX_set_padding(ctx, 0);
+
+		const unsigned char* src = reinterpret_cast<const unsigned char*>(buffer_in);
+		size_t src_len = buffer_in_sz;
+		std::unique_ptr<unsigned char[]> padded;
+
+		if (enc && buffer_in_sz % 8 != 0) {
+			src_len = ((buffer_in_sz / 8) + 1) * 8;
+			padded.reset(new unsigned char[src_len]());
+			memcpy(padded.get(), buffer_in, buffer_in_sz);
+			src = padded.get();
+		}
+
+		int outl = 0;
+		int final_len = 0;
+		result = EVP_CipherUpdate(ctx, reinterpret_cast<unsigned char*>(buffer_out), &outl, src, static_cast<int>(src_len)) == 1
+			&& EVP_CipherFinal_ex(ctx, reinterpret_cast<unsigned char*>(buffer_out) + outl, &final_len) == 1;
+	}
+
+	EVP_CIPHER_CTX_free(ctx);
+	if (!result) {
+		return nullptr;
+	}
 #endif
 	return buffer_out;
+}
+
+#ifdef EQEMU_USE_OPENSSL
+static OSSL_PROVIDER *s_legacy_provider  = nullptr;
+static OSSL_PROVIDER *s_default_provider = nullptr;
+#endif
+
+bool eqcrypt_init()
+{
+#ifdef EQEMU_USE_OPENSSL
+#ifdef _WIN32
+	// Set OpenSSL default provider search path to the executable directory.
+	char* exe_path = nullptr;
+	if (_get_pgmptr(&exe_path) == 0 && exe_path != nullptr && *exe_path != '\0') {
+		std::string exe_dir{exe_path};
+		if (auto sep = exe_dir.find_last_of("\\/"); sep != std::string::npos) {
+			exe_dir.resize(sep);
+			OSSL_PROVIDER_set_default_search_path(nullptr, exe_dir.c_str());
+		}
+	}
+#endif
+
+	if (!s_default_provider) {
+		s_default_provider = OSSL_PROVIDER_load(nullptr, "default");
+	}
+	if (!s_legacy_provider) {
+		s_legacy_provider = OSSL_PROVIDER_load(nullptr, "legacy");
+	}
+
+	if (!s_default_provider || !s_legacy_provider) {
+		char buf[256];
+		while (auto err = ERR_get_error()) {
+			ERR_error_string_n(err, buf, sizeof(buf));
+			LogError("OpenSSL provider load failure: {}", buf);
+		}
+		return false;
+	}
+#endif
+
+	return true;
+}
+
+void eqcrypt_shutdown()
+{
+#ifdef EQEMU_USE_OPENSSL
+	if (s_legacy_provider) {
+		OSSL_PROVIDER_unload(s_legacy_provider);
+		s_legacy_provider = nullptr;
+	}
+	if (s_default_provider) {
+		OSSL_PROVIDER_unload(s_default_provider);
+		s_default_provider = nullptr;
+	}
+#endif
 }
 
 std::string eqcrypt_md5(const std::string &msg)
@@ -147,12 +250,12 @@ std::string eqcrypt_md5(const std::string &msg)
 	unsigned char md5_digest[16];
 	char tmp[4];
 
-	MD5((const unsigned char*)msg.c_str(), msg.length(), md5_digest);
-
-	for (int i = 0; i < 16; ++i) {
-		sprintf(&tmp[0], "%02x", md5_digest[i]);
-		ret.push_back(tmp[0]);
-		ret.push_back(tmp[1]);
+	if (EVP_Digest(msg.data(), msg.length(), md5_digest, nullptr, EVP_md5(), nullptr) == 1) {
+		for (int i = 0; i < 16; ++i) {
+			sprintf(&tmp[0], "%02x", md5_digest[i]);
+			ret.push_back(tmp[0]);
+			ret.push_back(tmp[1]);
+		}
 	}
 #endif
 
@@ -181,12 +284,12 @@ std::string eqcrypt_sha1(const std::string &msg)
 	unsigned char sha_digest[20];
 	char tmp[4];
 
-	SHA1((const unsigned char*)msg.c_str(), msg.length(), sha_digest);
-
-	for (int i = 0; i < 20; ++i) {
-		sprintf(&tmp[0], "%02x", sha_digest[i]);
-		ret.push_back(tmp[0]);
-		ret.push_back(tmp[1]);
+	if (EVP_Digest(msg.data(), msg.length(), sha_digest, nullptr, EVP_sha1(), nullptr) == 1) {
+		for (int i = 0; i < 20; ++i) {
+			sprintf(&tmp[0], "%02x", sha_digest[i]);
+			ret.push_back(tmp[0]);
+			ret.push_back(tmp[1]);
+		}
 	}
 #endif
 
@@ -215,12 +318,12 @@ std::string eqcrypt_sha512(const std::string &msg)
 	unsigned char sha_digest[64];
 	char tmp[4];
 
-	SHA512((const unsigned char*)msg.c_str(), msg.length(), sha_digest);
-
-	for (int i = 0; i < 64; ++i) {
-		sprintf(&tmp[0], "%02x", sha_digest[i]);
-		ret.push_back(tmp[0]);
-		ret.push_back(tmp[1]);
+	if (EVP_Digest(msg.data(), msg.length(), sha_digest, nullptr, EVP_sha512(), nullptr) == 1) {
+		for (int i = 0; i < 64; ++i) {
+			sprintf(&tmp[0], "%02x", sha_digest[i]);
+			ret.push_back(tmp[0]);
+			ret.push_back(tmp[1]);
+		}
 	}
 #endif
 

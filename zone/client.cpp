@@ -1,21 +1,20 @@
-/*	EQEMu: Everquest Server Emulator
-	Copyright (C) 2001-2016 EQEMu Development Team (http://eqemulator.org)
+/*	EQEmu: EQEmulator
+
+	Copyright (C) 2001-2026 EQEmu Development Team
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation; version 2 of the License.
+	the Free Software Foundation; either version 3 of the License, or
+	(at your option) any later version.
 
 	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY except by those people which sell it, which
-	are required to give you total support for your newly bought product;
-	without even the implied warranty of MERCHANTABILITY or FITNESS FOR
-	A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
 
 	You should have received a copy of the GNU General Public License
-	along with this program; if not, write to the Free Software
-	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+	along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
-
 #include "client.h"
 
 #include "common/data_bucket.h"
@@ -1038,7 +1037,7 @@ bool Client::Save(uint8 iCommitNow) {
 	}
 
 	if (dead || (!GetMerc() && !GetMercInfo().IsSuspended)) {
-		memset(&m_mercinfo, 0, sizeof(struct MercInfo));
+		memset(&m_mercinfo, 0, sizeof(m_mercinfo));
 	}
 
 	m_pp.lastlogin = time(nullptr);
@@ -1785,7 +1784,7 @@ void Client::Message(uint32 type, const char* message, ...) {
 	buf.WriteInt32(0);
 	buf.WriteString(buffer);
 
-	auto app = new EQApplicationPacket(OP_SpecialMesg, buf);
+	auto app = new EQApplicationPacket(OP_SpecialMesg, std::move(buf));
 
 	FastQueuePacket(&app);
 
@@ -1814,7 +1813,7 @@ void Client::FilteredMessage(Mob *sender, uint32 type, eqFilterType filter, cons
 	buf.WriteInt32(0);
 	buf.WriteString(buffer);
 
-	auto app = new EQApplicationPacket(OP_SpecialMesg, buf);
+	auto app = new EQApplicationPacket(OP_SpecialMesg, std::move(buf));
 
 	FastQueuePacket(&app);
 
@@ -3870,7 +3869,7 @@ void Client::MessageString(uint32 type, uint32 string_id, const char* message1,
 
 	buf.WriteInt8(0); // prevent oob in packet translation, maybe clean that up sometime
 
-	auto outapp = std::make_unique<EQApplicationPacket>(OP_FormattedMessage, buf);
+	auto outapp = std::make_unique<EQApplicationPacket>(OP_FormattedMessage, std::move(buf));
 
 	if (distance > 0)
 		entity_list.QueueCloseClients(this, outapp.get(), false, distance);
@@ -3988,7 +3987,7 @@ void Client::FilteredMessageString(Mob *sender, uint32 type, eqFilterType filter
 
 	buf.WriteInt8(0); // prevent oob in packet translation, maybe clean that up sometime
 
-	auto outapp = std::make_unique<EQApplicationPacket>(OP_FormattedMessage, buf);
+	auto outapp = std::make_unique<EQApplicationPacket>(OP_FormattedMessage, std::move(buf));
 
 	QueuePacket(outapp.get());
 }
@@ -7941,75 +7940,125 @@ void Client::SendWebLink(const char *website)
 
 void Client::SendMercPersonalInfo()
 {
-	uint32 mercTypeCount = 1;
-	uint32 mercCount = 1; //TODO: Un-hardcode this and support multiple mercs like in later clients than SoD.
-	uint32 i = 0;
 	uint32 altCurrentType = 19; //TODO: Implement alternate currency purchases involving mercs!
 
-	MercTemplate *mercData = &zone->merc_templates[GetMercInfo().MercTemplateID];
-
-	int stancecount = 0;
-	stancecount += zone->merc_stance_list[GetMercInfo().MercTemplateID].size();
-	if(stancecount > MAX_MERC_STANCES || mercCount > MAX_MERC || mercTypeCount > MAX_MERC_GRADES)
-	{
-		Log(Logs::General, Logs::Mercenaries, "SendMercPersonalInfo canceled: (%i) (%i) (%i) for %s", stancecount, mercCount, mercTypeCount, GetName());
-		SendMercMerchantResponsePacket(0);
-		return;
-	}
-
 	if (ClientVersion() >= EQ::versions::ClientVersion::RoF) {
-		auto outapp = new EQApplicationPacket(OP_MercenaryDataUpdate, sizeof(MercenaryDataUpdate_Struct));
-		auto mdus   = (MercenaryDataUpdate_Struct *) outapp->pBuffer;
-
-		mdus->MercStatus                    = 0;
-		mdus->MercCount                     = mercCount;
-		mdus->MercData[i].MercID            = mercData->MercTemplateID;
-		mdus->MercData[i].MercType          = mercData->MercType;
-		mdus->MercData[i].MercSubType       = mercData->MercSubType;
-		mdus->MercData[i].PurchaseCost      = Merc::CalcPurchaseCost(mercData->MercTemplateID, GetLevel(), 0);
-		mdus->MercData[i].UpkeepCost        = Merc::CalcUpkeepCost(mercData->MercTemplateID, GetLevel(), 0);
-		mdus->MercData[i].Status            = 0;
-		mdus->MercData[i].AltCurrencyCost   = Merc::CalcPurchaseCost(
-			mercData->MercTemplateID,
-			GetLevel(),
-			altCurrentType
-		);
-		mdus->MercData[i].AltCurrencyUpkeep = Merc::CalcPurchaseCost(
-			mercData->MercTemplateID,
-			GetLevel(),
-			altCurrentType
-		);
-		mdus->MercData[i].AltCurrencyType   = altCurrentType;
-		mdus->MercData[i].MercUnk01         = 0;
-		mdus->MercData[i].TimeLeft          = GetMercInfo().MercTimerRemaining;    //GetMercTimer().GetRemainingTime();
-		mdus->MercData[i].MerchantSlot      = i + 1;
-		mdus->MercData[i].MercUnk02         = 1;
-		mdus->MercData[i].StanceCount       = zone->merc_stance_list[mercData->MercTemplateID].size();
-		mdus->MercData[i].MercUnk03         = 0;
-		mdus->MercData[i].MercUnk04         = 1;
-
-		strn0cpy(mdus->MercData[i].MercName, GetMercInfo().merc_name, sizeof(mdus->MercData[i].MercName));
-
-		uint32 stanceindex = 0;
-		if (mdus->MercData[i].StanceCount != 0) {
-			auto iter = zone->merc_stance_list[mercData->MercTemplateID].begin();
-			while (iter != zone->merc_stance_list[mercData->MercTemplateID].end()) {
-				mdus->MercData[i].Stances[stanceindex].StanceIndex = stanceindex;
-				mdus->MercData[i].Stances[stanceindex].Stance      = (iter->StanceID);
-				stanceindex++;
-				++iter;
-			}
+		// Count owned mercs across all slots
+		uint32 mercCount = GetNumberOfMercenaries();
+		if (mercCount == 0) {
+			SendClearMercInfo();
+			return;
 		}
 
-		mdus->MercData[i].MercUnk05 = 1;
+		uint32 packetSize = sizeof(MercenaryDataUpdate_Struct);
+		auto outapp = new EQApplicationPacket(OP_MercenaryDataUpdate, packetSize);
+		memset(outapp->pBuffer, 0, packetSize);
+		auto mdus   = (MercenaryDataUpdate_Struct *) outapp->pBuffer;
+
+		mdus->MercStatus = 0;
+		mdus->MercCount  = mercCount;
+
+		// Lambda to populate a single merc entry in the packet
+		int max_slots = std::min(RuleI(Mercs, MaxMercSlots), MAXMERCS);
+		uint32 merc_index = 0;
+
+		auto fillMercEntry = [&](int slot) {
+			auto& info = GetMercInfo(slot);
+			if (info.mercid == 0 || merc_index >= MAX_MERC) {
+				return;
+			}
+
+			auto tmpl_it = zone->merc_templates.find(info.MercTemplateID);
+			if (tmpl_it == zone->merc_templates.end()) {
+				return;
+			}
+
+			MercTemplate *mercData = &tmpl_it->second;
+			uint32 stancecount = 0;
+			auto stance_it = zone->merc_stance_list.find(mercData->MercTemplateID);
+			if (stance_it != zone->merc_stance_list.end()) {
+				stancecount = stance_it->second.size();
+			}
+
+			if (stancecount > MAX_MERC_STANCES) {
+				Log(Logs::General, Logs::Mercenaries, "SendMercPersonalInfo: stance count %u exceeds max for slot %i, skipping", stancecount, slot);
+				return;
+			}
+
+			mdus->MercData[merc_index].MercID            = mercData->MercTemplateID;
+			mdus->MercData[merc_index].MercType          = mercData->MercType;
+			mdus->MercData[merc_index].MercSubType       = mercData->MercSubType;
+			mdus->MercData[merc_index].PurchaseCost      = Merc::CalcPurchaseCost(mercData->MercTemplateID, GetLevel(), 0);
+			mdus->MercData[merc_index].UpkeepCost        = Merc::CalcUpkeepCost(mercData->MercTemplateID, GetLevel(), 0);
+			mdus->MercData[merc_index].Status            = info.IsSuspended ? 0 : 1;
+			mdus->MercData[merc_index].AltCurrencyCost   = Merc::CalcPurchaseCost(mercData->MercTemplateID, GetLevel(), altCurrentType);
+			mdus->MercData[merc_index].AltCurrencyUpkeep = Merc::CalcPurchaseCost(mercData->MercTemplateID, GetLevel(), altCurrentType);
+			mdus->MercData[merc_index].AltCurrencyType   = altCurrentType;
+			mdus->MercData[merc_index].MercUnk01         = 0;
+			mdus->MercData[merc_index].TimeLeft          = info.MercTimerRemaining;
+			mdus->MercData[merc_index].MerchantSlot      = merc_index + 1;
+			mdus->MercData[merc_index].MercUnk02         = (slot == GetMercSlot()) ? 1 : 0;
+			mdus->MercData[merc_index].StanceCount       = stancecount;
+			mdus->MercData[merc_index].MercUnk03         = 0;
+			mdus->MercData[merc_index].MercUnk04         = 1;
+
+			strn0cpy(mdus->MercData[merc_index].MercName, info.merc_name, sizeof(mdus->MercData[merc_index].MercName));
+
+			uint32 stanceindex = 0;
+			if (stance_it != zone->merc_stance_list.end()) {
+				for (const auto& stance : stance_it->second) {
+					mdus->MercData[merc_index].Stances[stanceindex].StanceIndex = stanceindex;
+					mdus->MercData[merc_index].Stances[stanceindex].Stance      = stance.StanceID;
+					stanceindex++;
+				}
+			}
+
+			mdus->MercData[merc_index].MercUnk05 = std::min(RuleI(Mercs, MaxMercSlots), MAXMERCS);
+			merc_index++;
+		};
+
+		// Emit the active merc slot first — the client marks the first entry
+		// in the list with the X (active marker), so order matters.
+		if (GetMercSlot() < max_slots && GetMercInfo().mercid != 0) {
+			fillMercEntry(GetMercSlot());
+		}
+
+		// Then emit remaining owned mercs in slot order
+		for (int slot = 0; slot < max_slots; slot++) {
+			if (slot == GetMercSlot()) {
+				continue; // already emitted
+			}
+			fillMercEntry(slot);
+		}
+
+		// Update count in case we skipped any invalid entries
+		mdus->MercCount = merc_index;
+
 		FastQueuePacket(&outapp);
 		safe_delete(outapp);
 		return;
 	} else {
+		// Pre-RoF path (SoD and earlier) — single merc only
+		if (GetMercInfo().MercTemplateID == 0) {
+			SendClearMercInfo();
+			return;
+		}
+
+		auto tmpl_it = zone->merc_templates.find(GetMercInfo().MercTemplateID);
+		if (tmpl_it == zone->merc_templates.end()) {
+			SendClearMercInfo();
+			return;
+		}
+
+		MercTemplate *mercData = &tmpl_it->second;
+		uint32 mercTypeCount = 1;
+		uint32 mercCount = 1;
+		uint32 i = 0;
+
 		auto outapp = new EQApplicationPacket(OP_MercenaryDataResponse, sizeof(MercenaryMerchantList_Struct));
 		auto mml    = (MercenaryMerchantList_Struct *) outapp->pBuffer;
 
-		mml->MercTypeCount = mercTypeCount; //We should only have one merc entry.
+		mml->MercTypeCount = mercTypeCount;
 		mml->MercGrades[i] = 1;
 
 		mml->MercCount                  = mercCount;

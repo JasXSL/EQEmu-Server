@@ -1,6 +1,23 @@
+/*	EQEmu: EQEmulator
+
+	Copyright (C) 2001-2026 EQEmu Development Team
+
+	This program is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 3 of the License, or
+	(at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
 #pragma once
 
-typedef enum {
+enum QuestEventID {
 	EVENT_SAY = 0,
 	EVENT_TRADE,		//being given an item or money
 	EVENT_DEATH,		//being killed
@@ -99,8 +116,10 @@ typedef enum {
 	EVENT_LANGUAGE_SKILL_UP,
 	EVENT_ALT_CURRENCY_MERCHANT_BUY,
 	EVENT_ALT_CURRENCY_MERCHANT_SELL,
+	EVENT_MERCHANT_OPEN,
 	EVENT_MERCHANT_BUY,
 	EVENT_MERCHANT_SELL,
+	EVENT_MERCHANT_PRESELL,
 	EVENT_INSPECT,
 	EVENT_TASK_BEFORE_UPDATE,
 	EVENT_AA_BUY,
@@ -152,6 +171,6 @@ typedef enum {
 	EVENT_SPELL_EFFECT_BOT,
 	EVENT_SPELL_EFFECT_BUFF_TIC_BOT,
 	_LargestEventID
-} QuestEventID;
+};
 
 extern const char *QuestEventSubroutines[_LargestEventID];

@@ -1,23 +1,20 @@
-/**
- * EQEmulator: Everquest Server Emulator
- * Copyright (C) 2001-2020 EQEmulator Development Team (https://github.com/EQEmu/Server)
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY except by those people which sell it, which
- * are required to give you total support for your newly bought product;
- * without even the implied warranty of MERCHANTABILITY or FITNESS FOR
- * A PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
- *
- */
+/*	EQEmu: EQEmulator
 
+	Copyright (C) 2001-2026 EQEmu Development Team
+
+	This program is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 3 of the License, or
+	(at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
 #include "common/crash.h"
 #include "common/database/database_update.h"
 #include "common/eq_packet_structs.h"
@@ -29,7 +26,6 @@
 #include "common/guilds.h"
 #include "common/memory_mapped_file.h"
 #include "common/misc.h"
-#include "common/mutex.h"
 #include "common/net/eqstream.h"
 #include "common/opcodemgr.h"
 #include "common/patches/patches.h"
@@ -219,8 +215,6 @@ int main(int argc, char **argv)
 		}
 	}
 
-	auto mutex = new Mutex;
-
 	LogInfo("Connecting to MySQL");
 	if (!database.Connect(
 		Config->DatabaseHost.c_str(),
@@ -248,11 +242,13 @@ int main(int argc, char **argv)
 		}
 	} else {
 		content_db.SetMySQL(database);
+
 		// when database and content_db share the same underlying mysql connection
 		// it needs to be protected by a shared mutex otherwise we produce concurrency issues
 		// when database actions are occurring in different threads
-		database.SetMutex(mutex);
-		content_db.SetMutex(mutex);
+		std::shared_ptr<DBcore::Mutex> sharedMutex = std::make_shared<DBcore::Mutex>();
+		database.SetMutex(sharedMutex);
+		content_db.SetMutex(sharedMutex);
 	}
 
 	//rules:
@@ -664,7 +660,6 @@ int main(int argc, char **argv)
 	LogInfo("Proper zone shutdown complete.");
 	EQEmuLogSys::Instance()->CloseFileLogs();
 
-	safe_delete(mutex);
 	safe_delete(QServ);
 
 	return 0;
@@ -716,48 +711,36 @@ void UpdateWindowTitle(char *iNewTitle)
 
 bool CheckForCompatibleQuestPlugins()
 {
-	const std::vector<std::pair<std::string, bool *>> directories = {
-		{"lua_modules", nullptr},
-		{"plugins",     nullptr}
-	};
-
 	bool lua_found  = false;
 	bool perl_found = false;
 
-	try {
-		for (const auto &[directory, flag]: directories) {
-			std::string dir_path = PathManager::Instance()->GetServerPath() + "/" + directory;
-			if (!File::Exists(dir_path)) { continue; }
-
-			for (const auto &file: fs::directory_iterator(dir_path)) {
+	auto check_dir = [&](const std::string& dir_path, bool& found) {
+		if (!File::Exists(dir_path)) { return; }
+		try {
+			for (const auto& file : fs::directory_iterator(dir_path)) {
 				if (!file.is_regular_file()) { continue; }
-
-				std::string file_path = file.path().string();
-				if (!File::Exists(file_path)) { continue; }
-
-				auto r = File::GetContents(file_path);
-				if (!Strings::Contains(r.contents, "CheckHandin")) { continue; }
-
-				if (directory == "lua_modules") {
-					lua_found = true;
+				auto r = File::GetContents(file.path().string());
+				if (Strings::Contains(r.contents, "CheckHandin")) {
+					found = true;
+					return;
 				}
-				else {
-					perl_found = true;
-				}
-
-				if (lua_found && perl_found) { return true; }
 			}
 		}
-	} catch (const fs::filesystem_error &ex) {
-		LogError("Failed to check for compatible quest plugins: {}", ex.what());
+		catch (const fs::filesystem_error& ex) {
+			LogError("Failed to check for compatible quest plugins: {}", ex.what());
+		}
+    };
+
+	for (const auto& path : PathManager::Instance()->GetLuaModulePaths()) {
+		check_dir(path, lua_found);
 	}
 
-	if (!lua_found) {
-		LogError("Failed to find CheckHandin in lua_modules");
+	for (const auto& path : PathManager::Instance()->GetPluginPaths()) {
+		check_dir(path, perl_found);
 	}
-	if (!perl_found) {
-		LogError("Failed to find CheckHandin in plugins");
-	}
+
+	if (!lua_found) { LogError("Failed to find CheckHandin in the Lua module quest directories"); }
+	if (!perl_found) { LogError("Failed to find CheckHandin in the Perl plugins quest directories");}
 
 	return lua_found && perl_found;
 }
