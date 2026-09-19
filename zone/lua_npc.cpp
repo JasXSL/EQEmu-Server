@@ -942,7 +942,11 @@ bool Lua_NPC::LuaCheckHandin(
 		}
 	}
 
-	return self->CheckHandin(c, handin_map, required_map, items);
+	// Jas: CheckHandin fails to call ResetHandin, causing checking multiple trade options on the same NPC to break.
+	const bool out = self->CheckHandin(c, handin_map, required_map, items);
+	if( !out )
+		self->ResetHandin();
+	return out;
 }
 
 void Lua_NPC::ReturnHandinItems(Lua_Client c)
